@@ -8,11 +8,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from src.classical_analyze import analyze_text
 
-load_dotenv()
+load_dotenv()  # Load environment variables from .env file
 
 app = FastAPI(
     title="QERRA-v2 Classical",
@@ -41,6 +41,16 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
 
 class AnalyzeRequest(BaseModel):
     text: str
+
+    model_config = {"str_strip_whitespace": True}
+
+    @field_validator("text")
+    def text_must_not_be_empty(cls, v):
+        if len(v.strip()) < 3:
+            raise ValueError("Text too short")
+        if len(v) > 5000:
+            raise ValueError("Text too long")
+        return v
 
 
 @app.post("/analyze", dependencies=[Depends(verify_api_key)])
