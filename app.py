@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from src.classical_analyze import analyze_text
 
-load_dotenv()  # Load environment variables from .env file
+load_dotenv()
 
 app = FastAPI(
     title="QERRA-v2 Classical",
@@ -23,7 +23,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
