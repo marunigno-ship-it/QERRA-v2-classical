@@ -48,7 +48,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         "input": text,
         "score": score,
         "decision": decision,
-        "reasoning": reasoning,
+        "reasoning": "Score based on activated sacred vectors",
         "vectors_activated": activated,
         "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
         "version": "1.2-classical"
