@@ -31,7 +31,6 @@ uvicorn main:app --reload
 Live APIBase URL: https://qerra-v2-api-production.up.railway.app
 Interactive docs: https://qerra-v2-api-production.up.railway.app/docs
 
-
 Important NotesThis is an early-stage research prototype. The code is functional but not production-ready.
 Quantum layer exists only as a separate proof-of-concept in another repository.
 ROS2 integration exists only as a basic stub.Repository FocusThis is the clean classical version of QERRA-v2, optimized for stability, explainability, and ease of collaboration.LicenseAGPL-3.0
