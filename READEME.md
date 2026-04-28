@@ -27,8 +27,10 @@ cd QERRA-v2-classical
 pip install -r requirements.txt
 uvicorn main:app --reload
 
+
 Live APIBase URL: https://qerra-v2-api-production.up.railway.app
 Interactive docs: https://qerra-v2-api-production.up.railway.app/docs
+
 
 Important NotesThis is an early-stage research prototype. The code is functional but not production-ready.
 Quantum layer exists only as a separate proof-of-concept in another repository.
