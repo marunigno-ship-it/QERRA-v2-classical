@@ -11,7 +11,6 @@ def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
     vectors = get_sacred_vectors()
 
-    # Basic detection (keeping your original logic)
     severe_harm = bool(re.search(r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
     moderate_harm = bool(re.search(r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
     subtle_harm = bool(re.search(r'\b(hate|disappear|empty|nothing matters)\b', text))
@@ -22,7 +21,7 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     positive_intent = bool(re.search(r'\b(love|helping|grateful|thankful|protect myself|healthy boundaries|never harm|help others)\b', text))
 
-    # === NEW: Use sacred vectors to calculate a real weighted score ===
+    # Use sacred vectors to calculate a real weighted score
     score = 0.25
     activated = []
     total_weight = 0.0
@@ -48,6 +47,10 @@ def evaluate_ethical_risk(text: str) -> dict:
         activated.append("v003")
         total_weight += vectors["v003"]["weight"]
         weighted_sum += 0.22 * vectors["v003"]["weight"]
+    elif pressure_mention:
+        activated.append("v004")
+        total_weight += vectors["v004"]["weight"]
+        weighted_sum += 0.70 * vectors["v004"]["weight"]
 
     if total_weight > 0:
         score = weighted_sum / total_weight
