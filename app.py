@@ -34,10 +34,11 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 API_KEY = os.getenv("QERRA_API_KEY")
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
+    if not API_KEY:
+        raise HTTPException(status_code=500, detail="Server API key not configured. Contact administrator.")
     if api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
     return api_key
-
 
 class AnalyzeRequest(BaseModel):
     text: str
