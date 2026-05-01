@@ -21,7 +21,8 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     positive_intent = bool(re.search(r'\b(love|helping|grateful|thankful|protect myself|healthy boundaries|never harm|help others)\b', text))
 
-    # Use sacred vectors to calculate a real weighted score
+       # Use sacred vectors to calculate a real weighted score
+    # Now allows multiple vectors (if + no elif) - respects multidimensional ethics
     score = 0.25
     activated = []
     total_weight = 0.0
@@ -31,23 +32,28 @@ def evaluate_ethical_risk(text: str) -> dict:
         activated.append("v005")
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.95 * vectors["v005"]["weight"]
-    elif clear_fraud or bribe_mention:
+    
+    if clear_fraud or bribe_mention:
         activated.append("v004")
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.88 * vectors["v004"]["weight"]
-    elif moderate_harm:
+    
+    if moderate_harm:
         activated.append("v005")
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.82 * vectors["v005"]["weight"]
-    elif subtle_harm:
+    
+    if subtle_harm:
         activated.append("v001")
         total_weight += vectors["v001"]["weight"]
         weighted_sum += 0.65 * vectors["v001"]["weight"]
-    elif positive_intent:
+    
+    if positive_intent:
         activated.append("v003")
         total_weight += vectors["v003"]["weight"]
         weighted_sum += 0.22 * vectors["v003"]["weight"]
-    elif pressure_mention:
+    
+    if pressure_mention:
         activated.append("v004")
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.70 * vectors["v004"]["weight"]
