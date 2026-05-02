@@ -1,6 +1,7 @@
 # =====================================================
 # SACRED VECTORS - QERRA-v2 Classical Edition
 # These vectors are sacred. We only polish, never change the core.
+# Now complete SEMEV-12
 # =====================================================
 
 VECTORS = {
@@ -13,6 +14,10 @@ VECTORS = {
     "v007": {"name": "personal_potential", "weight": 0.9, "description": "Suppression or support of personal potential"},
     "v008": {"name": "shallow_remorse", "weight": 0.8, "description": "Detection of shallow or manipulative remorse"},
     "v009": {"name": "ethical_severance", "weight": 0.95, "description": "Final ethical severance from toxic patterns"},
+    # Added 3 missing vectors to reach SEMEV-12
+    "v010": {"name": "cognitive_manipulation", "weight": 0.9, "description": "Detection of gaslighting or cognitive manipulation"},
+    "v011": {"name": "autonomy_violation", "weight": 0.95, "description": "Violation of personal autonomy and free will"},
+    "v012": {"name": "institutional_trust", "weight": 0.85, "description": "Detection of institutional or systemic betrayal"},
 }
 
 def get_sacred_vectors():

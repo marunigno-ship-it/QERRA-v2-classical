@@ -3,12 +3,16 @@
 # High-Quality 100% Classical Ethical Framework
 # =====================================================
 
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from src.classical_analyze import analyze_text
+
+load_dotenv()  # Load environment variables from .env file
 
 app = FastAPI(
     title="QERRA-v2 Classical",
@@ -19,7 +23,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -27,16 +31,28 @@ app.add_middleware(
 API_KEY_NAME = "x-api-key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
-DUMMY_KEY = "qerra2026_test_key_7f9k2m"
+API_KEY = os.getenv("QERRA_API_KEY")
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != DUMMY_KEY:
+    if not API_KEY:
+        raise HTTPException(status_code=500, detail="Server API key not configured. Contact administrator.")
+    if api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
     return api_key
 
 
 class AnalyzeRequest(BaseModel):
     text: str
+
+    model_config = {"str_strip_whitespace": True}
+
+    @field_validator("text")
+    def text_must_not_be_empty(cls, v):
+        if len(v.strip()) < 3:
+            raise ValueError("Text too short")
+        if len(v) > 5000:
+            raise ValueError("Text too long")
+        return v
 
 
 @app.post("/analyze", dependencies=[Depends(verify_api_key)])

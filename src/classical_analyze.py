@@ -13,8 +13,7 @@ def analyze_text(text: str) -> dict:
     """
     result = evaluate_ethical_risk(text)
 
-    # Add useful metadata
-    result["version"] = "1.1-classical"
+    # Add useful metadata (do NOT overwrite version)
     result["framework"] = "QERRA-v2 Classical Edition"
 
     return result
