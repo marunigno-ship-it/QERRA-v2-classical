@@ -9,7 +9,9 @@
 
 ## Project Vision
 
-QERRA (Quantum-Enhanced Reasoning and Responsive Architecture) is an ethical decision framework designed to evaluate text input against 12 human-centred ethical dimensions — the **SEMEV-12 core vectors**.
+# QERRA-v2 Classical Edition
+
+**Hybrid Quantum-Classical Ethical Decision Engine** is an ethical decision framework designed to evaluate text input against 12 human-centred ethical dimensions — the **SEMEV-12 core vectors**.
 
 The classical edition exists to:
 - Provide a stable, fully functional classical baseline for the ethical scoring logic
