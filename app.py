@@ -40,7 +40,6 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
     return api_key
 
-
 class AnalyzeRequest(BaseModel):
     text: str
 
