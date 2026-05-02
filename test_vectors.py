@@ -1,6 +1,10 @@
-# Simple test file for SEMEV-12 vectors
-
 import unittest
+import sys
+import os
+
+# Add the project root to Python path
+sys.path.insert(0, os.path.abspath('.'))
+
 from src.classical_analyze import analyze_text
 
 class TestSEMEV12(unittest.TestCase):
