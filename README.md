@@ -1,42 +1,253 @@
-# QERRA-v2 Classical
+# QERRA-v2 Classical Edition
 
-**Classical Ethical Text Evaluation API**
+**A 100% classical ethical decision framework based on the SEMEV-12 vector system.**
 
-An early experimental API that evaluates text inputs for toxicity, manipulation, and ethical risk using a custom 12-dimensional framework (SEMEV-12).
+> This repository is the classical counterpart of the main [QERRA-v2 Hybrid](https://github.com/marunigno-ship-it/QERRA-v2) project.
+> Built as a solo research project by Marussa Metocharaki (@marunigno). Early functional prototype — not yet production-ready.
 
-### Current Status (Full Transparency)
-- Early experimental prototype (solo founder project)
-- Working FastAPI service with /analyze endpoint
-- Classical scoring engine based on sacred vectors
-- Clean, focused version without quantum simulation
-- Still under active development
+---
 
-### What it does
-The API receives text input and returns a structured ethical assessment including:
-- Overall risk score
-- Decision label (safe or modified)
-- Activated ethical vectors
-- Reasoning
+## Project Vision
 
-The system is designed to eventually serve as an embeddable safety middleware layer for AI systems and, in the future, robotics stacks.
+# QERRA-v2 Classical Edition
 
-### How to run locally
+**Hybrid Quantum-Classical Ethical Decision Engine** is an ethical decision framework designed to evaluate text input against 12 human-centred ethical dimensions — the **SEMEV-12 core vectors**.
+
+The classical edition exists to:
+- Provide a stable, fully functional classical baseline for the ethical scoring logic
+- Demonstrate that the SEMEV-12 system works as a real computational framework, not just a concept
+- Serve as the research foundation for the long-term hybrid quantum-classical vision
+
+The ethical conscience of the system is its core. The 12 core vectors are never weakened, reordered, or removed — only extended.
+
+---
+
+## SEMEV-12 Core Vectors
+
+| ID   | Name                   | Weight | Description                                              |
+|------|------------------------|--------|----------------------------------------------------------|
+| v001 | coherence_protection   | 1.00   | Protection of mental and emotional coherence             |
+| v002 | family_severance       | 0.95   | Detection of toxic family or relational severance        |
+| v003 | survival_instinct      | 1.00   | Human survival and self-protection priority              |
+| v004 | moral_pressure         | 0.90   | Detection of external moral or financial pressure        |
+| v005 | harm_intent            | 1.00   | Core harm detection (self or others)                     |
+| v006 | family_origin_chain    | 0.85   | Family-origin ethical chain                              |
+| v007 | personal_potential     | 0.90   | Suppression or support of personal potential             |
+| v008 | shallow_remorse        | 0.80   | Detection of shallow or manipulative remorse             |
+| v009 | ethical_severance      | 0.95   | Final ethical severance from toxic patterns              |
+| v010 | cognitive_manipulation | 0.90   | Detection of gaslighting or cognitive manipulation       |
+| v011 | autonomy_violation     | 0.95   | Violation of personal autonomy and free will             |
+| v012 | institutional_trust    | 0.85   | Detection of institutional or systemic betrayal          |
+
+All 12 vectors are active. Multiple vectors can activate simultaneously on a single input, producing a genuine weighted score.
+
+---
+
+## Current Features
+
+- **REST API** built with FastAPI
+- **Multidimensional scoring**: multiple vectors activate simultaneously on complex inputs
+- **Weighted arithmetic**: final score is a true weighted average of all activated vectors
+- **Dynamic reasoning output**: each response names the specific vectors that fired
+- **API key authentication** via `x-api-key` header
+- **Input validation**: minimum 3 characters, maximum 5000 characters
+- **Basic request logging** to terminal on every analysis call
+- **Clean JSON responses** with score, decision, reasoning, and activated vector list
+
+---
+
+## How to Run Locally
+
+### Requirements
+
+- Python 3.9 or higher
+- pip
+
+### Installation
+
+```bash
 git clone https://github.com/marunigno-ship-it/QERRA-v2-classical.git
 cd QERRA-v2-classical
 pip install -r requirements.txt
-uvicorn main:app --reload
+```
 
-### Live API
-Base URL: https://qerra-v2-api-production.up.railway.app
-Interactive docs: https://qerra-v2-api-production.up.railway.app/docs
+### Environment Setup
 
-### Important Notes
-This is an early-stage research prototype. The code is functional but not production-ready. 
-Quantum layer exists only as a separate proof-of-concept in another repository. 
-ROS2 integration exists only as a basic stub.
+Create a `.env` file in the project root:
 
-### Repository Focus
-This is the clean classical version of QERRA-v2, optimized for stability, explainability, and ease of collaboration.
+```
+QERRA_API_KEY=your-secret-key-here
+```
 
-### License
-AGPL-3.0
+The API will refuse to start serving protected endpoints if this variable is not set.
+
+### Start the Server
+
+```bash
+python app.py
+```
+
+Or with uvicorn directly:
+
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The API will be available at `http://localhost:8000`.
+
+Interactive documentation (auto-generated by FastAPI) is available at `http://localhost:8000/docs`.
+
+---
+
+## API Usage
+
+### Health Check
+
+```bash
+GET http://localhost:8000/
+```
+
+Response:
+```json
+{
+  "status": "QERRA-v2 Classical Edition is live",
+  "message": "High-quality 100% classical ethical decision engine",
+  "note": "This is the classical counterpart of the main hybrid QERRA-v2 project"
+}
+```
+
+---
+
+### Analyze Text
+
+```bash
+POST http://localhost:8000/analyze
+Headers:
+  x-api-key: your-secret-key-here
+  Content-Type: application/json
+
+Body:
+{
+  "text": "your text here"
+}
+```
+
+---
+
+### Example 1 — Single vector (harm intent)
+
+**Request:**
+```json
+{
+  "text": "I want to die. I feel completely worthless and there is no point anymore."
+}
+```
+
+**Response:**
+```json
+{
+  "input": "i want to die. i feel completely worthless and there is no point anymore.",
+  "score": 0.95,
+  "decision": "modified",
+  "reasoning": "Activated vectors: harm_intent (v005)",
+  "vectors_activated": ["v005"],
+  "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
+  "version": "1.2-classical"
+}
+```
+
+---
+
+### Example 2 — Multi-vector (pressure + manipulation)
+
+**Request:**
+```json
+{
+  "text": "I am under serious financial pressure and they keep gaslighting me, telling me I am imagining things and twisting my words."
+}
+```
+
+**Response:**
+```json
+{
+  "input": "i am under serious financial pressure and they keep gaslighting me, telling me i am imagining things and twisting my words.",
+  "score": 0.7714,
+  "decision": "modified",
+  "reasoning": "Activated vectors: moral_pressure (v004), cognitive_manipulation (v010)",
+  "vectors_activated": ["v004", "v010"],
+  "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
+  "version": "1.2-classical"
+}
+```
+
+---
+
+### Example 3 — Low risk (positive intent)
+
+**Request:**
+```json
+{
+  "text": "I am grateful for the support I have received. I want to help others and maintain healthy boundaries going forward."
+}
+```
+
+**Response:**
+```json
+{
+  "input": "i am grateful for the support i have received. i want to help others and maintain healthy boundaries going forward.",
+  "score": 0.22,
+  "decision": "safe",
+  "reasoning": "Activated vectors: survival_instinct (v003)",
+  "vectors_activated": ["v003"],
+  "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
+  "version": "1.2-classical"
+}
+```
+
+---
+
+## Project Status
+
+**Early functional prototype.**
+
+The system runs, the scoring is real, and all 12 vectors are active. It is not yet production-ready. Known gaps:
+
+- No rate limiting (a determined caller can flood the API)
+- CORS is currently open (`allow_origins=["*"]`) — acceptable for local development, not for public deployment
+- Logging writes to terminal only — no persistent log file
+- No automated tests
+- Detection patterns are keyword/phrase based — nuanced or indirect language may not activate the correct vectors
+- The quantum-classical hybrid vision is long-term research; this repo is the classical foundation only
+
+---
+
+## Roadmap
+
+The following improvements are planned in order of priority:
+
+1. **Rate limiting** — prevent API abuse (e.g. using `slowapi`)
+2. **File-based logging** — persist analysis logs to disk
+3. **CORS restriction** — lock `allow_origins` to specific trusted domains before any public deployment
+4. **Basic test suite** — at minimum, one test per vector to confirm detection patterns work
+5. **Expanded detection patterns** — improve coverage of indirect or context-dependent language
+6. **Hybrid quantum-classical integration** — long-term research direction, not near-term
+
+---
+
+## License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+See [LICENSE](./LICENSE) for the full text.
+
+---
+
+## Author
+
+**Marussa Metocharaki** (@marunigno)
+Independent researcher, Greece.
+Built entirely as a solo project using AI-assisted development tools.
+
+---
+
+*QERRA-v2 Classical Edition — ethical conscience as the foundation of every decision.*
