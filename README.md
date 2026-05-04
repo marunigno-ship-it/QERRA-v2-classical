@@ -234,6 +234,16 @@ The following improvements are planned in order of priority:
 
 ---
 
+## Related Repositories
+
+- **QERRA-v2 Classical** (this repo): The stable, fully functional classical implementation of the SEMEV-12 ethical framework.
+- **QERRA-v2 Hybrid**: The long-term research direction exploring hybrid quantum-classical integration.  
+  → https://github.com/marunigno-ship-it/QERRA-v2-hybrid
+- **QERRA-v2 API**: The public API deployment layer (connects to the classical version).  
+  → https://github.com/marunigno-ship-it/QERRA-v2-api
+
+This classical repository serves as the honest and transparent foundation for the overall QERRA-v2 vision.
+
 ## License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
