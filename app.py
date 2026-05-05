@@ -79,7 +79,6 @@ def home():
     }
 
 
-# === NEW: Health endpoint (Claude Step 3) ===
 @app.get("/health")
 def health():
     """Simple health check - no API key required."""
@@ -90,6 +89,19 @@ def health():
         "vectors_loaded": len(vectors),
         "framework": "QERRA-v2 Classical Edition",
         "note": "All 12 SEMEV-12 core vectors are active"
+    }
+
+
+# === NEW: /vectors endpoint (Claude Step 2) ===
+@app.get("/vectors")
+def get_vectors():
+    """Return all SEMEV-12 vector definitions - no API key required."""
+    vectors = get_sacred_vectors()
+    return {
+        "framework": "SEMEV-12",
+        "description": "12 foundational ethical vectors for human-centred decision making",
+        "vectors": vectors,
+        "note": "This endpoint makes the ethical framework fully inspectable and auditable"
     }
 
 
