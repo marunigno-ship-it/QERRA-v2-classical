@@ -32,31 +32,11 @@ def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
     vectors = get_sacred_vectors()
 
-    # v005 — harm_intent (semantic)
-    harm_intent = False
-    embedding_harm = semantic_model.encode(text, convert_to_tensor=True)
-    embedding_harm_desc = semantic_model.encode(harm_intent_description, convert_to_tensor=True)
-    similarity_harm = util.cos_sim(embedding_harm, embedding_harm_desc)[0][0].item()
-    logger.info(f"v005 similarity score: {similarity_harm:.4f}")
-    harm_intent = similarity_harm > 0.28
+    # --- Detection patterns ---
 
-    # v010 — cognitive_manipulation (semantic)
-    cognitive_manipulation = False
-    embedding1 = semantic_model.encode(text, convert_to_tensor=True)
-    embedding2 = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
-    similarity = util.cos_sim(embedding1, embedding2)[0][0].item()
-    logger.info(f"v010 similarity score: {similarity:.4f}")
-    cognitive_manipulation = similarity > 0.30
+    severe_harm = bool(re.search(
+        r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
 
-    # v011 — autonomy_violation (semantic)
-    autonomy_violation = False
-    embedding_v011 = semantic_model.encode(text, convert_to_tensor=True)
-    embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
-    similarity_v011 = util.cos_sim(embedding_v011, embedding_v011_desc)[0][0].item()
-    logger.info(f"v011 similarity score: {similarity_v011:.4f}")
-    autonomy_violation = similarity_v011 > 0.25
-
-    # Rest of regex patterns (unchanged)
     moderate_harm = bool(re.search(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
 
@@ -103,6 +83,30 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'get over it|stop being dramatic|i apologized already|it wasn\'t that bad)\b',
         text))
 
+    # v005 — harm_intent (semantic)
+    harm_intent = False
+    embedding_harm = semantic_model.encode(text, convert_to_tensor=True)
+    embedding_harm_desc = semantic_model.encode(harm_intent_description, convert_to_tensor=True)
+    similarity_harm = util.cos_sim(embedding_harm, embedding_harm_desc)[0][0].item()
+    logger.info(f"v005 similarity score: {similarity_harm:.4f}")
+    harm_intent = similarity_harm > 0.28
+
+    # v010 — cognitive_manipulation (semantic)
+    cognitive_manipulation = False
+    embedding1 = semantic_model.encode(text, convert_to_tensor=True)
+    embedding2 = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
+    similarity = util.cos_sim(embedding1, embedding2)[0][0].item()
+    logger.info(f"v010 similarity score: {similarity:.4f}")
+    cognitive_manipulation = similarity > 0.30
+
+    # v011 — autonomy_violation (semantic)
+    autonomy_violation = False
+    embedding_v011 = semantic_model.encode(text, convert_to_tensor=True)
+    embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
+    similarity_v011 = util.cos_sim(embedding_v011, embedding_v011_desc)[0][0].item()
+    logger.info(f"v011 similarity score: {similarity_v011:.4f}")
+    autonomy_violation = similarity_v011 > 0.25
+
     # v012 — institutional_trust (regex)
     institutional_trust = bool(re.search(
         r'\b(system failed me|betrayed by the system|the authorities failed|'
@@ -111,7 +115,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'school failed me|justice was denied|institutional failure)\b',
         text))
 
-    # --- Weighted scoring (unchanged) ---
+    # --- Weighted scoring ---
 
     activated = []
     total_weight = 0.0
@@ -195,6 +199,16 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     decision = "modified" if score > 0.5 else "safe"
 
+    # NEW: Human-readable score explanation
+    if score >= 0.8:
+        score_explanation = "critical ethical concern"
+    elif score >= 0.6:
+        score_explanation = "significant ethical concern"
+    elif score >= 0.3:
+        score_explanation = "moderate ethical concern"
+    else:
+        score_explanation = "low ethical concern"
+
     unique_activated = list(dict.fromkeys(activated))
 
     if unique_activated:
@@ -207,6 +221,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         "input": text,
         "score": score,
         "decision": decision,
+        "score_explanation": score_explanation,   # NEW FIELD
         "reasoning": reasoning,
         "vectors_activated": unique_activated,
         "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
