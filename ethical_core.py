@@ -1,7 +1,7 @@
 # =====================================================
 # ETHICAL CORE - Final High-Quality Version
 # Balanced scoring variety using linguistic and contextual signals
-# SEMEV-12 complete - semantic detection on v010 and v011
+# SEMEV-12 complete - semantic detection on v005, v010, v011
 # =====================================================
 
 import logging
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Semantic descriptions
+harm_intent_description = "wanting to harm myself or others, suicidal thoughts, ending my life, self-harm, killing myself, I don't want to live anymore, I can't continue like this, the world would be better without me"
 cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality"
 autonomy_violation_description = "forcing someone to act against their will, removing a person's right to choose, controlling another person's decisions and freedom, denying autonomy"
 
@@ -31,11 +32,31 @@ def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
     vectors = get_sacred_vectors()
 
-    # --- Detection patterns (regex for all except v010 and v011) ---
+    # v005 — harm_intent (semantic)
+    harm_intent = False
+    embedding_harm = semantic_model.encode(text, convert_to_tensor=True)
+    embedding_harm_desc = semantic_model.encode(harm_intent_description, convert_to_tensor=True)
+    similarity_harm = util.cos_sim(embedding_harm, embedding_harm_desc)[0][0].item()
+    logger.info(f"v005 similarity score: {similarity_harm:.4f}")
+    harm_intent = similarity_harm > 0.28
 
-    severe_harm = bool(re.search(
-        r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
+    # v010 — cognitive_manipulation (semantic)
+    cognitive_manipulation = False
+    embedding1 = semantic_model.encode(text, convert_to_tensor=True)
+    embedding2 = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
+    similarity = util.cos_sim(embedding1, embedding2)[0][0].item()
+    logger.info(f"v010 similarity score: {similarity:.4f}")
+    cognitive_manipulation = similarity > 0.30
 
+    # v011 — autonomy_violation (semantic)
+    autonomy_violation = False
+    embedding_v011 = semantic_model.encode(text, convert_to_tensor=True)
+    embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
+    similarity_v011 = util.cos_sim(embedding_v011, embedding_v011_desc)[0][0].item()
+    logger.info(f"v011 similarity score: {similarity_v011:.4f}")
+    autonomy_violation = similarity_v011 > 0.25
+
+    # Rest of regex patterns (unchanged)
     moderate_harm = bool(re.search(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
 
@@ -82,23 +103,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'get over it|stop being dramatic|i apologized already|it wasn\'t that bad)\b',
         text))
 
-    # v010 — cognitive_manipulation (semantic)
-    cognitive_manipulation = False
-    embedding1 = semantic_model.encode(text, convert_to_tensor=True)
-    embedding2 = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
-    similarity_v010 = util.cos_sim(embedding1, embedding2)[0][0].item()
-    logger.info(f"v010 similarity score: {similarity_v010:.4f}")
-    cognitive_manipulation = similarity_v010 > 0.25
-
-    # v011 — autonomy_violation (semantic)
-    autonomy_violation = False
-    embedding_v011 = semantic_model.encode(text, convert_to_tensor=True)
-    embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
-    similarity_v011 = util.cos_sim(embedding_v011, embedding_v011_desc)[0][0].item()
-    logger.info(f"v011 similarity score: {similarity_v011:.4f}")
-    autonomy_violation = similarity_v011 > 0.25
-
-    # v012 — institutional_trust (still regex)
+    # v012 — institutional_trust (regex)
     institutional_trust = bool(re.search(
         r'\b(system failed me|betrayed by the system|the authorities failed|'
         r'no justice|corrupt system|the institution failed|systemic betrayal|'
@@ -112,7 +117,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     total_weight = 0.0
     weighted_sum = 0.0
 
-    if severe_harm:
+    if harm_intent:
         activated.append("v005")
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.95 * vectors["v005"]["weight"]
@@ -122,7 +127,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.88 * vectors["v004"]["weight"]
 
-    if moderate_harm and not severe_harm:
+    if moderate_harm and not harm_intent:
         activated.append("v005")
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.82 * vectors["v005"]["weight"]
