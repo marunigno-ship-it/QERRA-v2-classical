@@ -1,26 +1,37 @@
 # =====================================================
 # ETHICAL CORE - Final High-Quality Version
 # Balanced scoring variety using linguistic and contextual signals
-# Sacred vectors fully respected - SEMEV-12 complete
+# SEMEV-12 complete - semantic detection on v010 and v011
 # =====================================================
 
 import logging
 from src.vectors import get_sacred_vectors
 import re
+from sentence_transformers import SentenceTransformer, util
 
-# Basic logging setup
+# File logging setup
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("qerra.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
+# Load semantic model once
+semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Semantic descriptions
+cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality"
+autonomy_violation_description = "forcing someone to act against their will, removing a person's right to choose, controlling another person's decisions and freedom, denying autonomy"
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
     vectors = get_sacred_vectors()
 
-    # --- Detection patterns ---
+    # --- Detection patterns (regex for all except v010 and v011) ---
 
     severe_harm = bool(re.search(
         r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
@@ -71,23 +82,23 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'get over it|stop being dramatic|i apologized already|it wasn\'t that bad)\b',
         text))
 
-    # v010 — cognitive_manipulation
-    cognitive_manipulation = bool(re.search(
-        r'\b(you are imagining things|that never happened|you are crazy|you are overreacting|'
-        r'no one will believe you|you made that up|you are losing your mind|'
-        r'gaslight|gaslighting|making me doubt myself|distorting my reality|'
-        r'manipulating my perception|twisting my words)\b',
-        text))
+    # v010 — cognitive_manipulation (semantic)
+    cognitive_manipulation = False
+    embedding1 = semantic_model.encode(text, convert_to_tensor=True)
+    embedding2 = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
+    similarity_v010 = util.cos_sim(embedding1, embedding2)[0][0].item()
+    logger.info(f"v010 similarity score: {similarity_v010:.4f}")
+    cognitive_manipulation = similarity_v010 > 0.25
 
-    # v011 — autonomy_violation
-    autonomy_violation = bool(re.search(
-        r'\b(forced me to|had no choice|not allowed to|controlled my life|'
-        r'took away my right|no say in|against my will|denied my right|'
-        r'my freedom was taken|not free to choose|violated my autonomy|'
-        r'they decided for me|no right to choose|stripped of my freedom)\b',
-        text))
+    # v011 — autonomy_violation (semantic)
+    autonomy_violation = False
+    embedding_v011 = semantic_model.encode(text, convert_to_tensor=True)
+    embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
+    similarity_v011 = util.cos_sim(embedding_v011, embedding_v011_desc)[0][0].item()
+    logger.info(f"v011 similarity score: {similarity_v011:.4f}")
+    autonomy_violation = similarity_v011 > 0.25
 
-    # v012 — institutional_trust
+    # v012 — institutional_trust (still regex)
     institutional_trust = bool(re.search(
         r'\b(system failed me|betrayed by the system|the authorities failed|'
         r'no justice|corrupt system|the institution failed|systemic betrayal|'
@@ -95,7 +106,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'school failed me|justice was denied|institutional failure)\b',
         text))
 
-    # --- Weighted scoring ---
+    # --- Weighted scoring (unchanged) ---
 
     activated = []
     total_weight = 0.0
@@ -179,7 +190,6 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     decision = "modified" if score > 0.5 else "safe"
 
-    # Dynamic reasoning with unique list
     unique_activated = list(dict.fromkeys(activated))
 
     if unique_activated:

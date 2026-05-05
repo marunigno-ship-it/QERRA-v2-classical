@@ -43,6 +43,11 @@ class TestSEMEV12Vectors(unittest.TestCase):
         result = analyze_text("You are imagining things, that never happened")
         self.assertIn("v010", result["vectors_activated"])
 
+    # NEW test for v011 semantic detection
+    def test_v011_autonomy_violation(self):
+        result = analyze_text("They made every decision for me and I had absolutely no say in what happened to my own life")
+        self.assertIn("v011", result["vectors_activated"])
+
     def test_multi_vector(self):
         result = analyze_text("My family cut me off and they keep gaslighting me")
         self.assertGreater(len(result["vectors_activated"]), 1)
