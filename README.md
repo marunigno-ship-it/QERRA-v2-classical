@@ -261,3 +261,4 @@ Built entirely as a solo project using AI-assisted development tools.
 ---
 
 *QERRA-v2 Classical Edition — ethical conscience as the foundation of every decision.*
+
