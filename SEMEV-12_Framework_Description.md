@@ -48,6 +48,9 @@ This makes the ethical reasoning explainable and inspectable.
 
 The classical implementation uses keyword and phrase matching. It works for clear cases but can miss more nuanced language. The long-term goal is to evolve the detection engine and eventually integrate a quantum-classical hybrid layer for more sophisticated reasoning.
 
+### Detection Approach
+Three critical vectors (v005 harm_intent, v010 cognitive_manipulation, and v011 autonomy_violation) now use semantic similarity detection via sentence embeddings. This allows the system to better recognize nuanced or indirect expressions of these ethical concerns. The remaining nine vectors continue to use keyword and phrase matching. This hybrid detection strategy represents a meaningful step beyond pure regex while maintaining full explainability.
+
 This is an open research framework. Serious engagement, critique, and collaboration are welcome.
 
 **Last updated:** May 2026
