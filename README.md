@@ -74,6 +74,7 @@ Example Response:
   "vectors_activated": ["v004"]
 }
 
+
 Project StatusEarly functional prototype — built as a solo research project.Known limitations:Detection is a mix of keyword patterns and semantic similarity (not perfect on very nuanced language)
 This is a research tool, not a clinical, legal, or production safety system
 
@@ -82,5 +83,9 @@ This repo — Public API deployment (Hugging Face Spaces)
 
 AuthorMarussa Metocharaki (@marunigno
 )
-Independent researcher, Greece.QERRA-v2 Classical Edition — ethical conscience as the foundation of every decision.License: AGPL-3.0
+Independent researcher, Greece.QERRA-v2 Classical Edition — ethical conscience as the foundation of every decision.
+
+License: AGPL-3.0
+
+
 
