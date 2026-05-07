@@ -3,7 +3,7 @@
 **A 100% Classical Ethical Decision Framework**
 Based on the **SEMEV-12** human-centred ethical vectors.
 
-**Live API:** https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space
+**Live API:** https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
 
 **Test Key (for public testers):** TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765
 
