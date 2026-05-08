@@ -5,7 +5,7 @@
 # =====================================================
 
 import logging
-from src.vectors import get_sacred_vectors
+from vectors import get_sacred_vectors
 import re
 from sentence_transformers import SentenceTransformer, util
 
