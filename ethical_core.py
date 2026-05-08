@@ -89,23 +89,21 @@ def evaluate_ethical_risk(text: str) -> dict:
     embedding_harm_desc = semantic_model.encode(harm_intent_description, convert_to_tensor=True)
     similarity_harm = util.cos_sim(embedding_harm, embedding_harm_desc)[0][0].item()
     logger.info(f"v005 similarity score: {similarity_harm:.4f}")
-    harm_intent = similarity_harm > 0.28
-
+    harm_intent = similarity_harm > 0.50
     # v010 — cognitive_manipulation (semantic)
     cognitive_manipulation = False
     embedding1 = semantic_model.encode(text, convert_to_tensor=True)
     embedding2 = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
     similarity = util.cos_sim(embedding1, embedding2)[0][0].item()
     logger.info(f"v010 similarity score: {similarity:.4f}")
-    cognitive_manipulation = similarity > 0.30
-
+    cognitive_manipulation = similarity > 0.48
     # v011 — autonomy_violation (semantic)
     autonomy_violation = False
     embedding_v011 = semantic_model.encode(text, convert_to_tensor=True)
     embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
     similarity_v011 = util.cos_sim(embedding_v011, embedding_v011_desc)[0][0].item()
     logger.info(f"v011 similarity score: {similarity_v011:.4f}")
-    autonomy_violation = similarity_v011 > 0.25
+    autonomy_violation = similarity_v011 > 0.45
 
     # v012 — institutional_trust (regex)
     institutional_trust = bool(re.search(
