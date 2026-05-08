@@ -9,14 +9,11 @@ from vectors import get_sacred_vectors
 import re
 from sentence_transformers import SentenceTransformer, util
 
-# File logging setup
+# File logging setup - FIXED for HF Spaces (no file writing)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("qerra.log"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -90,6 +87,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     similarity_harm = util.cos_sim(embedding_harm, embedding_harm_desc)[0][0].item()
     logger.info(f"v005 similarity score: {similarity_harm:.4f}")
     harm_intent = similarity_harm > 0.50
+
     # v010 — cognitive_manipulation (semantic)
     cognitive_manipulation = False
     embedding1 = semantic_model.encode(text, convert_to_tensor=True)
@@ -97,6 +95,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     similarity = util.cos_sim(embedding1, embedding2)[0][0].item()
     logger.info(f"v010 similarity score: {similarity:.4f}")
     cognitive_manipulation = similarity > 0.48
+
     # v011 — autonomy_violation (semantic)
     autonomy_violation = False
     embedding_v011 = semantic_model.encode(text, convert_to_tensor=True)
@@ -119,7 +118,13 @@ def evaluate_ethical_risk(text: str) -> dict:
     total_weight = 0.0
     weighted_sum = 0.0
 
-    if harm_intent:
+    # Severe explicit harm gets highest priority
+    if severe_harm:
+        activated.append("v005")
+        total_weight += vectors["v005"]["weight"]
+        weighted_sum += 0.98 * vectors["v005"]["weight"]
+
+    if harm_intent and not severe_harm:
         activated.append("v005")
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.95 * vectors["v005"]["weight"]
@@ -219,7 +224,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         "input": text,
         "score": score,
         "decision": decision,
-        "score_explanation": score_explanation,   # NEW FIELD
+        "score_explanation": score_explanation,
         "reasoning": reasoning,
         "vectors_activated": unique_activated,
         "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
