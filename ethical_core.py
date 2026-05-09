@@ -1,7 +1,7 @@
 # =====================================================
 # ETHICAL CORE - Final High-Quality Version
 # Balanced scoring variety using linguistic and contextual signals
-# SEMEV-12 complete - semantic detection on v005, v010, v011, v012
+# SEMEV-12 complete - semantic detection on v004, v005, v010, v011, v012
 # =====================================================
 
 import logging
@@ -25,6 +25,7 @@ harm_intent_description = "wanting to harm myself or others, suicidal thoughts, 
 cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality"
 autonomy_violation_description = "forcing someone to act against their will, removing a person's right to choose, controlling another person's decisions and freedom, denying autonomy"
 institutional_trust_description = "system failed me, betrayed by the system, authorities failed, no justice, corrupt system, institutional betrayal, failed by the state, government failed me, hospital failed, school failed me, justice was denied, systemic failure"
+moral_pressure_description = "being pressured to do something unethical, forced to falsify documents, moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
@@ -112,6 +113,13 @@ def evaluate_ethical_risk(text: str) -> dict:
     logger.info(f"v012 similarity score: {similarity_v012:.4f}")
     institutional_trust = similarity_v012 > 0.47
 
+    # v004 — moral_pressure / fraud (semantic - NEW)
+    moral_pressure = False
+    embedding_v004_desc = semantic_model.encode(moral_pressure_description, convert_to_tensor=True)
+    similarity_v004 = util.cos_sim(text_embedding, embedding_v004_desc)[0][0].item()
+    logger.info(f"v004 similarity score: {similarity_v004:.4f}")
+    moral_pressure = similarity_v004 > 0.46
+
     # --- Weighted scoring ---
 
     activated = []
@@ -128,7 +136,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.95 * vectors["v005"]["weight"]
 
-    if clear_fraud or bribe_mention:
+    if clear_fraud or bribe_mention or moral_pressure:
         activated.append("v004")
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.88 * vectors["v004"]["weight"]
@@ -153,7 +161,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v003"]["weight"]
         weighted_sum += 0.22 * vectors["v003"]["weight"]
 
-    if pressure_mention:
+    if pressure_mention and not moral_pressure:
         activated.append("v004")
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.70 * vectors["v004"]["weight"]
