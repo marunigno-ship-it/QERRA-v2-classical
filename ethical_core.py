@@ -9,7 +9,7 @@ from vectors import get_sacred_vectors
 import re
 from sentence_transformers import SentenceTransformer, util
 
-# File logging setup - FIXED for HF Spaces (no file writing)
+# File logging setup - FIXED for HF Spaces
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -20,14 +20,14 @@ logger = logging.getLogger(__name__)
 # Load semantic model once
 semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Semantic descriptions
+# Semantic descriptions - improved for real-life nuance
 harm_intent_description = "wanting to harm myself or others, suicidal thoughts, ending my life, self-harm, killing myself, I don't want to live anymore, I can't continue like this, the world would be better without me"
 cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality"
 autonomy_violation_description = "forcing someone to act against their will, removing a person's right to choose, controlling another person's decisions and freedom, denying autonomy"
 institutional_trust_description = "system failed me, betrayed by the system, authorities failed, no justice, corrupt system, institutional betrayal, failed by the state, government failed me, hospital failed, school failed me, justice was denied, systemic failure"
 moral_pressure_description = "being pressured to do something unethical, forced to falsify documents, moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
-personal_potential_description = "protecting my future, trying to break free, preserving my integrity, finding a way out of a toxic situation, not giving up on my vision, protecting my dreams and potential"
-survival_instinct_description = "committed to my mission despite hardship, determined to continue despite difficulties, refusing to return to harmful or degrading work, protecting my long-term vision and wellbeing, showing strong personal agency and determination, persisting with strong values despite pressure"
+personal_potential_description = "committed to my mission, determined to continue despite difficulties, protecting my future, refusing to give up my vision, fighting for my goal, preserving my integrity and potential, not going back to harmful jobs"
+survival_instinct_description = "committed to my mission despite hardship, determined to continue, refusing to return to degrading work, protecting my long-term vision, showing strong personal agency, persisting with strong values despite pressure"
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
@@ -35,99 +35,44 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     # --- Detection patterns ---
 
-    severe_harm = bool(re.search(
-        r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
+    severe_harm = bool(re.search(r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
+    moderate_harm = bool(re.search(r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
+    subtle_harm = bool(re.search(r'\b(hate|disappear|empty|nothing matters)\b', text))
 
-    moderate_harm = bool(re.search(
-        r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
+    clear_fraud = bool(re.search(r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b', text))
+    bribe_mention = bool(re.search(r'\b(bribe|accept bribe|take the bribe)\b', text))
+    pressure_mention = bool(re.search(r'\b(financial pressure|eviction|medical bills|personal hardship|moral pressure|stressful concern|pressure)\b', text))
 
-    subtle_harm = bool(re.search(
-        r'\b(hate|disappear|empty|nothing matters)\b', text))
-
-    clear_fraud = bool(re.search(
-        r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b', text))
-
-    bribe_mention = bool(re.search(
-        r'\b(bribe|accept bribe|take the bribe)\b', text))
-
-    pressure_mention = bool(re.search(
-        r'\b(financial pressure|eviction|medical bills|personal hardship|moral pressure|stressful concern|pressure)\b',
-        text))
-
-    family_severance = bool(re.search(
-        r'\b(family cut off|cut me off|disowned|abandoned by family|toxic family|family rejected|no family support)\b',
-        text))
-
-    positive_intent = bool(re.search(
-        r'\b(love|helping|grateful|thankful|protect myself|healthy boundaries|never harm|help others)\b',
-        text))
-
-    potential_suppression = bool(re.search(
-        r'\b(giving up on my dreams|no point trying|blocked my potential|holding me back|'
-        r'suppressed my growth|you will never amount|never succeed|no future for me|'
-        r'wasting my talent|forced to give up|they stopped me|denied my opportunity)\b',
-        text))
-
-    ethical_severance = bool(re.search(
-        r'\b(breaking free|cutting ties|leaving toxic|escaping abuse|done with toxicity|'
-        r'walking away from|toxic relationship|toxic pattern|finally leaving|'
-        r'escaping the cycle|leaving behind the abuse|ending this cycle)\b',
-        text))
-
-    family_origin_chain = bool(re.search(
-        r'\b(family legacy|family history|generational trauma|coming from a broken home|'
-        r'family curse|inherited patterns|family tradition of|my parents did the same)\b',
-        text))
-
-    shallow_remorse = bool(re.search(
-        r'\b(sorry but|didn\'t mean it|it was just a joke|you are too sensitive|'
-        r'get over it|stop being dramatic|i apologized already|it wasn\'t that bad)\b',
-        text))
+    family_severance = bool(re.search(r'\b(family cut off|cut me off|disowned|abandoned by family|toxic family|family rejected|no family support)\b', text))
+    positive_intent = bool(re.search(r'\b(love|helping|grateful|thankful|protect myself|healthy boundaries|never harm|help others)\b', text))
+    potential_suppression = bool(re.search(r'\b(giving up on my dreams|no point trying|blocked my potential|holding me back|suppressed my growth|you will never amount|never succeed|no future for me|wasting my talent|forced to give up)\b', text))
+    ethical_severance = bool(re.search(r'\b(breaking free|cutting ties|leaving toxic|escaping abuse|done with toxicity|walking away from|finally leaving|escaping the cycle)\b', text))
+    family_origin_chain = bool(re.search(r'\b(family legacy|generational trauma|family curse|my parents did the same)\b', text))
+    shallow_remorse = bool(re.search(r'\b(sorry but|didn\'t mean it|it was just a joke|you are too sensitive|get over it|i apologized already|it wasn\'t that bad)\b', text))
 
     # Semantic detection (text encoded once)
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
 
-    # v005 — harm_intent (semantic)
-    embedding_harm_desc = semantic_model.encode(harm_intent_description, convert_to_tensor=True)
-    similarity_harm = util.cos_sim(text_embedding, embedding_harm_desc)[0][0].item()
-    logger.info(f"v005 similarity score: {similarity_harm:.4f}")
-    harm_intent = similarity_harm > 0.50
+    # v005 — harm_intent
+    harm_intent = util.cos_sim(text_embedding, semantic_model.encode(harm_intent_description, convert_to_tensor=True))[0][0].item() > 0.50
 
-    # v010 — cognitive_manipulation (semantic)
-    embedding_v010_desc = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
-    similarity_v010 = util.cos_sim(text_embedding, embedding_v010_desc)[0][0].item()
-    logger.info(f"v010 similarity score: {similarity_v010:.4f}")
-    cognitive_manipulation = similarity_v010 > 0.48
+    # v010 — cognitive_manipulation
+    cognitive_manipulation = util.cos_sim(text_embedding, semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True))[0][0].item() > 0.48
 
-    # v011 — autonomy_violation (semantic)
-    embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
-    similarity_v011 = util.cos_sim(text_embedding, embedding_v011_desc)[0][0].item()
-    logger.info(f"v011 similarity score: {similarity_v011:.4f}")
-    autonomy_violation = similarity_v011 > 0.45
+    # v011 — autonomy_violation
+    autonomy_violation = util.cos_sim(text_embedding, semantic_model.encode(autonomy_violation_description, convert_to_tensor=True))[0][0].item() > 0.45
 
-    # v012 — institutional_trust (semantic)
-    embedding_v012_desc = semantic_model.encode(institutional_trust_description, convert_to_tensor=True)
-    similarity_v012 = util.cos_sim(text_embedding, embedding_v012_desc)[0][0].item()
-    logger.info(f"v012 similarity score: {similarity_v012:.4f}")
-    institutional_trust = similarity_v012 > 0.47
+    # v012 — institutional_trust
+    institutional_trust = util.cos_sim(text_embedding, semantic_model.encode(institutional_trust_description, convert_to_tensor=True))[0][0].item() > 0.47
 
-    # v004 — moral_pressure / fraud (semantic)
-    embedding_v004_desc = semantic_model.encode(moral_pressure_description, convert_to_tensor=True)
-    similarity_v004 = util.cos_sim(text_embedding, embedding_v004_desc)[0][0].item()
-    logger.info(f"v004 similarity score: {similarity_v004:.4f}")
-    moral_pressure = similarity_v004 > 0.46
+    # v004 — moral_pressure
+    moral_pressure = util.cos_sim(text_embedding, semantic_model.encode(moral_pressure_description, convert_to_tensor=True))[0][0].item() > 0.46
 
-    # v007 — personal_potential (semantic)
-    embedding_v007_desc = semantic_model.encode(personal_potential_description, convert_to_tensor=True)
-    similarity_v007 = util.cos_sim(text_embedding, embedding_v007_desc)[0][0].item()
-    logger.info(f"v007 similarity score: {similarity_v007:.4f}")
-    personal_potential = similarity_v007 > 0.49
+    # v007 — personal_potential (improved)
+    personal_potential = util.cos_sim(text_embedding, semantic_model.encode(personal_potential_description, convert_to_tensor=True))[0][0].item() > 0.49
 
-    # v003 — survival_instinct (semantic - NEW)
-    embedding_v003_desc = semantic_model.encode(survival_instinct_description, convert_to_tensor=True)
-    similarity_v003 = util.cos_sim(text_embedding, embedding_v003_desc)[0][0].item()
-    logger.info(f"v003 similarity score: {similarity_v003:.4f}")
-    survival_instinct = similarity_v003 > 0.46
+    # v003 — survival_instinct (improved)
+    survival_instinct = util.cos_sim(text_embedding, semantic_model.encode(survival_instinct_description, convert_to_tensor=True))[0][0].item() > 0.46
 
     # --- Weighted scoring ---
 
@@ -165,10 +110,10 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v002"]["weight"]
         weighted_sum += 0.80 * vectors["v002"]["weight"]
 
-    if positive_intent or survival_instinct:
+    if positive_intent or survival_instinct or personal_potential:
         activated.append("v003")
         total_weight += vectors["v003"]["weight"]
-        weighted_sum += 0.22 * vectors["v003"]["weight"]
+        weighted_sum += 0.35 * vectors["v003"]["weight"]   # stronger positive weight
 
     if pressure_mention and not moral_pressure:
         activated.append("v004")
@@ -182,9 +127,9 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     if ethical_severance:
         activated.append("v009")
-        if positive_intent or survival_instinct:
+        if positive_intent or survival_instinct or personal_potential:
             total_weight += vectors["v009"]["weight"]
-            weighted_sum += 0.25 * vectors["v009"]["weight"]
+            weighted_sum += 0.40 * vectors["v009"]["weight"]
         else:
             total_weight += vectors["v009"]["weight"]
             weighted_sum += 0.60 * vectors["v009"]["weight"]
@@ -246,9 +191,6 @@ def evaluate_ethical_risk(text: str) -> dict:
         "version": "1.3-classical"
     }
 
-    logger.info(
-        f"Analysis completed | Score: {result['score']} | "
-        f"Decision: {result['decision']} | Vectors: {result['vectors_activated']}"
-    )
+    logger.info(f"Analysis completed | Score: {result['score']} | Decision: {result['decision']} | Vectors: {result['vectors_activated']}")
 
     return result
