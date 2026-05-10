@@ -2,7 +2,7 @@
 # ETHICAL CORE - Final High-Quality Version
 # Balanced scoring variety using linguistic and contextual signals
 # SEMEV-12 complete - semantic detection on v003, v004, v005, v007, v010, v011, v012
-# v1.6: v007 boost on mission language + light health_risk nuance (safe calibration)
+# v1.7: Gentle semantic responsiveness boost for v003/v007 + health_risk dilution
 # =====================================================
 
 import logging
@@ -53,8 +53,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     family_origin_chain = bool(re.search(r'\b(family legacy|generational trauma|family curse|my parents did the same)\b', text))
     shallow_remorse = bool(re.search(r'\b(sorry but|didn\'t mean it|it was just a joke|you are too sensitive|get over it|i apologized already|it wasn\'t that bad)\b', text))
 
-    # Light health risk detection (additive only)
-    health_risk_mention = bool(re.search(r'\b(health|mental health|physical health|exhausting|destroy my|burnout|damage my health|health risks)\b', text))
+    health_risk_mention = bool(re.search(r'\b(health|mental health|physical health|exhausting|destroy my|burnout|damage my health|health risks|physical toll)\b', text))
 
     # Semantic detection
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
@@ -69,7 +68,7 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     logger.info(f"Similarity scores | v003={sim_v003:.4f} | v004={sim_v004:.4f} | v005={sim_v005:.4f} | v007={sim_v007:.4f} | v010={sim_v010:.4f} | v011={sim_v011:.4f} | v012={sim_v012:.4f}")
 
-    # Threshold decisions (unchanged)
+    # Threshold decisions (unchanged - sacred)
     harm_intent          = sim_v005 > 0.50
     cognitive_manipulation = sim_v010 > 0.48
     autonomy_violation   = sim_v011 > 0.45
@@ -124,7 +123,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v002"]["weight"]
         weighted_sum += 0.80 * vectors["v002"]["weight"]
 
-    # v003 with safety guard (from v1.5)
+    # v003 (unchanged from v1.5)
     if (positive_intent or survival_instinct or personal_potential or strong_determination) \
             and not (severe_harm or harm_intent or clear_fraud or bribe_mention):
         activated.append("v003")
@@ -136,11 +135,11 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.70 * vectors["v004"]["weight"]
 
-    # v1.6: Improved v007 trigger (mission + potential protection)
+    # v007 (unchanged from v1.6)
     if potential_suppression or personal_potential or bool(re.search(r'\b(mission|goal|vision|project|committed to this|scale the project|protecting my future)\b', text)):
         activated.append("v007")
         total_weight += vectors["v007"]["weight"]
-        weighted_sum += 0.55 * vectors["v007"]["weight"]   # lowered contribution slightly for safety
+        weighted_sum += 0.55 * vectors["v007"]["weight"]
 
     if ethical_severance:
         activated.append("v009")
@@ -176,11 +175,16 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v012"]["weight"]
         weighted_sum += 0.75 * vectors["v012"]["weight"]
 
-    # Nuance dilution (from v1.5)
+    # Nuance dilution
     if nuance_complex_case and "v003" in activated:
         activated.append("v003_nuance")
         total_weight += 1.0 * vectors["v003"]["weight"]
         weighted_sum += 0.25 * 1.0 * vectors["v003"]["weight"]
+
+    # v1.7: Extra gentle positive dilution when health risk + strong determination
+    if health_risk_mention and strong_determination and "v003" in activated:
+        total_weight += 0.4 * vectors["v003"]["weight"]
+        weighted_sum += 0.15 * 0.4 * vectors["v003"]["weight"]
 
     score = round(weighted_sum / total_weight, 4) if total_weight > 0 else 0.25
 
@@ -224,7 +228,7 @@ def evaluate_ethical_risk(text: str) -> dict:
             "v012_institutional_trust": round(sim_v012, 4),
         },
         "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
-        "version": "1.6-classical-nuance-calibrated"
+        "version": "1.7-classical-nuance-calibrated"
     }
 
     logger.info(f"Analysis completed | Score: {result['score']} | Decision: {result['decision']} | Vectors: {result['vectors_activated']}")
