@@ -1,7 +1,7 @@
 # =====================================================
 # ETHICAL CORE - Final High-Quality Version
 # Balanced scoring variety using linguistic and contextual signals
-# SEMEV-12 complete - semantic detection on v004, v005, v007, v010, v011, v012
+# SEMEV-12 complete - semantic detection on v003, v004, v005, v007, v010, v011, v012
 # =====================================================
 
 import logging
@@ -27,6 +27,7 @@ autonomy_violation_description = "forcing someone to act against their will, rem
 institutional_trust_description = "system failed me, betrayed by the system, authorities failed, no justice, corrupt system, institutional betrayal, failed by the state, government failed me, hospital failed, school failed me, justice was denied, systemic failure"
 moral_pressure_description = "being pressured to do something unethical, forced to falsify documents, moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
 personal_potential_description = "protecting my future, trying to break free, preserving my integrity, finding a way out of a toxic situation, not giving up on my vision, protecting my dreams and potential"
+survival_instinct_description = "committed to my mission despite hardship, determined to continue despite difficulties, refusing to return to harmful or degrading work, protecting my long-term vision and wellbeing, showing strong personal agency and determination, persisting with strong values despite pressure"
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
@@ -87,46 +88,46 @@ def evaluate_ethical_risk(text: str) -> dict:
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
 
     # v005 — harm_intent (semantic)
-    harm_intent = False
     embedding_harm_desc = semantic_model.encode(harm_intent_description, convert_to_tensor=True)
     similarity_harm = util.cos_sim(text_embedding, embedding_harm_desc)[0][0].item()
     logger.info(f"v005 similarity score: {similarity_harm:.4f}")
     harm_intent = similarity_harm > 0.50
 
     # v010 — cognitive_manipulation (semantic)
-    cognitive_manipulation = False
     embedding_v010_desc = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
     similarity_v010 = util.cos_sim(text_embedding, embedding_v010_desc)[0][0].item()
     logger.info(f"v010 similarity score: {similarity_v010:.4f}")
     cognitive_manipulation = similarity_v010 > 0.48
 
     # v011 — autonomy_violation (semantic)
-    autonomy_violation = False
     embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
     similarity_v011 = util.cos_sim(text_embedding, embedding_v011_desc)[0][0].item()
     logger.info(f"v011 similarity score: {similarity_v011:.4f}")
     autonomy_violation = similarity_v011 > 0.45
 
     # v012 — institutional_trust (semantic)
-    institutional_trust = False
     embedding_v012_desc = semantic_model.encode(institutional_trust_description, convert_to_tensor=True)
     similarity_v012 = util.cos_sim(text_embedding, embedding_v012_desc)[0][0].item()
     logger.info(f"v012 similarity score: {similarity_v012:.4f}")
     institutional_trust = similarity_v012 > 0.47
 
     # v004 — moral_pressure / fraud (semantic)
-    moral_pressure = False
     embedding_v004_desc = semantic_model.encode(moral_pressure_description, convert_to_tensor=True)
     similarity_v004 = util.cos_sim(text_embedding, embedding_v004_desc)[0][0].item()
     logger.info(f"v004 similarity score: {similarity_v004:.4f}")
     moral_pressure = similarity_v004 > 0.46
 
-    # v007 — personal_potential (semantic - NEW)
-    personal_potential = False
+    # v007 — personal_potential (semantic)
     embedding_v007_desc = semantic_model.encode(personal_potential_description, convert_to_tensor=True)
     similarity_v007 = util.cos_sim(text_embedding, embedding_v007_desc)[0][0].item()
     logger.info(f"v007 similarity score: {similarity_v007:.4f}")
     personal_potential = similarity_v007 > 0.49
+
+    # v003 — survival_instinct (semantic - NEW)
+    embedding_v003_desc = semantic_model.encode(survival_instinct_description, convert_to_tensor=True)
+    similarity_v003 = util.cos_sim(text_embedding, embedding_v003_desc)[0][0].item()
+    logger.info(f"v003 similarity score: {similarity_v003:.4f}")
+    survival_instinct = similarity_v003 > 0.46
 
     # --- Weighted scoring ---
 
@@ -164,7 +165,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v002"]["weight"]
         weighted_sum += 0.80 * vectors["v002"]["weight"]
 
-    if positive_intent:
+    if positive_intent or survival_instinct:
         activated.append("v003")
         total_weight += vectors["v003"]["weight"]
         weighted_sum += 0.22 * vectors["v003"]["weight"]
@@ -181,7 +182,7 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     if ethical_severance:
         activated.append("v009")
-        if positive_intent:
+        if positive_intent or survival_instinct:
             total_weight += vectors["v009"]["weight"]
             weighted_sum += 0.25 * vectors["v009"]["weight"]
         else:
@@ -242,7 +243,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         "reasoning": reasoning,
         "vectors_activated": unique_activated,
         "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
-        "version": "1.2-classical"
+        "version": "1.3-classical"
     }
 
     logger.info(
