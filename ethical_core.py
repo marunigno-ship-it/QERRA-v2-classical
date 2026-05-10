@@ -1,7 +1,8 @@
 # =====================================================
-# ETHICAL CORE - Final High-Quality Version
+# ETHICAL CORE - Final High-Quality Version (Refined Nuance Step)
 # Balanced scoring variety using linguistic and contextual signals
 # SEMEV-12 complete - semantic detection on v003, v004, v005, v007, v010, v011, v012
+# NEW: vector_scores field for full transparency + improved toxic_context detection
 # =====================================================
 
 import logging
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Load semantic model once
 semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Semantic descriptions - improved for real-life nuance
+# Semantic descriptions (unchanged - sacred)
 harm_intent_description = "wanting to harm myself or others, suicidal thoughts, ending my life, self-harm, killing myself, I don't want to live anymore, I can't continue like this, the world would be better without me"
 cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality"
 autonomy_violation_description = "forcing someone to act against their will, removing a person's right to choose, controlling another person's decisions and freedom, denying autonomy"
@@ -34,14 +35,15 @@ def evaluate_ethical_risk(text: str) -> dict:
     vectors = get_sacred_vectors()
 
     # --- Detection patterns ---
-
     severe_harm = bool(re.search(r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
     moderate_harm = bool(re.search(r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
     subtle_harm = bool(re.search(r'\b(hate|disappear|empty|nothing matters)\b', text))
 
     clear_fraud = bool(re.search(r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b', text))
     bribe_mention = bool(re.search(r'\b(bribe|accept bribe|take the bribe)\b', text))
-    pressure_mention = bool(re.search(r'\b(financial pressure|eviction|medical bills|personal hardship|moral pressure|stressful concern|pressure)\b', text))
+    
+    # IMPROVED: Broader toxic / pressure context (still safe - no threshold change)
+    pressure_mention = bool(re.search(r'\b(financial pressure|eviction|medical bills|personal hardship|moral pressure|stressful concern|pressure|toxic|hostile|unsupportive|bad conditions|degrading|hostile workplace|toxic environment|hostile environment)\b', text))
 
     family_severance = bool(re.search(r'\b(family cut off|cut me off|disowned|abandoned by family|toxic family|family rejected|no family support)\b', text))
     positive_intent = bool(re.search(r'\b(love|helping|grateful|thankful|protect myself|healthy boundaries|never harm|help others)\b', text))
@@ -53,29 +55,38 @@ def evaluate_ethical_risk(text: str) -> dict:
     # Semantic detection (text encoded once)
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
 
-    # v005 — harm_intent
-    harm_intent = util.cos_sim(text_embedding, semantic_model.encode(harm_intent_description, convert_to_tensor=True))[0][0].item() > 0.50
+    # All similarity scores stored explicitly
+    sim_v005 = util.cos_sim(text_embedding, semantic_model.encode(harm_intent_description, convert_to_tensor=True))[0][0].item()
+    sim_v010 = util.cos_sim(text_embedding, semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True))[0][0].item()
+    sim_v011 = util.cos_sim(text_embedding, semantic_model.encode(autonomy_violation_description, convert_to_tensor=True))[0][0].item()
+    sim_v012 = util.cos_sim(text_embedding, semantic_model.encode(institutional_trust_description, convert_to_tensor=True))[0][0].item()
+    sim_v004 = util.cos_sim(text_embedding, semantic_model.encode(moral_pressure_description, convert_to_tensor=True))[0][0].item()
+    sim_v007 = util.cos_sim(text_embedding, semantic_model.encode(personal_potential_description, convert_to_tensor=True))[0][0].item()
+    sim_v003 = util.cos_sim(text_embedding, semantic_model.encode(survival_instinct_description, convert_to_tensor=True))[0][0].item()
 
-    # v010 — cognitive_manipulation
-    cognitive_manipulation = util.cos_sim(text_embedding, semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True))[0][0].item() > 0.48
+    logger.info(f"Similarity scores | v003={sim_v003:.4f} | v004={sim_v004:.4f} | v005={sim_v005:.4f} | v007={sim_v007:.4f} | v010={sim_v010:.4f} | v011={sim_v011:.4f} | v012={sim_v012:.4f}")
 
-    # v011 — autonomy_violation
-    autonomy_violation = util.cos_sim(text_embedding, semantic_model.encode(autonomy_violation_description, convert_to_tensor=True))[0][0].item() > 0.45
+    # Threshold decisions (unchanged)
+    harm_intent          = sim_v005 > 0.50
+    cognitive_manipulation = sim_v010 > 0.48
+    autonomy_violation   = sim_v011 > 0.45
+    institutional_trust  = sim_v012 > 0.47
+    moral_pressure       = sim_v004 > 0.46
+    personal_potential   = sim_v007 > 0.49
+    survival_instinct    = sim_v003 > 0.46
 
-    # v012 — institutional_trust
-    institutional_trust = util.cos_sim(text_embedding, semantic_model.encode(institutional_trust_description, convert_to_tensor=True))[0][0].item() > 0.47
+    # IMPROVED toxic_context (broader + safe semantic assist)
+    toxic_context = (pressure_mention or 
+                     family_severance or 
+                     cognitive_manipulation or 
+                     autonomy_violation or 
+                     institutional_trust or
+                     sim_v004 > 0.40)  # light semantic assist, never overrides core logic
 
-    # v004 — moral_pressure
-    moral_pressure = util.cos_sim(text_embedding, semantic_model.encode(moral_pressure_description, convert_to_tensor=True))[0][0].item() > 0.46
+    strong_determination = survival_instinct or personal_potential or bool(re.search(r'\b(determined|committed to my mission|protect long-term vision|won\'t give up|stay strong|for the greater good|protecting my future|refusing to give up)\b', text))
+    nuance_complex_case = toxic_context and strong_determination
 
-    # v007 — personal_potential (improved)
-    personal_potential = util.cos_sim(text_embedding, semantic_model.encode(personal_potential_description, convert_to_tensor=True))[0][0].item() > 0.49
-
-    # v003 — survival_instinct (improved)
-    survival_instinct = util.cos_sim(text_embedding, semantic_model.encode(survival_instinct_description, convert_to_tensor=True))[0][0].item() > 0.46
-
-    # --- Weighted scoring ---
-
+    # --- Weighted scoring (identical to Claude's version) ---
     activated = []
     total_weight = 0.0
     weighted_sum = 0.0
@@ -113,7 +124,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     if positive_intent or survival_instinct or personal_potential:
         activated.append("v003")
         total_weight += vectors["v003"]["weight"]
-        weighted_sum += 0.35 * vectors["v003"]["weight"]   # stronger positive weight
+        weighted_sum += 0.35 * vectors["v003"]["weight"]
 
     if pressure_mention and not moral_pressure:
         activated.append("v004")
@@ -159,6 +170,11 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v012"]["weight"]
         weighted_sum += 0.75 * vectors["v012"]["weight"]
 
+    if nuance_complex_case and "v003" in activated:
+        activated.append("v003_nuance")
+        total_weight += 0.3 * vectors["v003"]["weight"]
+        weighted_sum += 0.55 * 0.3 * vectors["v003"]["weight"]
+
     score = round(weighted_sum / total_weight, 4) if total_weight > 0 else 0.25
 
     decision = "modified" if score > 0.5 else "safe"
@@ -172,11 +188,13 @@ def evaluate_ethical_risk(text: str) -> dict:
     else:
         score_explanation = "low ethical concern"
 
-    unique_activated = list(dict.fromkeys(activated))
+    unique_activated = list(dict.fromkeys([v for v in activated if not v.endswith("_nuance")]))
 
     if unique_activated:
-        activated_details = [f"{vectors[v]['name']} ({v})" for v in unique_activated]
+        activated_details = [f"{vectors[v]['name']} ({v})" for v in unique_activated if v in vectors]
         reasoning = f"Activated vectors: {', '.join(activated_details)}"
+        if nuance_complex_case:
+            reasoning += " | Nuance: toxic environment + strong personal commitment detected (balanced risk)"
     else:
         reasoning = "No ethical vectors activated - baseline score"
 
@@ -187,8 +205,17 @@ def evaluate_ethical_risk(text: str) -> dict:
         "score_explanation": score_explanation,
         "reasoning": reasoning,
         "vectors_activated": unique_activated,
-        "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
-        "version": "1.3-classical"
+        "vector_scores": {
+            "v003_survival_instinct": round(sim_v003, 4),
+            "v004_moral_pressure": round(sim_v004, 4),
+            "v005_harm_intent": round(sim_v005, 4),
+            "v007_personal_potential": round(sim_v007, 4),
+            "v010_cognitive_manipulation": round(sim_v010, 4),
+            "v011_autonomy_violation": round(sim_v011, 4),
+            "v012_institutional_trust": round(sim_v012, 4),
+        },
+        "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition (nuance refinement)",
+        "version": "1.4-classical-nuance-improved"
     }
 
     logger.info(f"Analysis completed | Score: {result['score']} | Decision: {result['decision']} | Vectors: {result['vectors_activated']}")
