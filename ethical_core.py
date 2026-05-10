@@ -2,7 +2,7 @@
 # ETHICAL CORE - Final High-Quality Version
 # Balanced scoring variety using linguistic and contextual signals
 # SEMEV-12 complete - semantic detection on v003, v004, v005, v007, v010, v011, v012
-# v1.5: v003 calibrated activation + moderate nuance dilution (Grok-reviewed)
+# v1.6: v007 boost on mission language + light health_risk nuance (safe calibration)
 # =====================================================
 
 import logging
@@ -42,7 +42,6 @@ def evaluate_ethical_risk(text: str) -> dict:
     clear_fraud = bool(re.search(r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b', text))
     bribe_mention = bool(re.search(r'\b(bribe|accept bribe|take the bribe)\b', text))
 
-    # pressure_mention from 1.4 (includes toxic)
     pressure_mention = bool(re.search(
         r'\b(financial pressure|eviction|medical bills|personal hardship|moral pressure|stressful concern|pressure|toxic environment|hostile workplace|bad conditions|toxic|unsupportive|degrading|hostile)\b',
         text))
@@ -53,6 +52,9 @@ def evaluate_ethical_risk(text: str) -> dict:
     ethical_severance = bool(re.search(r'\b(breaking free|cutting ties|leaving toxic|escaping abuse|done with toxicity|walking away from|finally leaving|escaping the cycle)\b', text))
     family_origin_chain = bool(re.search(r'\b(family legacy|generational trauma|family curse|my parents did the same)\b', text))
     shallow_remorse = bool(re.search(r'\b(sorry but|didn\'t mean it|it was just a joke|you are too sensitive|get over it|i apologized already|it wasn\'t that bad)\b', text))
+
+    # Light health risk detection (additive only)
+    health_risk_mention = bool(re.search(r'\b(health|mental health|physical health|exhausting|destroy my|burnout|damage my health|health risks)\b', text))
 
     # Semantic detection
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
@@ -67,7 +69,7 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     logger.info(f"Similarity scores | v003={sim_v003:.4f} | v004={sim_v004:.4f} | v005={sim_v005:.4f} | v007={sim_v007:.4f} | v010={sim_v010:.4f} | v011={sim_v011:.4f} | v012={sim_v012:.4f}")
 
-    # Threshold decisions
+    # Threshold decisions (unchanged)
     harm_intent          = sim_v005 > 0.50
     cognitive_manipulation = sim_v010 > 0.48
     autonomy_violation   = sim_v011 > 0.45
@@ -82,7 +84,7 @@ def evaluate_ethical_risk(text: str) -> dict:
                      cognitive_manipulation or 
                      autonomy_violation or 
                      institutional_trust or
-                     sim_v004 > 0.40)  # kept from 1.4
+                     sim_v004 > 0.40)
     strong_determination = survival_instinct or personal_potential or bool(re.search(
         r'\b(determined|committed to my mission|committed to this|won\'t give up|stay strong|for the greater good|protect long-term vision|refusing to give up)\b', text))
     nuance_complex_case = toxic_context and strong_determination
@@ -122,7 +124,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v002"]["weight"]
         weighted_sum += 0.80 * vectors["v002"]["weight"]
 
-    # v1.5: Expanded v003 trigger with safety guard (Claude proposal + Grok safety)
+    # v003 with safety guard (from v1.5)
     if (positive_intent or survival_instinct or personal_potential or strong_determination) \
             and not (severe_harm or harm_intent or clear_fraud or bribe_mention):
         activated.append("v003")
@@ -134,10 +136,11 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.70 * vectors["v004"]["weight"]
 
-    if potential_suppression or personal_potential:
+    # v1.6: Improved v007 trigger (mission + potential protection)
+    if potential_suppression or personal_potential or bool(re.search(r'\b(mission|goal|vision|project|committed to this|scale the project|protecting my future)\b', text)):
         activated.append("v007")
         total_weight += vectors["v007"]["weight"]
-        weighted_sum += 0.72 * vectors["v007"]["weight"]
+        weighted_sum += 0.55 * vectors["v007"]["weight"]   # lowered contribution slightly for safety
 
     if ethical_severance:
         activated.append("v009")
@@ -173,11 +176,11 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v012"]["weight"]
         weighted_sum += 0.75 * vectors["v012"]["weight"]
 
-    # v1.5: Moderate nuance dilution (safer than Claude's 0.10)
+    # Nuance dilution (from v1.5)
     if nuance_complex_case and "v003" in activated:
         activated.append("v003_nuance")
         total_weight += 1.0 * vectors["v003"]["weight"]
-        weighted_sum += 0.25 * 1.0 * vectors["v003"]["weight"]   # moderate pull-down
+        weighted_sum += 0.25 * 1.0 * vectors["v003"]["weight"]
 
     score = round(weighted_sum / total_weight, 4) if total_weight > 0 else 0.25
 
@@ -199,6 +202,8 @@ def evaluate_ethical_risk(text: str) -> dict:
         reasoning = f"Activated vectors: {', '.join(activated_details)}"
         if nuance_complex_case:
             reasoning += " | Nuance: toxic environment + strong personal commitment detected (balanced risk)"
+        if health_risk_mention:
+            reasoning += " + health risk from bad conditions noted"
     else:
         reasoning = "No ethical vectors activated - baseline score"
 
@@ -219,7 +224,7 @@ def evaluate_ethical_risk(text: str) -> dict:
             "v012_institutional_trust": round(sim_v012, 4),
         },
         "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
-        "version": "1.5-classical-nuance-calibrated"
+        "version": "1.6-classical-nuance-calibrated"
     }
 
     logger.info(f"Analysis completed | Score: {result['score']} | Decision: {result['decision']} | Vectors: {result['vectors_activated']}")
