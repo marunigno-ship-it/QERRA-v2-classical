@@ -1,7 +1,7 @@
 # =====================================================
 # ETHICAL CORE - Final High-Quality Version
 # Balanced scoring variety using linguistic and contextual signals
-# SEMEV-12 complete - semantic detection on v004, v005, v010, v011, v012
+# SEMEV-12 complete - semantic detection on v004, v005, v007, v010, v011, v012
 # =====================================================
 
 import logging
@@ -26,6 +26,7 @@ cognitive_manipulation_description = "telling someone they are imagining things,
 autonomy_violation_description = "forcing someone to act against their will, removing a person's right to choose, controlling another person's decisions and freedom, denying autonomy"
 institutional_trust_description = "system failed me, betrayed by the system, authorities failed, no justice, corrupt system, institutional betrayal, failed by the state, government failed me, hospital failed, school failed me, justice was denied, systemic failure"
 moral_pressure_description = "being pressured to do something unethical, forced to falsify documents, moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
+personal_potential_description = "protecting my future, trying to break free, preserving my integrity, finding a way out of a toxic situation, not giving up on my vision, protecting my dreams and potential"
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
@@ -113,12 +114,19 @@ def evaluate_ethical_risk(text: str) -> dict:
     logger.info(f"v012 similarity score: {similarity_v012:.4f}")
     institutional_trust = similarity_v012 > 0.47
 
-    # v004 — moral_pressure / fraud (semantic - NEW)
+    # v004 — moral_pressure / fraud (semantic)
     moral_pressure = False
     embedding_v004_desc = semantic_model.encode(moral_pressure_description, convert_to_tensor=True)
     similarity_v004 = util.cos_sim(text_embedding, embedding_v004_desc)[0][0].item()
     logger.info(f"v004 similarity score: {similarity_v004:.4f}")
     moral_pressure = similarity_v004 > 0.46
+
+    # v007 — personal_potential (semantic - NEW)
+    personal_potential = False
+    embedding_v007_desc = semantic_model.encode(personal_potential_description, convert_to_tensor=True)
+    similarity_v007 = util.cos_sim(text_embedding, embedding_v007_desc)[0][0].item()
+    logger.info(f"v007 similarity score: {similarity_v007:.4f}")
+    personal_potential = similarity_v007 > 0.49
 
     # --- Weighted scoring ---
 
@@ -166,7 +174,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.70 * vectors["v004"]["weight"]
 
-    if potential_suppression:
+    if potential_suppression or personal_potential:
         activated.append("v007")
         total_weight += vectors["v007"]["weight"]
         weighted_sum += 0.72 * vectors["v007"]["weight"]
