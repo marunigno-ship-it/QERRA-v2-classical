@@ -15,7 +15,8 @@ from slowapi.util import get_remote_address
 from classical_analyze import analyze_text
 from vectors import get_sacred_vectors
 from utils.response import api_response
-from models.input import AnalyzeRequest   # ← NEW IMPORT
+from models.input import AnalyzeRequest
+from auth.api_key import require_api_key   # ← NEW IMPORT
 
 load_dotenv()
 
@@ -38,23 +39,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-API_KEY_NAME = "x-api-key"
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
-API_KEY = os.getenv("QERRA_API_KEY")
-
-async def verify_api_key(api_key: str = Security(api_key_header)):
-    if not API_KEY:
-        raise HTTPException(status_code=500, detail="Server API key not configured.")
-    if api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Invalid or missing API key")
-    return api_key
-
-
-@app.post("/analyze", dependencies=[Depends(verify_api_key)])
+@app.post("/analyze", dependencies=[Depends(require_api_key)])
 @limiter.limit("20/minute")
 def analyze(request: Request, data: AnalyzeRequest):
-    """Main classical ethical analysis endpoint with rate limiting."""
+    """Main classical ethical analysis endpoint with rate limiting + API key."""
     result = analyze_text(data.text)
     return api_response(result)
 
