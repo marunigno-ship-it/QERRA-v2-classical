@@ -14,7 +14,8 @@ from slowapi.util import get_remote_address
 
 from classical_analyze import analyze_text
 from vectors import get_sacred_vectors
-from utils.response import api_response   # ← NEW IMPORT
+from utils.response import api_response
+from models.input import AnalyzeRequest   # ← NEW IMPORT
 
 load_dotenv()
 
@@ -49,26 +50,13 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
     return api_key
 
-class AnalyzeRequest(BaseModel):
-    text: str
-
-    model_config = {"str_strip_whitespace": True}
-
-    @field_validator("text")
-    def text_must_not_be_empty(cls, v):
-        if len(v.strip()) < 3:
-            raise ValueError("Text too short")
-        if len(v) > 5000:
-            raise ValueError("Text too long")
-        return v
-
 
 @app.post("/analyze", dependencies=[Depends(verify_api_key)])
 @limiter.limit("20/minute")
 def analyze(request: Request, data: AnalyzeRequest):
     """Main classical ethical analysis endpoint with rate limiting."""
     result = analyze_text(data.text)
-    return api_response(result)          # ← WRAPPED
+    return api_response(result)
 
 
 @app.get("/")
