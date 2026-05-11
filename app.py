@@ -12,8 +12,9 @@ from pydantic import BaseModel, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from src.classical_analyze import analyze_text
-from src.vectors import get_sacred_vectors
+from classical_analyze import analyze_text
+from vectors import get_sacred_vectors
+from utils.response import api_response   # ← NEW IMPORT
 
 load_dotenv()
 
@@ -23,7 +24,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="QERRA-v2 Classical",
     description="100% Classical High-Quality Ethical Decision Framework",
-    version="1.2"
+    version="1.7-classical-nuance-calibrated"
 )
 
 app.state.limiter = limiter
@@ -67,42 +68,40 @@ class AnalyzeRequest(BaseModel):
 def analyze(request: Request, data: AnalyzeRequest):
     """Main classical ethical analysis endpoint with rate limiting."""
     result = analyze_text(data.text)
-    return result
+    return api_response(result)          # ← WRAPPED
 
 
 @app.get("/")
 def home():
-    return {
+    return api_response({
         "status": "QERRA-v2 Classical Edition is live",
         "message": "High-quality 100% classical ethical decision engine",
         "note": "This is the classical counterpart of the main hybrid QERRA-v2 project"
-    }
+    })
 
 
 @app.get("/health")
 def health():
     """Simple health check - no API key required."""
     vectors = get_sacred_vectors()
-    return {
+    return api_response({
         "status": "healthy",
-        "version": "1.2-classical",
         "vectors_loaded": len(vectors),
         "framework": "QERRA-v2 Classical Edition",
         "note": "All 12 SEMEV-12 core vectors are active"
-    }
+    })
 
 
-# === NEW: /vectors endpoint (Claude Step 2) ===
 @app.get("/vectors")
 def get_vectors():
     """Return all SEMEV-12 vector definitions - no API key required."""
     vectors = get_sacred_vectors()
-    return {
+    return api_response({
         "framework": "SEMEV-12",
         "description": "12 foundational ethical vectors for human-centred decision making",
         "vectors": vectors,
         "note": "This endpoint makes the ethical framework fully inspectable and auditable"
-    }
+    })
 
 
 if __name__ == "__main__":
