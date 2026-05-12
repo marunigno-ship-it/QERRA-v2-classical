@@ -37,7 +37,7 @@ def ask_qerra(text: str) -> dict:
         return {"error": type(e).__name__, "detail": str(e)}
 
 
-# ROS2 Node (only active when rclpy is installed)
+# ROS2 Node stub (only active when rclpy is installed)
 if ROS2_AVAILABLE:
     class QerraNode(Node):
         def __init__(self):
@@ -53,7 +53,7 @@ if ROS2_AVAILABLE:
             self.get_logger().info(f'Published ethical score: {result.get("score", "N/A")}')
 
 
-# Standalone test (works without ROS2)
+# Standalone test
 if __name__ == "__main__":
     test_text = (
         "I am a doctor in a hospital with very poor working conditions. "
@@ -66,6 +66,6 @@ if __name__ == "__main__":
     print(json.dumps(result, indent=2))
 
     if ROS2_AVAILABLE:
-        print("\nROS2 support detected. You can run this as a full ROS2 node.")
+        print("\nROS2 support detected.")
     else:
         print("\nROS2 not installed. Running in standalone mode.")
