@@ -16,7 +16,7 @@ from classical_analyze import analyze_text
 from vectors import get_sacred_vectors
 from utils.response import api_response
 from models.input import AnalyzeRequest
-from auth.api_key import require_api_key   # ← NEW IMPORT
+from auth.api_key import require_api_key
 
 load_dotenv()
 
@@ -26,7 +26,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="QERRA-v2 Classical",
     description="100% Classical High-Quality Ethical Decision Framework",
-    version="1.7-classical-nuance-calibrated"
+    version="1.8-classical-nuance-calibrated"
 )
 
 app.state.limiter = limiter
@@ -43,7 +43,7 @@ app.add_middleware(
 @app.post("/analyze", dependencies=[Depends(require_api_key)])
 @limiter.limit("20/minute")
 def analyze(request: Request, data: AnalyzeRequest):
-    """Main classical ethical analysis endpoint with rate limiting + API key."""
+    """Main protected endpoint."""
     result = analyze_text(data.text)
     return api_response(result)
 
@@ -59,13 +59,27 @@ def home():
 
 @app.get("/health")
 def health():
-    """Simple health check - no API key required."""
+    """Public health check - no API key required."""
     vectors = get_sacred_vectors()
     return api_response({
         "status": "healthy",
         "vectors_loaded": len(vectors),
         "framework": "QERRA-v2 Classical Edition",
         "note": "All 12 SEMEV-12 core vectors are active"
+    })
+
+
+@app.get("/example")
+def example():
+    """Public demo endpoint."""
+    return api_response({
+        "situation": "Canonical test case: toxic environment + strong mission + health risks + determination",
+        "result": {
+            "score": 0.425,
+            "decision": "safe",
+            "explanation": "moderate ethical concern"
+        },
+        "message": "This is a public example. Use /analyze with your own text (requires API key)."
     })
 
 
