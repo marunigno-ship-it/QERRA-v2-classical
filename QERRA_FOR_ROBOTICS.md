@@ -163,5 +163,5 @@ Questions where community input would be most valuable:
 
 All feedback, questions, pull requests, and integration experiments are welcome.
 
-**Marussa Metocharaki** — (https://github.com/marunigno)
+**Marussa Metocharaki** — 
 [https://github.com/marunigno-ship-it/QERRA-v2-classical](https://github.com/marunigno-ship-it/QERRA-v2-classical)
