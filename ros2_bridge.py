@@ -1,14 +1,24 @@
 # =====================================================
 # ros2_bridge.py
-# Lightweight QERRA-v2 Classical → ROS2 bridge
-# Runs standalone today. Becomes real ROS2 node when rclpy is present.
+# QERRA-v2 Classical → ROS 2 bridge
+# Runs standalone today. Becomes a real ROS 2 publisher node when rclpy is present.
 # =====================================================
 
-import requests
 import json
 import os
+import time
+import requests
 
-# Try to import ROS2 gracefully
+QERRA_API_URL = os.environ.get(
+    "QERRA_API_URL",
+    "https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/analyze"
+)
+API_KEY = os.environ.get(
+    "QERRA_API_KEY",
+    "TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765"
+)
+
+# ── ROS 2 import (graceful) ──────────────────────────────────────────────────
 try:
     import rclpy
     from rclpy.node import Node
@@ -17,11 +27,9 @@ try:
 except ImportError:
     ROS2_AVAILABLE = False
 
-QERRA_API_URL = "https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/analyze"
-API_KEY = os.getenv("QERRA_API_KEY", "TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765")
 
 def ask_qerra(text: str) -> dict:
-    """Call the live QERRA API."""
+    """Call the QERRA API."""
     headers = {
         "x-api-key": API_KEY,
         "Content-Type": "application/json"
@@ -37,23 +45,24 @@ def ask_qerra(text: str) -> dict:
         return {"error": type(e).__name__, "detail": str(e)}
 
 
-# ROS2 Node stub (only active when rclpy is installed)
+# ── ROS 2 Node ───────────────────────────────────────────────────────────────
 if ROS2_AVAILABLE:
+
     class QerraNode(Node):
         def __init__(self):
-            super().__init__('qerra_ethical_node')
+            super().__init__('qerra_semev12_node')
             self.publisher = self.create_publisher(String, 'qerra/semev12_score', 10)
             self.get_logger().info('QERRA-v2 ROS2 bridge node started')
 
-        def process_query(self, text: str):
-            result = ask_qerra(text)
+        def evaluate_and_publish(self, situation_text: str):
+            result = ask_qerra(situation_text)
             msg = String()
             msg.data = json.dumps(result)
             self.publisher.publish(msg)
-            self.get_logger().info(f'Published ethical score: {result.get("score", "N/A")}')
+            self.get_logger().info(f"Published score: {result.get('score', 'N/A')}")
 
 
-# Standalone test
+# ── Standalone mode ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     test_text = (
         "I am a doctor in a hospital with very poor working conditions. "
@@ -66,6 +75,6 @@ if __name__ == "__main__":
     print(json.dumps(result, indent=2))
 
     if ROS2_AVAILABLE:
-        print("\nROS2 support detected.")
+        print("\nROS2 support detected. You can run as a full node.")
     else:
         print("\nROS2 not installed. Running in standalone mode.")
