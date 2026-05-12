@@ -1,22 +1,45 @@
-# Changelog — QERRA-v2 Classical Edition
+# Changelog — QERRA-v2 Classical
 
-## v1.2-classical (May 2026)
-
+## [1.8] - 2026-05-12
 ### Added
-- Full SEMEV-12 implementation with weighted scoring and dynamic reasoning
-- Semantic detection using sentence-transformers for v005 (harm_intent), v010 (cognitive_manipulation), and v011 (autonomy_violation)
-- /health and /vectors endpoints
-- Rate limiting, file logging, CORS restriction
-- Basic test suite (9 tests)
-- Comprehensive documentation: LIMITATIONS.md, QERRA-v2_Vision_and_Current_State.md, SEMEV-12_Framework_Description.md
-- Related Repositories section in README
+- Moral clarity dampening: distinguishes ethical awareness from crisis (new post-scoring adjustment)
+- Expanded keyword patterns for v003 (survival_instinct), v007 (personal_potential), and health_risk_mention
+- Better nuance handling in complex cases (toxic environment + strong commitment + health risks)
+- Full production readiness features (response envelope, input validation, API key, rate limiting, public /example)
 
-### Improvements
-- Positive severance fix for v009
-- Version consistency and API key security fixes
+### Improved
+- Doctor dilemma score now balanced at ~0.39 (was 0.88)
+- Better activation of v003 and v007 in commitment-under-pressure cases
+- More transparent reasoning with moral clarity signal
 
-### Technical Note
-Three critical vectors now use semantic similarity detection. The remaining nine use keyword/phrase matching. This is a research prototype with honest limitations documented.
+### Technical
+- Version bumped to 1.8-classical-nuance-calibrated
+- Regression test suite (`test_cases.py`) added
 
-## v1.0-classical (Initial)
-- Initial FastAPI structure with regex-based ethical scoring
+## [1.7] - 2026-05-11
+- Added health risk recognition + gentle positive dilution
+- Improved v007 (personal_potential) mission language support
+
+## [1.6] - 2026-05-11
+- Expanded v007 trigger for mission and potential protection
+- Added health risk notation in reasoning
+
+## [1.5] - 2026-05-11
+- Expanded v003 trigger with safety guard
+- Nuance dilution calibration for toxic + determination cases
+
+## [1.4] - 2026-05-11
+- Improved toxic_context detection (broader keywords + semantic assist)
+
+## [1.3] - 2026-05-11
+- Added vector_scores transparency in API response
+- Better logging of similarity scores
+
+## [1.0] - Initial Release (May 2026)
+- Basic SEMEV-12 implementation with weighted scoring
+- FastAPI deployment on Hugging Face Spaces
+- Core semantic + regex hybrid detection
+
+---
+
+**Note:** All changes are additive and reversible. SEMEV-12 vectors remain sacred and never weakened.
