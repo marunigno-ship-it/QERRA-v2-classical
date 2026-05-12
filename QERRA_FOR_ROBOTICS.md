@@ -2,13 +2,13 @@
 
 ## What it is
 
-QERRA-v2 Classical is a lightweight, fully explainable ethical situation-assessment
-engine based on the **SEMEV-12 framework** — 12 named, auditable semantic vectors.
+QERRA-v2 Classical is a lightweight, fully explainable ethical situation-assessment engine based on the **SEMEV-12 framework** — 12 named, auditable vectors.
 
-- **No neural networks. No black boxes.**
-- Every score is traceable to named vectors with clear semantic meaning.
-- Fully classical implementation: deterministic, auditable, and regulation-friendly.
-- Accessible as a **REST API** — callable from any ROS 2 node, any language, any platform.
+- No neural networks. No black boxes.
+- Every score is traceable to named vectors with clear meaning.
+- Hybrid implementation: **semantic similarity** for core vectors + precise keyword patterns for others.
+- Fully classical and deterministic.
+- Simple REST API — easy to call from any ROS 2 node or other system.
 
 ---
 
