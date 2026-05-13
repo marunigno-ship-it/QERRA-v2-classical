@@ -157,6 +157,8 @@ A bridge (`ros2_bridge.py`) is included in the repository. It runs standalone
 with no ROS 2 installation required and becomes a full publisher node on the
 `qerra/semev12_score` topic when `rclpy` is present.
 
+- Recently improved with proper ROS 2 topics (`/qerra/ethical_score`, `/qerra/ethical_decision`, `/qerra/semev12_result`) and subscriber support.
+
 See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration
 details and open questions for the robotics community.
 
