@@ -1,205 +1,127 @@
 # =====================================================
-# ETHICAL CORE - Final High-Quality Version
-# Balanced scoring variety using linguistic and contextual signals
-# SEMEV-12 complete - semantic detection on v005, v010, v011
+# ETHICAL CORE - v1.8.1 Restored
+# Balanced scoring with improved nuance for commitment cases
+# v1.8.1: Restored v005 (harm_intent) and v010 (cognitive_manipulation)
+#          Restored pressure_mention trigger for v004
 # =====================================================
 
 import logging
-from src.vectors import get_sacred_vectors
+from vectors import get_sacred_vectors
 import re
 from sentence_transformers import SentenceTransformer, util
 
-# File logging setup
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("qerra.log"),
-        logging.StreamHandler()
-    ]
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Load semantic model once
 semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Semantic descriptions
+# Semantic descriptions (sacred — do not modify)
 harm_intent_description = "wanting to harm myself or others, suicidal thoughts, ending my life, self-harm, killing myself, I don't want to live anymore, I can't continue like this, the world would be better without me"
 cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality"
-autonomy_violation_description = "forcing someone to act against their will, removing a person's right to choose, controlling another person's decisions and freedom, denying autonomy"
+moral_pressure_description = "being pressured to do something unethical, forced to falsify documents, moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
+personal_potential_description = "committed to my mission, determined to continue despite difficulties, protecting my future, refusing to give up my vision, fighting for my goal, preserving my integrity and potential, not going back to harmful jobs"
+survival_instinct_description = "committed to my mission despite hardship, determined to continue, refusing to return to degrading work, protecting my long-term vision, showing strong personal agency, persisting with strong values despite pressure"
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
     vectors = get_sacred_vectors()
 
     # --- Detection patterns ---
-
     severe_harm = bool(re.search(
         r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
-
     moderate_harm = bool(re.search(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
-
-    subtle_harm = bool(re.search(
-        r'\b(hate|disappear|empty|nothing matters)\b', text))
-
     clear_fraud = bool(re.search(
         r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b', text))
-
-    bribe_mention = bool(re.search(
-        r'\b(bribe|accept bribe|take the bribe)\b', text))
-
     pressure_mention = bool(re.search(
-        r'\b(financial pressure|eviction|medical bills|personal hardship|moral pressure|stressful concern|pressure)\b',
-        text))
+        r'\b(pressure|toxic|hostile|unsupportive|bad conditions|poor conditions|forcing me|falsify)\b', text))
+    health_risk_mention = bool(re.search(
+        r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b', text))
 
-    family_severance = bool(re.search(
-        r'\b(family cut off|cut me off|disowned|abandoned by family|toxic family|family rejected|no family support)\b',
-        text))
+    # --- Semantic detection (text encoded once) ---
+    text_embedding = semantic_model.encode(text, convert_to_tensor=True)
 
-    positive_intent = bool(re.search(
-        r'\b(love|helping|grateful|thankful|protect myself|healthy boundaries|never harm|help others)\b',
-        text))
+    sim_v005 = util.cos_sim(text_embedding, semantic_model.encode(harm_intent_description,          convert_to_tensor=True))[0][0].item()
+    sim_v010 = util.cos_sim(text_embedding, semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True))[0][0].item()
+    sim_v004 = util.cos_sim(text_embedding, semantic_model.encode(moral_pressure_description,        convert_to_tensor=True))[0][0].item()
+    sim_v007 = util.cos_sim(text_embedding, semantic_model.encode(personal_potential_description,    convert_to_tensor=True))[0][0].item()
+    sim_v003 = util.cos_sim(text_embedding, semantic_model.encode(survival_instinct_description,     convert_to_tensor=True))[0][0].item()
 
-    potential_suppression = bool(re.search(
-        r'\b(giving up on my dreams|no point trying|blocked my potential|holding me back|'
-        r'suppressed my growth|you will never amount|never succeed|no future for me|'
-        r'wasting my talent|forced to give up|they stopped me|denied my opportunity)\b',
-        text))
+    logger.info(f"Similarity | v003={sim_v003:.4f} v004={sim_v004:.4f} v005={sim_v005:.4f} v007={sim_v007:.4f} v010={sim_v010:.4f}")
 
-    ethical_severance = bool(re.search(
-        r'\b(breaking free|cutting ties|leaving toxic|escaping abuse|done with toxicity|'
-        r'walking away from|toxic relationship|toxic pattern|finally leaving|'
-        r'escaping the cycle|leaving behind the abuse|ending this cycle)\b',
-        text))
+    # --- Boolean decisions ---
+    harm_intent         = sim_v005 > 0.50
+    cognitive_manipulation = sim_v010 > 0.48
+    moral_pressure      = sim_v004 > 0.46
+    personal_potential  = sim_v007 > 0.49 or bool(re.search(
+        r'\b(committed to my patients|medical oath|my patients|family to support|no other job)\b', text))
+    survival_instinct   = sim_v003 > 0.46 or bool(re.search(
+        r'\b(committed to my|my oath|determined to continue)\b', text))
 
-    family_origin_chain = bool(re.search(
-        r'\b(family legacy|family history|generational trauma|coming from a broken home|'
-        r'family curse|inherited patterns|family tradition of|my parents did the same)\b',
-        text))
-
-    shallow_remorse = bool(re.search(
-        r'\b(sorry but|didn\'t mean it|it was just a joke|you are too sensitive|'
-        r'get over it|stop being dramatic|i apologized already|it wasn\'t that bad)\b',
-        text))
-
-    # v005 — harm_intent (semantic)
-    harm_intent = False
-    embedding_harm = semantic_model.encode(text, convert_to_tensor=True)
-    embedding_harm_desc = semantic_model.encode(harm_intent_description, convert_to_tensor=True)
-    similarity_harm = util.cos_sim(embedding_harm, embedding_harm_desc)[0][0].item()
-    logger.info(f"v005 similarity score: {similarity_harm:.4f}")
-    harm_intent = similarity_harm > 0.28
-
-    # v010 — cognitive_manipulation (semantic)
-    cognitive_manipulation = False
-    embedding1 = semantic_model.encode(text, convert_to_tensor=True)
-    embedding2 = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
-    similarity = util.cos_sim(embedding1, embedding2)[0][0].item()
-    logger.info(f"v010 similarity score: {similarity:.4f}")
-    cognitive_manipulation = similarity > 0.30
-
-    # v011 — autonomy_violation (semantic)
-    autonomy_violation = False
-    embedding_v011 = semantic_model.encode(text, convert_to_tensor=True)
-    embedding_v011_desc = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
-    similarity_v011 = util.cos_sim(embedding_v011, embedding_v011_desc)[0][0].item()
-    logger.info(f"v011 similarity score: {similarity_v011:.4f}")
-    autonomy_violation = similarity_v011 > 0.25
-
-    # v012 — institutional_trust (regex)
-    institutional_trust = bool(re.search(
-        r'\b(system failed me|betrayed by the system|the authorities failed|'
-        r'no justice|corrupt system|the institution failed|systemic betrayal|'
-        r'failed by the state|government failed me|hospital failed|'
-        r'school failed me|justice was denied|institutional failure)\b',
-        text))
+    toxic_context      = pressure_mention
+    strong_determination = survival_instinct or personal_potential
+    nuance_complex_case  = toxic_context and strong_determination
 
     # --- Weighted scoring ---
-
     activated = []
     total_weight = 0.0
     weighted_sum = 0.0
 
-    if harm_intent:
+    # v005 — harm intent (RESTORED)
+    if severe_harm:
+        activated.append("v005")
+        total_weight += vectors["v005"]["weight"]
+        weighted_sum += 0.98 * vectors["v005"]["weight"]
+
+    if harm_intent and not severe_harm:
         activated.append("v005")
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.95 * vectors["v005"]["weight"]
 
-    if clear_fraud or bribe_mention:
-        activated.append("v004")
-        total_weight += vectors["v004"]["weight"]
-        weighted_sum += 0.88 * vectors["v004"]["weight"]
-
-    if moderate_harm and not harm_intent:
+    if moderate_harm and not harm_intent and not severe_harm:
         activated.append("v005")
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.82 * vectors["v005"]["weight"]
 
-    if subtle_harm:
-        activated.append("v001")
-        total_weight += vectors["v001"]["weight"]
-        weighted_sum += 0.65 * vectors["v001"]["weight"]
+    # v004 — moral pressure (semantic/fraud path — unchanged from v1.8)
+    if moral_pressure or clear_fraud:
+        activated.append("v004")
+        total_weight += vectors["v004"]["weight"]
+        weighted_sum += 0.88 * vectors["v004"]["weight"]
 
-    if family_severance:
-        activated.append("v002")
-        total_weight += vectors["v002"]["weight"]
-        weighted_sum += 0.80 * vectors["v002"]["weight"]
-
-    if positive_intent:
-        activated.append("v003")
-        total_weight += vectors["v003"]["weight"]
-        weighted_sum += 0.22 * vectors["v003"]["weight"]
-
-    if pressure_mention:
+    # v004 — pressure mention path (RESTORED)
+    if pressure_mention and not moral_pressure and not clear_fraud:
         activated.append("v004")
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.70 * vectors["v004"]["weight"]
 
-    if potential_suppression:
+    # v003 — survival instinct (unchanged from v1.8)
+    if survival_instinct or personal_potential:
+        activated.append("v003")
+        total_weight += vectors["v003"]["weight"]
+        weighted_sum += 0.35 * vectors["v003"]["weight"]
+
+    # v007 — personal potential (unchanged from v1.8)
+    if personal_potential:
         activated.append("v007")
         total_weight += vectors["v007"]["weight"]
-        weighted_sum += 0.72 * vectors["v007"]["weight"]
+        weighted_sum += 0.55 * vectors["v007"]["weight"]
 
-    if ethical_severance:
-        activated.append("v009")
-        if positive_intent:
-            total_weight += vectors["v009"]["weight"]
-            weighted_sum += 0.25 * vectors["v009"]["weight"]
-        else:
-            total_weight += vectors["v009"]["weight"]
-            weighted_sum += 0.60 * vectors["v009"]["weight"]
-
-    if family_origin_chain:
-        activated.append("v006")
-        total_weight += vectors["v006"]["weight"]
-        weighted_sum += 0.75 * vectors["v006"]["weight"]
-
-    if shallow_remorse:
-        activated.append("v008")
-        total_weight += vectors["v008"]["weight"]
-        weighted_sum += 0.85 * vectors["v008"]["weight"]
-
+    # v010 — cognitive manipulation (RESTORED)
     if cognitive_manipulation:
         activated.append("v010")
         total_weight += vectors["v010"]["weight"]
         weighted_sum += 0.82 * vectors["v010"]["weight"]
 
-    if autonomy_violation:
-        activated.append("v011")
-        total_weight += vectors["v011"]["weight"]
-        weighted_sum += 0.85 * vectors["v011"]["weight"]
-
-    if institutional_trust:
-        activated.append("v012")
-        total_weight += vectors["v012"]["weight"]
-        weighted_sum += 0.75 * vectors["v012"]["weight"]
+    # Nuance dampening (unchanged from v1.8)
+    if nuance_complex_case and "v003" in activated:
+        total_weight += 1.0 * vectors["v003"]["weight"]
+        weighted_sum += 0.25 * 1.0 * vectors["v003"]["weight"]
 
     score = round(weighted_sum / total_weight, 4) if total_weight > 0 else 0.25
 
     decision = "modified" if score > 0.5 else "safe"
 
-    # NEW: Human-readable score explanation
     if score >= 0.8:
         score_explanation = "critical ethical concern"
     elif score >= 0.6:
@@ -211,26 +133,26 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     unique_activated = list(dict.fromkeys(activated))
 
-    if unique_activated:
-        activated_details = [f"{vectors[v]['name']} ({v})" for v in unique_activated]
-        reasoning = f"Activated vectors: {', '.join(activated_details)}"
-    else:
-        reasoning = "No ethical vectors activated - baseline score"
+    reasoning = f"Activated vectors: {', '.join(unique_activated)}"
+    if nuance_complex_case:
+        reasoning += " | Nuance: toxic environment + strong personal commitment detected"
 
     result = {
         "input": text,
         "score": score,
         "decision": decision,
-        "score_explanation": score_explanation,   # NEW FIELD
+        "score_explanation": score_explanation,
         "reasoning": reasoning,
         "vectors_activated": unique_activated,
-        "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
-        "version": "1.2-classical"
+        "vector_scores": {
+            "v003_survival_instinct":    round(sim_v003, 4),
+            "v004_moral_pressure":       round(sim_v004, 4),
+            "v005_harm_intent":          round(sim_v005, 4),
+            "v007_personal_potential":   round(sim_v007, 4),
+            "v010_cognitive_manipulation": round(sim_v010, 4),
+        },
+        "version": "1.8.1-restored"
     }
 
-    logger.info(
-        f"Analysis completed | Score: {result['score']} | "
-        f"Decision: {result['decision']} | Vectors: {result['vectors_activated']}"
-    )
-
+    logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
     return result
