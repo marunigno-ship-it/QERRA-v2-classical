@@ -4,7 +4,7 @@
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Version](https://img.shields.io/badge/version-1.8--classical--nuance--calibrated-blue)]()
+[![Version](https://img.shields.io/badge/version-1.8.1--restored-blue)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
 
 ---
