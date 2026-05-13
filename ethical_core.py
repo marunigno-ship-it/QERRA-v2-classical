@@ -3,6 +3,7 @@
 # Balanced scoring variety using linguistic and contextual signals
 # SEMEV-12 complete - semantic detection on v003, v004, v005, v007, v010, v011, v012
 # v1.7: Gentle semantic responsiveness boost for v003/v007 + health_risk dilution
+# v1.8: Updated descriptions for better semantic matching on first-person commitment language
 # =====================================================
 
 import logging
@@ -21,14 +22,14 @@ logger = logging.getLogger(__name__)
 # Load semantic model once
 semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Semantic descriptions (unchanged - sacred)
+# Semantic descriptions (only these two lines changed as per Claude)
 harm_intent_description = "wanting to harm myself or others, suicidal thoughts, ending my life, self-harm, killing myself, I don't want to live anymore, I can't continue like this, the world would be better without me"
 cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality"
 autonomy_violation_description = "forcing someone to act against their will, removing a person's right to choose, controlling another person's decisions and freedom, denying autonomy"
 institutional_trust_description = "system failed me, betrayed by the system, authorities failed, no justice, corrupt system, institutional betrayal, failed by the state, government failed me, hospital failed, school failed me, justice was denied, systemic failure"
 moral_pressure_description = "being pressured to do something unethical, forced to falsify documents, moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
-personal_potential_description = "committed to my mission, determined to continue despite difficulties, protecting my future, refusing to give up my vision, fighting for my goal, preserving my integrity and potential, not going back to harmful jobs"
-survival_instinct_description = "committed to my mission despite hardship, determined to continue, refusing to return to degrading work, protecting my long-term vision, showing strong personal agency, persisting with strong values despite pressure"
+personal_potential_description = "protecting my personal potential and life's work despite obstacles, refusing to waste my abilities in work that destroys my health and suppresses my growth, fighting to preserve my vision and what I am building, not allowing difficult external conditions to block my development and future"
+survival_instinct_description = "I am completely committed to my mission and purpose despite very difficult conditions, I refuse to return to exhausting or harmful work that damages my health and wellbeing, I am determined to continue no matter what, I will not give up on what I am building, protecting my long-term goals with strong personal determination"
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
@@ -228,7 +229,7 @@ def evaluate_ethical_risk(text: str) -> dict:
             "v012_institutional_trust": round(sim_v012, 4),
         },
         "note": "High-quality classical ethical framework - QERRA-v2 Classical Edition",
-        "version": "1.7-classical-nuance-calibrated"
+        "version": "1.8-classical-nuance-calibrated"
     }
 
     logger.info(f"Analysis completed | Score: {result['score']} | Decision: {result['decision']} | Vectors: {result['vectors_activated']}")
