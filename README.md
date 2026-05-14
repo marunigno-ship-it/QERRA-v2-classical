@@ -32,15 +32,12 @@ robotics, human-AI collaboration, institutional decision support.
 
 ```bash
 curl https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/example
+```
 
-Main endpoint (/analyze) requires the public test key:
-
-x-api-key: TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765
+**Main endpoint** (`/analyze`) requires the public test key: x-api-key: TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765
 
 Full documentation:
 https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
-
-
 
 ---
 
@@ -65,7 +62,7 @@ Content-Type: application/json
 ```json
 {
   "status": "ok",
-  "version": "1.8.1-restored"
+  "version": "1.8.1-restored",
   "timestamp": "2026-05-12T08:00:00Z",
   "data": {
     "score": 0.3941,
@@ -83,7 +80,7 @@ Content-Type: application/json
       "v011_autonomy_violation": 0.3102,
       "v012_institutional_trust": 0.2987
     },
-    "version": "1.8-classical-nuance-calibrated"
+    "version": "1.8.1-restored"
   }
 }
 ```
@@ -151,12 +148,10 @@ All benchmarks are verified by `test_cases.py` before every commit.
 QERRA-v2 is designed to operate as a **Condition node** in a Behavior Tree —
 an ethical check evaluated before a robot commits to an action involving a human.
 
-```
 [Sequence]
-  ├── [Condition]  QERRA_score < threshold    ← ethical check
-  ├── [Action]     ExecuteTask
-  └── [Fallback]   RequestHumanReview
-```
+├── [Condition]  QERRA_score < threshold    ← ethical check
+├── [Action]     ExecuteTask
+└── [Fallback]   RequestHumanReview
 
 A bridge (`ros2_bridge.py`) is included in the repository. It runs standalone
 with no ROS 2 installation required and becomes a full publisher node on the
@@ -171,15 +166,13 @@ details and open questions for the robotics community.
 
 ## Repository Structure
 
-```
-├── ethical_core.py          # SEMEV-12 scoring engine (v1.8)
+├── ethical_core.py          # SEMEV-12 scoring engine (v1.8.1)
 ├── vectors.py               # Sacred vector definitions and weights
 ├── app.py                   # FastAPI application
 ├── ros2_bridge.py           # ROS 2 bridge (standalone + rclpy node)
 ├── test_cases.py            # Regression test suite
 ├── QERRA_FOR_ROBOTICS.md    # Technical brief for the robotics community
 └── README.md
-```
 
 ---
 
@@ -195,7 +188,7 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8-classical-nuance-calibrated`  
+**Version:** `1.8.1-restored`  
 **Stage:** Stable core engine with active development on ROS 2 integration
 and nuance refinement.
 
