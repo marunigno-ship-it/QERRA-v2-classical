@@ -28,14 +28,19 @@ robotics, human-AI collaboration, institutional decision support.
 
 ## Quickstart
 
-No API key required:
+**Public example endpoint** (no API key required):
 
 ```bash
 curl https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/example
-```
+
+Main endpoint (/analyze) requires the public test key:
+
+x-api-key: TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765
 
 Full documentation:
-**[https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)**
+https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
+
+
 
 ---
 
@@ -60,7 +65,7 @@ Content-Type: application/json
 ```json
 {
   "status": "ok",
-  "version": "1.8-classical-nuance-calibrated",
+  "version": "1.8.1-restored"
   "timestamp": "2026-05-12T08:00:00Z",
   "data": {
     "score": 0.3941,
