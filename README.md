@@ -34,7 +34,11 @@ robotics, human-AI collaboration, institutional decision support.
 curl https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/example
 ```
 
-**Main endpoint** (`/analyze`) requires the public test key: x-api-key: TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765
+**Main endpoint** (`/analyze`) requires the public test key:
+
+```
+x-api-key: TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765
+```
 
 Full documentation:
 https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
@@ -45,13 +49,15 @@ https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
 
 **Endpoint:** `POST /analyze`
 
-**Header:**
+**Headers:**
+
 ```http
 x-api-key: YOUR_API_KEY
 Content-Type: application/json
 ```
 
 **Body:**
+
 ```json
 {
   "text": "Your situation or ethical dilemma here."
@@ -59,6 +65,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -93,20 +100,20 @@ Content-Type: application/json
 across any version. Detection uses a hybrid of semantic similarity and keyword
 pattern matching.
 
-| Vector | Name | Detection | What it detects |
-|---|---|---|---|
-| v001 | emotional_distress | pattern | Subtle negative emotional signals |
-| v002 | family_severance | pattern | Toxic family rupture or relational severance |
-| v003 | survival_instinct | semantic | Strong personal agency and determination |
-| v004 | moral_pressure | semantic | Coercion or moral and financial pressure |
-| v005 | harm_intent | semantic | Self-harm or intent to harm others |
-| v006 | family_origin_chain | pattern | Generational or family-origin ethical patterns |
-| v007 | personal_potential | semantic | Mission, goals, and suppressed potential |
-| v008 | shallow_remorse | pattern | Dismissive or manipulative remorse |
-| v009 | ethical_severance | pattern | Breaking away from toxic contexts |
-| v010 | cognitive_manipulation | semantic | Gaslighting and reality distortion |
-| v011 | autonomy_violation | semantic | Forced action against a person's will |
-| v012 | institutional_trust | semantic | Systemic or institutional betrayal |
+| Vector | Name                   | Detection | What it detects                                |
+|--------|------------------------|-----------|------------------------------------------------|
+| v001   | emotional_distress     | pattern   | Subtle negative emotional signals              |
+| v002   | family_severance       | pattern   | Toxic family rupture or relational severance   |
+| v003   | survival_instinct      | semantic  | Strong personal agency and determination       |
+| v004   | moral_pressure         | semantic  | Coercion or moral and financial pressure       |
+| v005   | harm_intent            | semantic  | Self-harm or intent to harm others             |
+| v006   | family_origin_chain    | pattern   | Generational or family-origin ethical patterns |
+| v007   | personal_potential     | semantic  | Mission, goals, and suppressed potential       |
+| v008   | shallow_remorse        | pattern   | Dismissive or manipulative remorse             |
+| v009   | ethical_severance      | pattern   | Breaking away from toxic contexts              |
+| v010   | cognitive_manipulation | semantic  | Gaslighting and reality distortion             |
+| v011   | autonomy_violation     | semantic  | Forced action against a person's will          |
+| v012   | institutional_trust    | semantic  | Systemic or institutional betrayal             |
 
 ---
 
@@ -133,11 +140,11 @@ pattern matching.
 
 ## Calibrated Benchmarks
 
-| Scenario | Score | Label |
-|---|---|---|
-| Toxic environment + strong mission + health risks + determination | 0.425 | moderate ethical concern |
-| Doctor forced to falsify records, committed to oath, family at risk | 0.394 | moderate ethical concern |
-| Clear self-harm intent | > 0.90 | critical ethical concern |
+| Scenario                                                            | Score  | Label                    |
+|---------------------------------------------------------------------|--------|--------------------------|
+| Toxic environment + strong mission + health risks + determination   | 0.425  | moderate ethical concern |
+| Doctor forced to falsify records, committed to oath, family at risk | 0.394  | moderate ethical concern |
+| Clear self-harm intent                                              | > 0.90 | critical ethical concern |
 
 All benchmarks are verified by `test_cases.py` before every commit.
 
@@ -148,16 +155,20 @@ All benchmarks are verified by `test_cases.py` before every commit.
 QERRA-v2 is designed to operate as a **Condition node** in a Behavior Tree —
 an ethical check evaluated before a robot commits to an action involving a human.
 
+```
 [Sequence]
-├── [Condition]  QERRA_score < threshold    ← ethical check
-├── [Action]     ExecuteTask
-└── [Fallback]   RequestHumanReview
+  ├── [Condition]  QERRA_score < threshold    ← ethical check
+  ├── [Action]     ExecuteTask
+  └── [Fallback]   RequestHumanReview
+```
 
 A bridge (`ros2_bridge.py`) is included in the repository. It runs standalone
-with no ROS 2 installation required and becomes a full publisher node on the
-`qerra/semev12_score` topic when `rclpy` is present.
+with no ROS 2 installation required and becomes a full publisher/subscriber node
+when `rclpy` is present, publishing on three dedicated topics:
 
-- Recently improved with proper ROS 2 topics (`/qerra/ethical_score`, `/qerra/ethical_decision`, `/qerra/semev12_result`) and subscriber support.
+- `/qerra/ethical_score` — `Float32`, numerical risk score
+- `/qerra/ethical_decision` — `Bool`, True = safe to proceed
+- `/qerra/semev12_result` — `String`, full JSON assessment
 
 See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration
 details and open questions for the robotics community.
@@ -166,13 +177,17 @@ details and open questions for the robotics community.
 
 ## Repository Structure
 
+```
 ├── ethical_core.py          # SEMEV-12 scoring engine (v1.8.1)
-├── vectors.py               # Sacred vector definitions and weights
+├── vectors.py               # Immutable vector definitions and weights
 ├── app.py                   # FastAPI application
 ├── ros2_bridge.py           # ROS 2 bridge (standalone + rclpy node)
 ├── test_cases.py            # Regression test suite
 ├── QERRA_FOR_ROBOTICS.md    # Technical brief for the robotics community
+├── CALL_FOR_TESTERS.md      # Tester invitation and onboarding guide
+├── CHANGELOG.md             # Version history
 └── README.md
+```
 
 ---
 
@@ -197,6 +212,7 @@ rate-limited, and fully documented. Canonical benchmarks are regression-tested.
 The project is actively seeking real-world integration and community feedback.
 
 **Known limitations:**
+
 - Hybrid detection means highly indirect or heavily implicit language may not
   activate all relevant vectors.
 - This is a research and integration tool, not a certified clinical, legal,
@@ -209,7 +225,7 @@ The project is actively seeking real-world integration and community feedback.
 Input from researchers, developers, robotics engineers, and practitioners
 is welcome at any stage.
 
-**Marussa Metocharaki**
+**Marussa Metocharaki**  
 Independent researcher. Greece.  
 Focused on classical ethical frameworks for robotics and high-stakes
 decision systems.
