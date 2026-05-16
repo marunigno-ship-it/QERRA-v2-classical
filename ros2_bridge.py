@@ -172,7 +172,7 @@ if ROS2_AVAILABLE:
             Evaluate a situation with QERRA and publish results to all topics.
 
             Calls the QERRA-v2 Classical API, then publishes:
-              - numerical score  → /qerra/ethical_score   (Float32)
+              - numerical score  → /qerra/ethical_score    (Float32)
               - binary decision  → /qerra/ethical_decision (Bool)
               - full assessment  → /qerra/semev12_result   (String/JSON)
 
@@ -210,6 +210,24 @@ if ROS2_AVAILABLE:
                 f"vectors={result.get('vectors_activated', [])}"
             )
 
+    def main(args=None):
+        """
+        ROS 2 entry point. Initialises rclpy, spins the QerraNode until
+        interrupted, then shuts down cleanly.
+
+        Called automatically when rclpy is present and this script is used
+        as a ROS 2 node entry point. Can also be called directly from Python.
+        """
+        rclpy.init(args=args)
+        node = QerraNode()
+        try:
+            rclpy.spin(node)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            node.destroy_node()
+            rclpy.shutdown()
+
 
 # ── Standalone mode (no ROS 2 required) ──────────────────────────────────────
 if __name__ == "__main__":
@@ -237,7 +255,12 @@ if __name__ == "__main__":
         print(f"  /qerra/ethical_score     Float32  {result.get('score', 'N/A')}")
         print(f"  /qerra/ethical_decision  Bool     {result.get('decision', 'N/A') == 'safe'}")
         print(f"  /qerra/semev12_result    String   (full JSON above)")
+        print("\nTo run as a live ROS 2 node (requires rclpy and sourced environment):")
+        print("  source /opt/ros/humble/setup.bash   # adjust for your distro")
+        print("  python3 ros2_bridge.py")
+        print("\nTo send a test situation from another terminal:")
+        print("  ros2 topic pub /qerra/situation_input std_msgs/msg/String \\")
+        print("    \"{data: 'Describe the situation here.'}\"")
     else:
-        print("\nROS 2 detected. To run as a live node:")
-        print("  ros2 run qerra_bridge ros2_bridge")
-        print("  ros2 topic pub /qerra/situation_input std_msgs/String \"data: 'your text here'\"")
+        print("\nROS 2 detected. Starting node — press Ctrl+C to stop.")
+        main()
