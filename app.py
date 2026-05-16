@@ -25,8 +25,8 @@ limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="QERRA-v2 Classical",
-    description="100% Classical High-Quality Ethical Decision Framework",
-    version="1.8-classical-nuance-calibrated"
+    description="100% Classical High-Quality Ethical Decision Framework — fully explainable SEMEV-12 engine. Ready for early testers and ROS 2 humanoid robotics collaboration.",
+    version="1.8.1-restored"
 )
 
 app.state.limiter = limiter
@@ -43,7 +43,9 @@ app.add_middleware(
 @app.post("/analyze", dependencies=[Depends(require_api_key)])
 @limiter.limit("20/minute")
 def analyze(request: Request, data: AnalyzeRequest):
-    """Main protected endpoint."""
+    """Main protected endpoint for ethical analysis.
+    Ideal for robotics situation inputs and high-stakes human-robot decisions.
+    Returns full SEMEV-12 traceable score + reasoning."""
     result = analyze_text(data.text)
     return api_response(result)
 
@@ -65,13 +67,13 @@ def health():
         "status": "healthy",
         "vectors_loaded": len(vectors),
         "framework": "QERRA-v2 Classical Edition",
-        "note": "All 12 SEMEV-12 core vectors are active"
+        "note": "All 12 SEMEV-12 core vectors are active • Ready for tester & robotics use"
     })
 
 
 @app.get("/example")
 def example():
-    """Public demo endpoint."""
+    """Public demo endpoint — no API key required."""
     return api_response({
         "situation": "Canonical test case: toxic environment + strong mission + health risks + determination",
         "result": {
@@ -79,13 +81,15 @@ def example():
             "decision": "safe",
             "explanation": "moderate ethical concern"
         },
-        "message": "This is a public example. Use /analyze with your own text (requires API key)."
+        "message": "Public example. Use /analyze with your own text (requires TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765). Perfect for robotics scenario testing.",
+        "tester_note": "See CALL_FOR_TESTERS.md on GitHub for how to participate"
     })
 
 
 @app.get("/vectors")
 def get_vectors():
-    """Return all SEMEV-12 vector definitions - no API key required."""
+    """Return all SEMEV-12 vector definitions - no API key required.
+    Fully inspectable for robotics integration and ethical audits."""
     vectors = get_sacred_vectors()
     return api_response({
         "framework": "SEMEV-12",
