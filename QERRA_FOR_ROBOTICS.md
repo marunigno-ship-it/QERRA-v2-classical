@@ -1,167 +1,120 @@
-# QERRA-v2 Classical — Ethical Situational Awareness for Robotics
+# QERRA-v2 Classical for Robotics Integration
 
-## What it is
+QERRA-v2 Classical is a fully explainable, 100% classical ethical evaluation
+engine based on 12 immutable human-centred vectors (SEMEV-12). It is designed
+as a **Condition node** in robot Behaviour Trees — an ethical safety layer that
+evaluates situations before action execution.
 
-QERRA-v2 Classical is a lightweight, fully explainable ethical situation-assessment engine based on the **SEMEV-12 framework** — 12 named, auditable vectors.
+**Key strengths for robotics:**
+- Deterministic and auditable (no neural networks, no black boxes)
+- Full per-vector reasoning and similarity scores in every response
+- Ready ROS 2 bridge (`ros2_bridge.py`) with subscriber and three publishers
+- Live public API for immediate testing — no installation required
 
-- No neural networks. No black boxes.
-- Every score is traceable to named vectors with clear meaning.
-- Hybrid implementation: **semantic similarity** for core vectors + precise keyword patterns for others.
-- Fully classical and deterministic.
-- Simple REST API — easy to call from any ROS 2 node or other system.
-
----
-
-## Why it matters for robotics
-
-As robots move into environments shared with humans — healthcare, elder care,
-manufacturing, education, emergency response — they will increasingly encounter
-situations that carry ethical weight: coercion, institutional pressure, autonomy
-violations, harm signals, or moral dilemmas involving the people around them.
-
-Most current approaches to robot decision-making have no dedicated layer for
-recognising these situations before acting. QERRA-v2 Classical is designed to
-provide exactly that: a **structured, lightweight ethical assessment layer** that
-any ROS 2 system can query and act on, without adding opacity or non-explainable
-components to the stack.
+**Repository:** https://github.com/marunigno-ship-it/QERRA-v2-classical  
+**Live API:** https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
 
 ---
 
-## Where it fits in a system
+## Behaviour Tree Integration Pattern
 
-QERRA-v2 is designed to operate as a **pre-action assessment step** — evaluating
-a situation description before a robot commits to a task. In a Behavior Tree
-architecture, it maps naturally to a **Condition node**:
+QERRA operates as a Condition node evaluated before any action that involves
+a human or a morally significant decision.
 
 ```
 [Sequence]
-  ├── [Condition]  QERRA_score < threshold    ← ethical check before acting
+  ├── [Condition]  QERRA_ethical_score < 0.5   ← safe to proceed
   ├── [Action]     ExecuteTask
   └── [Fallback]   RequestHumanReview
 ```
 
-If the score exceeds a configurable threshold, the system routes to a fallback
-behavior — pause, escalate, or request human oversight — rather than proceeding
-automatically.
+The `/qerra/ethical_decision` topic (Bool) maps directly to this gate:
+`True` = safe, `False` = action should be modified or escalated.
 
 ---
 
-## What the API returns
+## ROS 2 Bridge Overview
 
-A call to the `/analyze` endpoint with a situation description returns structured,
-human-readable JSON:
+See `ros2_bridge.py` for the full implementation.
 
-```json
-{
-  "score": 0.3941,
-  "decision": "safe",
-  "score_explanation": "moderate ethical concern",
-  "vectors_activated": ["v004", "v003", "v007"],
-  "moral_clarity_signal": 1.0,
-  "reasoning": "Activated vectors: moral_pressure (v004), survival_instinct (v003),
-    personal_potential (v007) | Nuance: toxic environment + strong personal commitment
-    detected | Moral clarity signal: 1.0 — subject oriented toward right action
-    (dampening applied: -15%)",
-  "vector_scores": {
-    "v003_survival_instinct": 0.4412,
-    "v004_moral_pressure": 0.5831,
-    "v005_harm_intent": 0.1203,
-    "v007_personal_potential": 0.4897,
-    "v010_cognitive_manipulation": 0.2341,
-    "v011_autonomy_violation": 0.3102,
-    "v012_institutional_trust": 0.2987
-  },
-  "version": "1.8-classical-nuance-calibrated"
-}
-```
+**Topics:**
 
-A ROS 2 node can **branch** on `score` or `decision`, **log** `vectors_activated`
-and `reasoning` for audit, and **forward** the reasoning string to a human
-operator interface.
+| Direction | Topic | Type | Content |
+|-----------|-------|------|---------|
+| Subscribe | `/qerra/situation_input` | `std_msgs/String` | Natural language situation description |
+| Publish | `/qerra/ethical_score` | `std_msgs/Float32` | Risk score 0.0 – 1.0 |
+| Publish | `/qerra/ethical_decision` | `std_msgs/Bool` | True = safe, False = modified |
+| Publish | `/qerra/semev12_result` | `std_msgs/String` | Full JSON assessment |
 
----
-
-## The SEMEV-12 vectors
-
-| Vector | Name | What it detects |
-|---|---|---|
-| v001 | Emotional distress | Subtle negative emotional signals |
-| v002 | Family rupture | Family rejection or severance |
-| v003 | Survival instinct | Strong personal agency under pressure |
-| v004 | Moral pressure | Coercion to act against ethical principles |
-| v005 | Harm intent | Self-harm or intent to harm others |
-| v006 | Generational pattern | Family-origin chains of harm |
-| v007 | Personal potential | Suppressed mission, goals, or potential |
-| v008 | Shallow remorse | Dismissive or performative apology |
-| v009 | Ethical severance | Breaking away from toxic contexts |
-| v010 | Cognitive manipulation | Gaslighting and reality distortion |
-| v011 | Autonomy violation | Forced action against a person's will |
-| v012 | Institutional betrayal | Systemic failure of trusted institutions |
-
-All 12 vectors are **immutable** — they are never retrained, weakened, or deleted.
-The scoring is fully deterministic and classically implemented.
-
----
-
-## ROS 2 integration
-
-A minimal bridge (`ros2_bridge.py`) is included in the repository:
-
-- Runs **standalone today** — no ROS 2 installation required for testing
-- Becomes a full ROS 2 publisher node when `rclpy` is present
-- Publishes SEMEV-12 scores as JSON to the `qerra/semev12_score` topic
+**Running the node (rclpy required):**
 
 ```bash
-# Standalone test (no ROS 2 required):
-python ros2_bridge.py
-
-# As a ROS 2 node (requires rclpy):
-ros2 run qerra_ros2_bridge qerra_node
+source /opt/ros/humble/setup.bash   # adjust for your ROS 2 distro
+python3 ros2_bridge.py
 ```
 
----
-
-## Calibrated benchmarks
-
-| Scenario | Score | Label |
-|---|---|---|
-| Toxic environment + strong mission + health risks + determination | 0.425 | moderate ethical concern |
-| Doctor forced to falsify records, committed to oath, family at risk | 0.394 | moderate ethical concern |
-
-Both scores are stable across versions. The framework is in active development
-and actively seeking real-world validation.
-
----
-
-## How to try it
+**Sending a test situation from another terminal:**
 
 ```bash
-# Public example endpoint — no API key required:
-curl https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/example
+ros2 topic pub /qerra/situation_input std_msgs/msg/String \
+  "{data: 'A robot is instructed to withhold information from a patient.'}"
 ```
 
-Full API documentation:
-[https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
+The bridge also runs fully standalone with no ROS 2 installation:
+
+```bash
+python3 ros2_bridge.py   # calls the live API and prints the result
+```
 
 ---
 
-## Call for feedback and collaboration
+## Quick API Test (no ROS 2 needed)
 
-This is an early-stage project and input from the robotics community is genuinely
-welcome — from academic researchers, industrial developers, HRI teams, hobbyists,
-and anyone working with ROS 2 or autonomous systems.
+```bash
+curl -X POST \
+  https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/analyze \
+  -H "x-api-key: TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "A robot is ordered to restrain a patient against their will."}'
+```
 
-Questions where community input would be most valuable:
+Expected response fields: `score` (0.0–1.0), `decision` (`safe`/`modified`),
+`vectors_activated`, `reasoning`, `vector_scores`.
 
-- **Interface design**: What request/response structure would make this most useful
-  as a Condition node in a real deliberation or BT system?
-- **State-to-text**: What is a practical way to convert structured robot world-state
-  (blackboard variables, action parameters, sensor context) into a situation
-  description that an ethical assessment layer can evaluate?
-- **Latency and integration**: What response-time constraints and integration
-  patterns are realistic for ethical checks in a live robot control loop?
+---
 
-All feedback, questions, pull requests, and integration experiments are welcome.
+## Known Open Questions for the Robotics Community
 
-**Marussa Metocharaki** — 
-[https://github.com/marunigno-ship-it/QERRA-v2-classical](https://github.com/marunigno-ship-it/QERRA-v2-classical)
+I am actively seeking feedback from ROS 2 users and robotics engineers.
+Please reply on ROS Discourse, open a GitHub issue, or email me directly.
+
+1. **Topic and message design** — Does the current topic set
+   (`/qerra/ethical_score`, `/qerra/ethical_decision`, `/qerra/semev12_result`)
+   fit naturally into your decision pipelines or Behaviour Trees? Would you
+   prefer a single custom message type (`qerra_msgs/EthicalAssessment`)?
+
+2. **QoS profiles** — What QoS settings (Reliability, Durability, History
+   depth) would be appropriate for a safety-critical ethical check in your
+   pipeline? The bridge currently uses the ROS 2 default (reliable, depth 10).
+
+3. **Latency and real-time** — What latency budget is acceptable for an
+   ethical condition node in humanoid or mobile manipulation tasks? The live
+   API call currently takes 1–3 seconds; an on-device deployment would be
+   faster.
+
+4. **Integration patterns** — Would worked examples using Nav2, MoveIt 2, or
+   specific Behaviour Tree libraries (PyTrees, BehaviorTree.CPP) be helpful
+   for your evaluation?
+
+5. **Custom messages** — Would a dedicated `qerra_msgs` ROS 2 package be worth
+   creating at this stage, or is `std_msgs` sufficient for early testing?
+
+Any input is valuable — even a short comment on one question helps shape
+the next small improvements.
+
+---
+
+**Contact:** marunigno@gmail.com (subject: QERRA Robotics Feedback)  
+**License:** AGPL-3.0 (commercial licensing available on request)
+
+*Early-stage research tool — not certified for production safety systems.*
