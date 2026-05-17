@@ -236,4 +236,27 @@ Issues, pull requests, and integration experiments welcome.
 
 *QERRA-v2 Classical — ethical conscience as the foundation of every decision.*
 
+## Support This Project
+
+QERRA-v2 Classical is developed and maintained entirely by one independent researcher with no institutional funding, no team, and very limited personal resources.
+
+The live API currently runs on Hugging Face's free tier, which causes persistent deployment and reliability issues. Your support would directly help:
+
+- Move to stable paid hosting (eliminating sync problems)
+- Dedicate more time to ROS 2 integration and real robotics testing
+- Continue improving the SEMEV-12 framework
+
+**GitHub Sponsors** is the main and preferred way to support the project.
+
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=github)](https://github.com/sponsors/marunigno-ship-it)
+
+**Other options:**
+- One-time donation via PayPal: marunigno@gmail.com
+- Star the repository and share it with robotics / AI safety communities
+
+Even small contributions make a meaningful difference. Thank you.
+
+**Marussa Metocharaki** — Independent researcher, Greece  
+Building classical, explainable ethical infrastructure for humanoid robots, one small safe step at a time.
+
 **License: AGPL-3.0**
