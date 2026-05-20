@@ -156,3 +156,4 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
     return result
+    
