@@ -1,6 +1,6 @@
 # QERRA-v2 Classical
 
-**A fully explainable, classical ethical evaluation engine.**  
+**A fully explainable, classical ethical evaluation engine.**
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
@@ -123,9 +123,9 @@ pattern matching.
   v011, v012; keyword pattern matching on v001, v002, v006, v008, v009
 - **Multi-vector weighted scoring** — composite score with full per-vector
   breakdown included in every response
-- **Moral clarity dampening** — introduced in v1.8; distinguishes ethical
-  awareness from crisis; a subject who clearly identifies a violation and
-  resists it scores differently from one who is confused or complicit
+- **Moral clarity dampening** — distinguishes ethical awareness from crisis;
+  a subject who clearly identifies a violation and resists it scores
+  differently from one who is confused or complicit
 - **Nuance handling** — compound cases (toxic context + strong commitment)
   are balanced via a dedicated dilution layer to prevent additive score
   inflation
@@ -135,6 +135,8 @@ pattern matching.
 - **Rate limiting** — per-IP request throttling
 - **API key protection** — header-based authentication
 - **Public example endpoint** — `/example` requires no key
+- **Public vectors endpoint** — `/vectors` exposes all 12 SEMEV-12 definitions
+  for full auditability; no key required
 
 ---
 
@@ -178,14 +180,15 @@ details and open questions for the robotics community.
 ## Repository Structure
 
 ```
-├── ethical_core.py          # SEMEV-12 scoring engine (v1.8.1)
-├── vectors.py               # Immutable vector definitions and weights
-├── app.py                   # FastAPI application
-├── ros2_bridge.py           # ROS 2 bridge (standalone + rclpy node)
-├── test_cases.py            # Regression test suite
-├── QERRA_FOR_ROBOTICS.md    # Technical brief for the robotics community
-├── CALL_FOR_TESTERS.md      # Tester invitation and onboarding guide
-├── CHANGELOG.md             # Version history
+├── ethical_core.py                      # SEMEV-12 scoring engine (v1.8.1)
+├── vectors.py                           # Immutable vector definitions and weights
+├── app.py                               # FastAPI application
+├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
+├── test_cases.py                        # Regression test suite
+├── SEMEV-12_Framework_Documentation.md  # Full framework documentation
+├── QERRA_FOR_ROBOTICS.md                # Technical brief for the robotics community
+├── CALL_FOR_TESTERS.md                  # Tester invitation and onboarding guide
+├── CHANGELOG.md                         # Version history
 └── README.md
 ```
 
@@ -203,7 +206,7 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8.1-restored`  
+**Version:** `1.8.1-restored`
 **Stage:** Stable core engine with active development on ROS 2 integration
 and nuance refinement.
 
@@ -220,43 +223,89 @@ The project is actively seeking real-world integration and community feedback.
 
 ---
 
+## Development Reality: Constraints and Transparency
+
+This section is included deliberately. Clarity about real conditions is part
+of QERRA's commitment to explainability — and it applies to the project
+itself, not only to the systems it evaluates.
+
+**Solo development, zero institutional support.**
+QERRA-v2 Classical is developed and maintained by one independent researcher
+with no team, no institutional affiliation, no grant funding, and no
+organisational infrastructure. Every design decision, every line of code,
+every document in this repository is the work of a single person operating
+under significant personal constraints.
+
+**Severe resource limitations.**
+The project runs on the Hugging Face free tier, which imposes real
+restrictions on uptime, deployment reliability, and the ability to expand
+the detection engine. Stable paid hosting would directly improve API
+reliability and unlock the next stage of development, but is not currently
+financially possible without external support. The development environment
+is further constrained by unstable internet connectivity and limited
+available energy. Progress is made in small, careful increments rather than
+sustained sprints. This is an accurate description of working conditions,
+not a limitation of vision or commitment.
+
+**What this means in practice.**
+The core engine is stable and the SEMEV-12 framework is complete and
+calibrated. What is not yet possible under current conditions is rapid
+iteration, sustained testing across diverse hardware, or active community
+management at scale. The project moves one small, safe step at a time.
+
+**What would change with support.**
+Stable hosting would eliminate current API reliability issues and make the
+public endpoint consistently available to testers and collaborators.
+Additional time — freed by even modest financial support — would accelerate
+ROS 2 integration work, the creation of an evaluation dataset for
+cross-cultural validation of the SEMEV-12 vectors, and the development of
+a dedicated `qerra_msgs` ROS 2 package.
+
+**Why this is stated openly.**
+Independent research is legitimate research. Stating these constraints
+clearly is not an apology — it is an invitation for collaboration from
+anyone who finds the framework useful or interesting, on whatever terms
+are realistic for both sides. If you are a robotics engineer, researcher,
+or developer who wants to discuss integration or contribution, the best
+first step is to open a GitHub issue or contact directly by email.
+
+---
+
 ## Feedback and Collaboration
 
 Input from researchers, developers, robotics engineers, and practitioners
 is welcome at any stage.
 
-**Marussa Metocharaki**  
-Independent researcher. Greece.  
+**Marussa Metocharaki**
+Independent researcher. Greece.
 Focused on classical ethical frameworks for robotics and high-stakes
 decision systems.
 
 Issues, pull requests, and integration experiments welcome.
 
----
+**Contact:** marunigno@gmail.com
 
-*QERRA-v2 Classical — ethical conscience as the foundation of every decision.*
+---
 
 ## Support This Project
 
-QERRA-v2 Classical is developed and maintained entirely by one independent researcher with no institutional funding, no team, and very limited personal resources.
+If you find QERRA-v2 Classical useful, consider supporting its continued
+development. Even small contributions make a concrete difference.
 
-The live API currently runs on Hugging Face's free tier, which causes persistent deployment and reliability issues. Your support would directly help:
-
-- Move to stable paid hosting (eliminating sync problems)
-- Dedicate more time to ROS 2 integration and real robotics testing
-- Continue improving the SEMEV-12 framework
-
-**GitHub Sponsors** is the main and preferred way to support the project.
+**GitHub Sponsors** is the main and preferred channel:
 
 [![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=github)](https://github.com/sponsors/marunigno-ship-it)
 
-**Other options:**
-- One-time donation via PayPal: marunigno@gmail.com
-- Star the repository and share it with robotics / AI safety communities
+One-time donation via PayPal: marunigno@gmail.com
 
-Even small contributions make a meaningful difference. Thank you.
+Starring the repository and sharing it with robotics or AI safety
+communities is also a meaningful contribution that costs nothing.
 
-**Marussa Metocharaki** — Independent researcher, Greece  
-Building classical, explainable ethical infrastructure for humanoid robots, one small safe step at a time.
+---
 
-**License: AGPL-3.0**
+## License
+
+AGPL-3.0 — see `LICENSE` for full terms.
+Commercial licensing available on request.
+
+*QERRA-v2 Classical — ethical conscience as the foundation of every decision.*
