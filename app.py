@@ -12,8 +12,11 @@ from pydantic import BaseModel, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from src.classical_analyze import analyze_text
-from src.vectors import get_sacred_vectors
+from classical_analyze import analyze_text
+from vectors import get_sacred_vectors
+from utils.response import api_response
+from models.input import AnalyzeRequest
+from auth.api_key import require_api_key
 
 load_dotenv()
 
@@ -22,87 +25,78 @@ limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="QERRA-v2 Classical",
-    description="100% Classical High-Quality Ethical Decision Framework",
-    version="1.2"
+    description="100% Classical High-Quality Ethical Decision Framework — fully explainable SEMEV-12 engine. Ready for early testers and ROS 2 humanoid robotics collaboration.",
+    version="1.8.1-restored"
 )
 
 app.state.limiter = limiter
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],       
+    allow_credentials=False,   
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-API_KEY_NAME = "x-api-key"
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
-API_KEY = os.getenv("QERRA_API_KEY")
-
-async def verify_api_key(api_key: str = Security(api_key_header)):
-    if not API_KEY:
-        raise HTTPException(status_code=500, detail="Server API key not configured.")
-    if api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Invalid or missing API key")
-    return api_key
-
-class AnalyzeRequest(BaseModel):
-    text: str
-
-    model_config = {"str_strip_whitespace": True}
-
-    @field_validator("text")
-    def text_must_not_be_empty(cls, v):
-        if len(v.strip()) < 3:
-            raise ValueError("Text too short")
-        if len(v) > 5000:
-            raise ValueError("Text too long")
-        return v
-
-
-@app.post("/analyze", dependencies=[Depends(verify_api_key)])
+@app.post("/analyze", dependencies=[Depends(require_api_key)])
 @limiter.limit("20/minute")
 def analyze(request: Request, data: AnalyzeRequest):
-    """Main classical ethical analysis endpoint with rate limiting."""
+    """Main protected endpoint for ethical analysis.
+    Ideal for robotics situation inputs and high-stakes human-robot decisions.
+    Returns full SEMEV-12 traceable score + reasoning."""
     result = analyze_text(data.text)
-    return result
+    return api_response(result)
 
 
 @app.get("/")
 def home():
-    return {
+    return api_response({
         "status": "QERRA-v2 Classical Edition is live",
         "message": "High-quality 100% classical ethical decision engine",
         "note": "This is the classical counterpart of the main hybrid QERRA-v2 project"
-    }
+    })
 
 
 @app.get("/health")
 def health():
-    """Simple health check - no API key required."""
+    """Public health check - no API key required."""
     vectors = get_sacred_vectors()
-    return {
+    return api_response({
         "status": "healthy",
-        "version": "1.2-classical",
         "vectors_loaded": len(vectors),
         "framework": "QERRA-v2 Classical Edition",
-        "note": "All 12 SEMEV-12 core vectors are active"
-    }
+        "note": "All 12 SEMEV-12 core vectors are active • Ready for tester & robotics use"
+    })
 
 
-# === NEW: /vectors endpoint (Claude Step 2) ===
+@app.get("/example")
+def example():
+    """Public demo endpoint — no API key required."""
+    return api_response({
+        "situation": "Canonical test case: toxic environment + strong mission + health risks + determination",
+        "result": {
+            "score": 0.425,
+            "decision": "safe",
+            "explanation": "moderate ethical concern"
+        },
+        "message": "Public example. Use /analyze with your own text (requires TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765). Perfect for robotics scenario testing.",
+        "tester_note": "See CALL_FOR_TESTERS.md on GitHub for how to participate"
+    })
+
+
 @app.get("/vectors")
 def get_vectors():
-    """Return all SEMEV-12 vector definitions - no API key required."""
+    """Return all SEMEV-12 vector definitions - no API key required.
+    Fully inspectable for robotics integration and ethical audits."""
     vectors = get_sacred_vectors()
-    return {
+    return api_response({
         "framework": "SEMEV-12",
         "description": "12 foundational ethical vectors for human-centred decision making",
         "vectors": vectors,
         "note": "This endpoint makes the ethical framework fully inspectable and auditable"
-    }
+    })
 
 
 if __name__ == "__main__":
