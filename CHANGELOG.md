@@ -11,6 +11,7 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 
 ### Fixed
 - Added "hurt myself", "hurt yourself", "harm myself", "harm yourself" patterns to severe_harm detection for v005 (single regex improvement)
+- * Expanded cognitive_manipulation_description to include guilt-tripping and emotional coercion (v010)
 
 ### Documentation
 - Added "Development Reality: Constraints and Transparency" section to `README.md` — honest, professional account of solo development conditions, resource limitations, and what support would enable next
