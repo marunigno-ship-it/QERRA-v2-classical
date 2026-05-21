@@ -7,6 +7,11 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 
 ## [1.8.1-restored] — 2026-05-20
 
+## [Unreleased]
+
+### Fixed
+- Added "hurt myself", "hurt yourself", "harm myself", "harm yourself" patterns to severe_harm detection for v005 (single regex improvement)
+
 ### Documentation
 - Added "Development Reality: Constraints and Transparency" section to `README.md` — honest, professional account of solo development conditions, resource limitations, and what support would enable next
 - Full formatting and consistency pass on `README.md`: clean single block, no repeated lines, style aligned throughout
