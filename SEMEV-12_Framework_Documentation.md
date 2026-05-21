@@ -132,4 +132,13 @@ This documentation is provided with full transparency to accurately reflect the 
 
 ---
 
+## Recent Detection Improvements (May 2026)
+
+### v005 - harm_intent
+- Added explicit phrases: "hurt myself", "hurt yourself", "harm myself", "harm yourself" to severe_harm regex.
+
+### v010 - cognitive_manipulation
+- Expanded semantic description to include guilt-tripping and emotional coercion.
+
+These changes were made to address real test failures while keeping risk minimal.
 
