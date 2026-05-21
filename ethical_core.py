@@ -28,7 +28,7 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     # --- Detection patterns ---
     severe_harm = bool(re.search(
-        r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
+    r'\b(kill yourself|end it all|want to die|suicide|kys|hurt myself|hurt yourself|harm myself|harm yourself)\b', text))
     moderate_harm = bool(re.search(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
     clear_fraud = bool(re.search(
