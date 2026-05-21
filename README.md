@@ -216,7 +216,7 @@ The project is actively seeking real-world integration and community feedback.
 
 **Known limitations:**
 
-- The current engine actively implements and scores **5 of the 12 SEMEV-12 vectors** (v003, v004, v005, v007, v010). The remaining 7 vectors are defined in the framework and reserved for future releases.
+- The current engine actively implements and scores **6 of the 12 SEMEV-12 vectors** (v001, v003, v004, v005, v007, v010). The remaining 6 vectors are defined in the framework and reserved for future releases.
 - Hybrid detection means highly indirect or heavily implicit language may not activate all relevant vectors.
 - This is a research and integration tool, not a certified clinical, legal, or production safety system.
 
