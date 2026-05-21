@@ -1,8 +1,8 @@
 # =====================================================
-# ETHICAL CORE - v1.8.1 Restored
+# ETHICAL CORE - v1.8.2
 # Balanced scoring with improved nuance for commitment cases
-# v1.8.1: Restored v005 (harm_intent) and v010 (cognitive_manipulation)
-#          Restored pressure_mention trigger for v004
+# v1.8.1: Restored v005 + v010 + fixes
+# v1.8.2: Added v001 emotional_distress (first new vector)
 # =====================================================
 
 import logging
@@ -36,19 +36,24 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b', text))
     pressure_mention = bool(re.search(
         r'\b(pressure|toxic|hostile|unsupportive|bad conditions|poor conditions|forcing me|falsify)\b', text))
+    
     # health_risk_mention — currently computed but reserved for future nuance logic
-# (will be used later to strengthen dampening in toxic environment cases)
-health_risk_mention = bool(re.search(
-    r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b', text))
+    # (will be used later to strengthen dampening in toxic environment cases)
+    health_risk_mention = bool(re.search(
+        r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b', text))
+
+    # v001 — emotional_distress (new)
+    emotional_distress = bool(re.search(
+        r'\b(hopeless|empty|numb|exhausted|can\'t go on|falling apart|breaking down|overwhelmed|isolated|alone|nobody cares|no one cares|nothing matters|i give up|i can\'t take this|losing hope)\b', text))
 
     # --- Semantic detection (text encoded once) ---
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
 
-    sim_v005 = util.cos_sim(text_embedding, semantic_model.encode(harm_intent_description,          convert_to_tensor=True))[0][0].item()
+    sim_v005 = util.cos_sim(text_embedding, semantic_model.encode(harm_intent_description, convert_to_tensor=True))[0][0].item()
     sim_v010 = util.cos_sim(text_embedding, semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True))[0][0].item()
-    sim_v004 = util.cos_sim(text_embedding, semantic_model.encode(moral_pressure_description,        convert_to_tensor=True))[0][0].item()
-    sim_v007 = util.cos_sim(text_embedding, semantic_model.encode(personal_potential_description,    convert_to_tensor=True))[0][0].item()
-    sim_v003 = util.cos_sim(text_embedding, semantic_model.encode(survival_instinct_description,     convert_to_tensor=True))[0][0].item()
+    sim_v004 = util.cos_sim(text_embedding, semantic_model.encode(moral_pressure_description, convert_to_tensor=True))[0][0].item()
+    sim_v007 = util.cos_sim(text_embedding, semantic_model.encode(personal_potential_description, convert_to_tensor=True))[0][0].item()
+    sim_v003 = util.cos_sim(text_embedding, semantic_model.encode(survival_instinct_description, convert_to_tensor=True))[0][0].item()
 
     logger.info(f"Similarity | v003={sim_v003:.4f} v004={sim_v004:.4f} v005={sim_v005:.4f} v007={sim_v007:.4f} v010={sim_v010:.4f}")
 
@@ -72,6 +77,12 @@ health_risk_mention = bool(re.search(
     activated = []
     total_weight = 0.0
     weighted_sum = 0.0
+
+    # v001 — emotional_distress (new, pattern only)
+    if emotional_distress:
+        activated.append("v001")
+        total_weight += vectors["v001"]["weight"]
+        weighted_sum += 0.45 * vectors["v001"]["weight"]
 
     # v005 — harm intent (RESTORED)
     if severe_harm:
@@ -157,7 +168,7 @@ health_risk_mention = bool(re.search(
             "v007_personal_potential":   round(sim_v007, 4),
             "v010_cognitive_manipulation": round(sim_v010, 4),
         },
-        "version": "1.8.1-restored"
+        "version": "1.8.2"
     }
 
     logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
