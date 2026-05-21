@@ -36,8 +36,10 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b', text))
     pressure_mention = bool(re.search(
         r'\b(pressure|toxic|hostile|unsupportive|bad conditions|poor conditions|forcing me|falsify)\b', text))
-    health_risk_mention = bool(re.search(
-        r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b', text))
+    # health_risk_mention — currently computed but reserved for future nuance logic
+# (will be used later to strengthen dampening in toxic environment cases)
+health_risk_mention = bool(re.search(
+    r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b', text))
 
     # --- Semantic detection (text encoded once) ---
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
