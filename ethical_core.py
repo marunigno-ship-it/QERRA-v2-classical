@@ -17,7 +17,7 @@ semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Semantic descriptions (sacred — do not modify)
 harm_intent_description = "wanting to harm myself or others, suicidal thoughts, ending my life, self-harm, killing myself, I don't want to live anymore, I can't continue like this, the world would be better without me"
-cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality"
+cognitive_manipulation_description = "telling someone they are imagining things, denying that events happened, gaslighting, making a person doubt their own memory and perception of reality, making someone feel guilty for disagreeing, guilt-tripping, emotional coercion, you should feel guilty, psychological pressure to conform, manipulating someone through shame or guilt"
 moral_pressure_description = "being pressured to do something unethical, forced to falsify documents, moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
 personal_potential_description = "committed to my mission, determined to continue despite difficulties, protecting my future, refusing to give up my vision, fighting for my goal, preserving my integrity and potential, not going back to harmful jobs"
 survival_instinct_description = "committed to my mission despite hardship, determined to continue, refusing to return to degrading work, protecting my long-term vision, showing strong personal agency, persisting with strong values despite pressure"
@@ -28,7 +28,8 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     # --- Detection patterns ---
     severe_harm = bool(re.search(
-        r'\b(kill yourself|end it all|want to die|suicide|kys)\b', text))
+        r'\b(kill yourself|end it all|want to die|suicide|kys|hurt myself|hurt yourself|harm myself|harm yourself)\b',
+        text))
     moderate_harm = bool(re.search(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
     clear_fraud = bool(re.search(
@@ -51,7 +52,10 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     # --- Boolean decisions ---
     harm_intent         = sim_v005 > 0.50
-    cognitive_manipulation = sim_v010 > 0.48
+    guilt_trip_pattern = bool(re.search(
+        r'\b(should feel guilty|feel guilty if|you should feel|guilty for disagreeing|feel ashamed if|you should be ashamed)\b',
+        text))
+    cognitive_manipulation = sim_v010 > 0.48 or guilt_trip_pattern
     moral_pressure      = sim_v004 > 0.46
     personal_potential  = sim_v007 > 0.49 or bool(re.search(
         r'\b(committed to my patients|medical oath|my patients|family to support|no other job)\b', text))
