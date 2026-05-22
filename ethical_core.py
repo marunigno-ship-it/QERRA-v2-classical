@@ -1,8 +1,6 @@
 # =====================================================
-# ETHICAL CORE - v1.8.2
-# Balanced scoring with improved nuance for commitment cases
-# v1.8.1: Restored v005 + v010 + fixes
-# v1.8.2: Added v001 emotional_distress (first new vector)
+# ETHICAL CORE - v1.8.3
+# Added v001 emotional_distress + v011 autonomy_violation (with pattern fallback)
 # =====================================================
 
 import logging
@@ -21,6 +19,7 @@ cognitive_manipulation_description = "telling someone they are imagining things,
 moral_pressure_description = "being pressured to do something unethical, forced to falsify documents, moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
 personal_potential_description = "committed to my mission, determined to continue despite difficulties, protecting my future, refusing to give up my vision, fighting for my goal, preserving my integrity and potential, not going back to harmful jobs"
 survival_instinct_description = "committed to my mission despite hardship, determined to continue, refusing to return to degrading work, protecting my long-term vision, showing strong personal agency, persisting with strong values despite pressure"
+autonomy_violation_description = "being forced to do something against my will, not allowed to make my own decisions, someone controlling my choices, coerced into compliance, denied the right to choose, forced to comply, my autonomy is being violated, I have no say in what happens to me, my choices are being taken away, being manipulated into doing something I don't want to do"
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
@@ -36,15 +35,20 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b', text))
     pressure_mention = bool(re.search(
         r'\b(pressure|toxic|hostile|unsupportive|bad conditions|poor conditions|forcing me|falsify)\b', text))
-    
-    # health_risk_mention — currently computed but reserved for future nuance logic
-    # (will be used later to strengthen dampening in toxic environment cases)
+
+    # health_risk_mention — reserved for future nuance logic
     health_risk_mention = bool(re.search(
         r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b', text))
 
-    # v001 — emotional_distress (new)
+    # v001 — emotional_distress
     emotional_distress = bool(re.search(
-        r'\b(hopeless|empty|numb|exhausted|can\'t go on|falling apart|breaking down|overwhelmed|isolated|alone|nobody cares|no one cares|nothing matters|i give up|i can\'t take this|losing hope)\b', text))
+        r'\b(hopeless|empty|numb|exhausted|falling apart|breaking down|overwhelmed|nobody cares|no one cares|nothing matters|losing hope|i give up|i feel nothing|i feel empty)\b',
+        text))
+
+    # v011 — autonomy_violation (pattern fallback)
+    autonomy_pattern = bool(re.search(
+        r'\b(forced to sign|forced to do|against my will|no say in|no choice but|coerced into|not allowed to|decided without me|made to comply|overriding my decision)\b',
+        text))
 
     # --- Semantic detection (text encoded once) ---
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
@@ -54,37 +58,40 @@ def evaluate_ethical_risk(text: str) -> dict:
     sim_v004 = util.cos_sim(text_embedding, semantic_model.encode(moral_pressure_description, convert_to_tensor=True))[0][0].item()
     sim_v007 = util.cos_sim(text_embedding, semantic_model.encode(personal_potential_description, convert_to_tensor=True))[0][0].item()
     sim_v003 = util.cos_sim(text_embedding, semantic_model.encode(survival_instinct_description, convert_to_tensor=True))[0][0].item()
+    sim_v011 = util.cos_sim(text_embedding, semantic_model.encode(autonomy_violation_description, convert_to_tensor=True))[0][0].item()
 
-    logger.info(f"Similarity | v003={sim_v003:.4f} v004={sim_v004:.4f} v005={sim_v005:.4f} v007={sim_v007:.4f} v010={sim_v010:.4f}")
+    logger.info(
+        f"Similarity | v003={sim_v003:.4f} v004={sim_v004:.4f} v005={sim_v005:.4f} v007={sim_v007:.4f} v010={sim_v010:.4f} v011={sim_v011:.4f}")
 
     # --- Boolean decisions ---
-    harm_intent         = sim_v005 > 0.50
+    harm_intent = sim_v005 > 0.50
     guilt_trip_pattern = bool(re.search(
         r'\b(should feel guilty|feel guilty if|you should feel|guilty for disagreeing|feel ashamed if|you should be ashamed)\b',
         text))
     cognitive_manipulation = sim_v010 > 0.48 or guilt_trip_pattern
-    moral_pressure      = sim_v004 > 0.46
-    personal_potential  = sim_v007 > 0.49 or bool(re.search(
+    moral_pressure = sim_v004 > 0.46
+    personal_potential = sim_v007 > 0.49 or bool(re.search(
         r'\b(committed to my patients|medical oath|my patients|family to support|no other job)\b', text))
-    survival_instinct   = sim_v003 > 0.46 or bool(re.search(
+    survival_instinct = sim_v003 > 0.46 or bool(re.search(
         r'\b(committed to my|my oath|determined to continue)\b', text))
+    autonomy_violation = sim_v011 > 0.46 or autonomy_pattern
 
-    toxic_context      = pressure_mention
+    toxic_context = pressure_mention
     strong_determination = survival_instinct or personal_potential
-    nuance_complex_case  = toxic_context and strong_determination
+    nuance_complex_case = toxic_context and strong_determination
 
     # --- Weighted scoring ---
     activated = []
     total_weight = 0.0
     weighted_sum = 0.0
 
-    # v001 — emotional_distress (new, pattern only)
+    # v001 — emotional_distress
     if emotional_distress:
         activated.append("v001")
         total_weight += vectors["v001"]["weight"]
         weighted_sum += 0.45 * vectors["v001"]["weight"]
 
-    # v005 — harm intent (RESTORED)
+    # v005 — harm intent
     if severe_harm:
         activated.append("v005")
         total_weight += vectors["v005"]["weight"]
@@ -100,37 +107,42 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v005"]["weight"]
         weighted_sum += 0.82 * vectors["v005"]["weight"]
 
-    # v004 — moral pressure (semantic/fraud path — unchanged from v1.8)
+    # v004 — moral pressure
     if moral_pressure or clear_fraud:
         activated.append("v004")
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.88 * vectors["v004"]["weight"]
 
-    # v004 — pressure mention path (RESTORED)
     if pressure_mention and not moral_pressure and not clear_fraud:
         activated.append("v004")
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.70 * vectors["v004"]["weight"]
 
-    # v003 — survival instinct (unchanged from v1.8)
+    # v003 — survival instinct
     if survival_instinct or personal_potential:
         activated.append("v003")
         total_weight += vectors["v003"]["weight"]
         weighted_sum += 0.35 * vectors["v003"]["weight"]
 
-    # v007 — personal potential (unchanged from v1.8)
+    # v007 — personal potential
     if personal_potential:
         activated.append("v007")
         total_weight += vectors["v007"]["weight"]
         weighted_sum += 0.55 * vectors["v007"]["weight"]
 
-    # v010 — cognitive manipulation (RESTORED)
+    # v010 — cognitive manipulation
     if cognitive_manipulation:
         activated.append("v010")
         total_weight += vectors["v010"]["weight"]
         weighted_sum += 0.82 * vectors["v010"]["weight"]
 
-    # Nuance dampening (unchanged from v1.8)
+    # v011 — autonomy_violation
+    if autonomy_violation:
+        activated.append("v011")
+        total_weight += vectors["v011"]["weight"]
+        weighted_sum += 0.75 * vectors["v011"]["weight"]
+
+    # Nuance dampening
     if nuance_complex_case and "v003" in activated:
         total_weight += 1.0 * vectors["v003"]["weight"]
         weighted_sum += 0.25 * 1.0 * vectors["v003"]["weight"]
@@ -162,13 +174,13 @@ def evaluate_ethical_risk(text: str) -> dict:
         "reasoning": reasoning,
         "vectors_activated": unique_activated,
         "vector_scores": {
-            "v003_survival_instinct":    round(sim_v003, 4),
-            "v004_moral_pressure":       round(sim_v004, 4),
-            "v005_harm_intent":          round(sim_v005, 4),
-            "v007_personal_potential":   round(sim_v007, 4),
+            "v003_survival_instinct": round(sim_v003, 4),
+            "v004_moral_pressure": round(sim_v004, 4),
+            "v005_harm_intent": round(sim_v005, 4),
+            "v007_personal_potential": round(sim_v007, 4),
             "v010_cognitive_manipulation": round(sim_v010, 4),
         },
-        "version": "1.8.2"
+        "version": "1.8.3"
     }
 
     logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
