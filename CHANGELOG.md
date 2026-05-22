@@ -5,12 +5,16 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 
 ---
 
-## [Unreleased] — 2026-05-21
+## [Unreleased] — 2026-05-22
 
 ### Added
-- **v001 emotional_distress** (pattern-based) — first new vector implemented
-- Now **6 out of 12** SEMEV-12 vectors are active
-- Version bumped to `1.8.2`
+- **v011 autonomy_violation** (semantic + pattern fallback) — 7th vector implemented
+- Now **7 out of 12** SEMEV-12 vectors are active
+- Version bumped to `1.8.3`
+
+### Technical
+- Added pattern fallback for v011 (same safe approach used for v010)
+- All verification tests passing
 
 ### Technical
 - Added `emotional_distress` detection in `ethical_core.py`
