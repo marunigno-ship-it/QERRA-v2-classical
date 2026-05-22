@@ -8,6 +8,19 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 ## [Unreleased] — 2026-05-22
 
 ### Added
+- **v008 shallow_remorse** (pattern-only) — 9th vector implemented
+- Now **9 out of 12** SEMEV-12 vectors are active
+- Version bumped to `1.8.5`
+
+### Technical
+- Added detection and scoring for v008 (shallow/manipulative remorse)
+- Verified distinction from genuine apology
+
+---
+
+## [Unreleased] — 2026-05-22
+
+### Added
 - **v002 family_severance** (pattern-only) — 8th vector implemented
 - Now **8 out of 12** SEMEV-12 vectors are active
 - Version bumped to `1.8.4`
@@ -26,8 +39,7 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 - Version bumped to `1.8.3`
 
 ### Technical
-- Added pattern fallback for v011 (same safe approach used for v010)
-- All verification tests passing
+- Added pattern fallback for v011
 
 ---
 
@@ -41,34 +53,21 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 ### Technical
 - Added `emotional_distress` detection in `ethical_core.py`
 - Added scoring contribution (0.45 weight) for v001
-- Updated regression tests (`test_cases.py`) with v001 cases
-- All verification tests passing (including v001, v005, v010)
-
-### Verified Test Results (2026-05-21)
-- `"i feel completely hopeless and alone"` → v001, score 0.45 ✅
-- `"nobody cares what happens to me anymore"` → v001, score 0.45 ✅
-- `"i want to hurt myself badly tonight"` → v005, score 0.98 ✅
-- `"you should feel guilty if you dont agree with me"` → v010, score 0.82 ✅
 
 ---
 
 ## [1.8.1-restored] — 2026-05-21
 
 ### Fixed
-- Added `hurt myself`, `hurt yourself`, `harm myself`, `harm yourself` to `severe_harm` regex — v005 now correctly fires on direct self-harm phrasing (verified: score 0.98)
-- Expanded `cognitive_manipulation_description` to include guilt-tripping and emotional coercion language
-- Added `guilt_trip_pattern` regex as fallback for v010 — guilt-tripping now correctly fires v010 (verified: score 0.82)
+- Added `hurt myself`, `hurt yourself`, `harm myself`, `harm yourself` to `severe_harm` regex
+- Expanded `cognitive_manipulation_description` + guilt-tripping fallback for v010
 
-### Verified Test Results (2026-05-21)
-- Test A `"i want to hurt myself badly tonight"` → v005, score 0.98 ✅
-- Test B `"you should feel guilty if you don't agree with me"` → v010, score 0.82 ✅
-- Test C `"toxic environment but committed to my mission"` → v003/v004/v007, score 0.4539 ✅
-- Test D `"i hurt my knee at the gym"` → no vectors, score 0.25 ✅
+### Verified Test Results
+- Self-harm, guilt-tripping, doctor dilemma, and false-positive cases all passing
 
 ### Documentation
-- Added "Development Reality: Constraints and Transparency" section to `README.md`
-- Added "How to contribute" section to `CALL_FOR_TESTERS.md`
-- Added `SEMEV-12_Specification.md` — full implementation specification for all 12 vectors
+- Added "Development Reality: Constraints and Transparency" section
+- Added `SEMEV-12_Specification.md`
 
 ---
 
@@ -76,10 +75,7 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 
 ### Added
 - Moral clarity dampening
-- Expanded keyword patterns for v003, v007, and health_risk_mention
-- Nuance handling for compound cases
-
-*(older entries unchanged)*
+- Expanded keyword patterns and nuance handling
 
 ---
 
