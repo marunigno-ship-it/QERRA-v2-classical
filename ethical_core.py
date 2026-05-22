@@ -1,6 +1,6 @@
 # =====================================================
-# ETHICAL CORE - v1.8.3
-# Added v001 emotional_distress + v011 autonomy_violation (with pattern fallback)
+# ETHICAL CORE - v1.8.5
+# 9 out of 12 SEMEV-12 vectors active
 # =====================================================
 
 import logging
@@ -27,8 +27,7 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     # --- Detection patterns ---
     severe_harm = bool(re.search(
-        r'\b(kill yourself|end it all|want to die|suicide|kys|hurt myself|hurt yourself|harm myself|harm yourself)\b',
-        text))
+        r'\b(kill yourself|end it all|want to die|suicide|kys|hurt myself|hurt yourself|harm myself|harm yourself)\b', text))
     moderate_harm = bool(re.search(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b', text))
     clear_fraud = bool(re.search(
@@ -42,13 +41,15 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     # v001 — emotional_distress
     emotional_distress = bool(re.search(
-        r'\b(hopeless|empty|numb|exhausted|falling apart|breaking down|overwhelmed|nobody cares|no one cares|nothing matters|losing hope|i give up|i feel nothing|i feel empty)\b',
-        text))
+        r'\b(hopeless|empty|numb|exhausted|falling apart|breaking down|overwhelmed|nobody cares|no one cares|nothing matters|losing hope|i give up|i feel nothing|i feel empty)\b', text))
 
-    # v011 — autonomy_violation (pattern fallback)
-    autonomy_pattern = bool(re.search(
-        r'\b(forced to sign|forced to do|against my will|no say in|no choice but|coerced into|not allowed to|decided without me|made to comply|overriding my decision)\b',
-        text))
+    # v002 — family_severance
+    family_severance = bool(re.search(
+        r'\b(disowned|estranged from my family|my family rejected me|my family abandoned me|kicked out by family|my family cut me off|family turned against me|my parents rejected me|thrown out by family)\b', text))
+
+    # v008 — shallow_remorse
+    shallow_remorse = bool(re.search(
+        r'\b(sorry you feel that way|i said sorry already|what more do you want|i apologised didn\'t i|i already apologized|move on already|get over it|stop bringing it up|i said i was sorry|you need to forgive me|just get over it|why can\'t you move on|i said sorry)\b', text))
 
     # --- Semantic detection (text encoded once) ---
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
@@ -60,21 +61,16 @@ def evaluate_ethical_risk(text: str) -> dict:
     sim_v003 = util.cos_sim(text_embedding, semantic_model.encode(survival_instinct_description, convert_to_tensor=True))[0][0].item()
     sim_v011 = util.cos_sim(text_embedding, semantic_model.encode(autonomy_violation_description, convert_to_tensor=True))[0][0].item()
 
-    logger.info(
-        f"Similarity | v003={sim_v003:.4f} v004={sim_v004:.4f} v005={sim_v005:.4f} v007={sim_v007:.4f} v010={sim_v010:.4f} v011={sim_v011:.4f}")
+    logger.info(f"Similarity | v003={sim_v003:.4f} v004={sim_v004:.4f} v005={sim_v005:.4f} v007={sim_v007:.4f} v010={sim_v010:.4f} v011={sim_v011:.4f}")
 
     # --- Boolean decisions ---
     harm_intent = sim_v005 > 0.50
-    guilt_trip_pattern = bool(re.search(
-        r'\b(should feel guilty|feel guilty if|you should feel|guilty for disagreeing|feel ashamed if|you should be ashamed)\b',
-        text))
+    guilt_trip_pattern = bool(re.search(r'\b(should feel guilty|feel guilty if|you should feel|guilty for disagreeing|feel ashamed if|you should be ashamed)\b', text))
     cognitive_manipulation = sim_v010 > 0.48 or guilt_trip_pattern
     moral_pressure = sim_v004 > 0.46
-    personal_potential = sim_v007 > 0.49 or bool(re.search(
-        r'\b(committed to my patients|medical oath|my patients|family to support|no other job)\b', text))
-    survival_instinct = sim_v003 > 0.46 or bool(re.search(
-        r'\b(committed to my|my oath|determined to continue)\b', text))
-    autonomy_violation = sim_v011 > 0.46 or autonomy_pattern
+    personal_potential = sim_v007 > 0.49 or bool(re.search(r'\b(committed to my patients|medical oath|my patients|family to support|no other job)\b', text))
+    survival_instinct = sim_v003 > 0.46 or bool(re.search(r'\b(committed to my|my oath|determined to continue)\b', text))
+    autonomy_violation = sim_v011 > 0.46 or bool(re.search(r'\b(forced to sign|forced to do|against my will|no say in|no choice but|coerced into|not allowed to|decided without me|made to comply|overriding my decision)\b', text))
 
     toxic_context = pressure_mention
     strong_determination = survival_instinct or personal_potential
@@ -90,6 +86,12 @@ def evaluate_ethical_risk(text: str) -> dict:
         activated.append("v001")
         total_weight += vectors["v001"]["weight"]
         weighted_sum += 0.45 * vectors["v001"]["weight"]
+
+    # v002 — family_severance
+    if family_severance:
+        activated.append("v002")
+        total_weight += vectors["v002"]["weight"]
+        weighted_sum += 0.60 * vectors["v002"]["weight"]
 
     # v005 — harm intent
     if severe_harm:
@@ -142,6 +144,12 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v011"]["weight"]
         weighted_sum += 0.75 * vectors["v011"]["weight"]
 
+    # v008 — shallow_remorse
+    if shallow_remorse:
+        activated.append("v008")
+        total_weight += vectors["v008"]["weight"]
+        weighted_sum += 0.55 * vectors["v008"]["weight"]
+
     # Nuance dampening
     if nuance_complex_case and "v003" in activated:
         total_weight += 1.0 * vectors["v003"]["weight"]
@@ -180,7 +188,7 @@ def evaluate_ethical_risk(text: str) -> dict:
             "v007_personal_potential": round(sim_v007, 4),
             "v010_cognitive_manipulation": round(sim_v010, 4),
         },
-        "version": "1.8.3"
+        "version": "1.8.5"
     }
 
     logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
