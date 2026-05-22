@@ -180,7 +180,7 @@ details and open questions for the robotics community.
 ## Repository Structure
 
 ```
-├── ethical_core.py                      # SEMEV-12 scoring engine (v1.8.1)
+├── ethical_core.py                      # SEMEV-12 scoring engine (v1.8.5)
 ├── vectors.py                           # Immutable vector definitions and weights
 ├── app.py                               # FastAPI application
 ├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
@@ -206,7 +206,7 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8.1-restored`
+**Version:** `1.8.5`
 **Stage:** Stable core engine with active development on ROS 2 integration
 and nuance refinement.
 
@@ -216,9 +216,14 @@ The project is actively seeking real-world integration and community feedback.
 
 **Known limitations:**
 
-- The current engine actively implements and scores **9 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v007, v008, v010, v011). The remaining 3 vectors are defined in the framework and reserved for future releases.
-- Hybrid detection means highly indirect or heavily implicit language may not activate all relevant vectors.
-- This is a research and integration tool, not a certified clinical, legal, or production safety system.
+- The current engine actively implements and scores **9 of the 12 SEMEV-12
+  vectors** (v001, v002, v003, v004, v005, v007, v008, v010, v011).
+  The remaining 3 vectors are defined in the framework and reserved for
+  future releases.
+- Hybrid detection means highly indirect or heavily implicit language may not
+  activate all relevant vectors.
+- This is a research and integration tool, not a certified clinical, legal,
+  or production safety system.
 
 ---
 
