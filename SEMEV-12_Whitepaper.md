@@ -9,7 +9,7 @@
 
 ## 1. Abstract
 
-The SEMEV-12 (Socio-Ethical Moral Evaluation Vectors) framework is a deterministic, classical, and fully explainable ethical evaluation system. It consists of 12 immutable, human-centred vectors designed to serve as a transparent safety layer for robotics, autonomous systems, and high-stakes AI decision-making.
+The SEMEV-12 framework is a deterministic, classical, and fully explainable ethical evaluation system. It consists of 12 immutable, human-centred vectors designed to serve as a transparent safety layer for robotics, autonomous systems, and high-stakes AI decision-making.
 
 Unlike probabilistic or black-box neural approaches, SEMEV-12 uses fixed logical vectors with hybrid detection (semantic similarity + keyword patterns) to produce auditable ethical scores and reasoning.
 
@@ -36,23 +36,16 @@ This document, together with the timestamped GitHub repository history, serves a
 | v011   | autonomy_violation          | hybrid         | Detect forced action against one's will |
 | v012   | institutional_trust         | semantic       | Detect systemic or institutional betrayal |
 
-## 4. Core Implementation Logic (The "Kernel")
+## 4. Core Implementation Logic
 
 The system processes input through:
-1. Hybrid Detection (keyword patterns + semantic similarity using SentenceTransformer)
-2. Weighted Scoring (each vector contributes according to its calibrated weight)
-3. Nuance Dampening Layer (special logic for complex "toxic environment + strong determination" cases)
-4. Final Ethical Score + Full Traceable Reasoning
+1. Hybrid Detection (keyword patterns + semantic similarity)
+2. Weighted Scoring (each vector has a calibrated weight)
+3. Nuance Dampening Layer (for complex "toxic environment + strong determination" cases)
+4. Final Ethical Score with full traceable reasoning
 
-All logic is classical, deterministic, and fully auditable.
+All logic is classical, deterministic, and auditable.
 
 ## 5. Prior Art & Legal Notice
 
 This framework is released under the AGPL-3.0 license as a public good. The author asserts moral rights as the originator of the SEMEV-12 logic. This document serves as formal prior art for the specific combination and implementation of these 12 vectors.
-
-Any commercial entity using this framework in a closed or networked service must comply with AGPL-3.0 obligations.
-
----
-
-
-
