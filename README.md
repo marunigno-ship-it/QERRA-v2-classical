@@ -206,7 +206,7 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8.5`
+**Version:** `1.8.7`
 **Stage:** Stable core engine with active development on ROS 2 integration
 and nuance refinement.
 
@@ -216,7 +216,7 @@ The project is actively seeking real-world integration and community feedback.
 
 **Known limitations:**
 
-- The current engine actively implements and scores **11 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v006, v007, v008, v009, v010, v011). The remaining 1 vector (v012) is defined in the framework and reserved for the final release.
+- The current engine actively implements and scores **11 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v006, v007, v008, v009, v010, v011). The remaining vector (v012) is defined in the framework and ready for final activation.
   The remaining 3 vectors are defined in the framework and reserved for
   future releases.
 - Hybrid detection means highly indirect or heavily implicit language may not
