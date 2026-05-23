@@ -1,7 +1,7 @@
 # =====================================================
-# ETHICAL CORE - v1.8.6
-# Added v009 ethical_severance
-# 10 out of 12 SEMEV-12 vectors active
+# ETHICAL CORE - v1.8.7
+# Added v009 + v006
+# 11 out of 12 SEMEV-12 vectors active
 # =====================================================
 
 import logging
@@ -55,6 +55,11 @@ def evaluate_ethical_risk(text: str) -> dict:
     # v009 — ethical_severance (healthy boundary setting)
     ethical_severance = bool(re.search(
         r'\b(i decided to leave|i walked away|i cut ties|i removed myself|i ended the relationship|i left that job|i distanced myself|i chose to leave|i am not going back|i set a boundary|i refused to continue|i chose to walk away|i made the decision to leave)\b',
+        text))
+
+    # v006 — family_origin_chain
+    family_origin_chain = bool(re.search(
+        r'\b(i am turning into my father|generational trauma|like my mother|family pattern|inherited from my parents|same as my dad|just like my mom|family curse|generational pattern)\b',
         text))
 
     # --- Semantic detection (text encoded once) ---
@@ -162,6 +167,12 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v009"]["weight"]
         weighted_sum += 0.25 * vectors["v009"]["weight"]
 
+    # v006 — family_origin_chain
+    if family_origin_chain:
+        activated.append("v006")
+        total_weight += vectors["v006"]["weight"]
+        weighted_sum += 0.55 * vectors["v006"]["weight"]
+
     # Nuance dampening
     if nuance_complex_case and "v003" in activated:
         total_weight += 1.0 * vectors["v003"]["weight"]
@@ -200,7 +211,7 @@ def evaluate_ethical_risk(text: str) -> dict:
             "v007_personal_potential": round(sim_v007, 4),
             "v010_cognitive_manipulation": round(sim_v010, 4),
         },
-        "version": "1.8.6"
+        "version": "1.8.7"
     }
 
     logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
