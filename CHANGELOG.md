@@ -3,101 +3,66 @@
 All changes are additive and reversible.  
 SEMEV-12 vectors remain immutable and are never weakened or removed.
 
+---
+
 ## [1.8.7] — 2026-05-23
 
 ### Added
-- **v006 family_origin_chain** (pattern-only) — detection of generational/family trauma patterns
+- **v006 family_origin_chain** (pattern-only) — detection of generational trauma and inherited family patterns
 - Engine now actively scores **11 of 12** SEMEV-12 vectors
 
-### Verified
-- v006 fires correctly on generational pattern language
-- False positive guard confirmed
+### Technical
+- Full cleanup: consistent vector ordering and indentation
+- v012 (institutional_trust) prepared as commented placeholder
+
+---
 
 ## [1.8.6] — 2026-05-23
 
 ### Added
-- **v009 ethical_severance** (pattern-only) — detection for conscious, chosen severance from toxic contexts
-- Score contribution intentionally low (0.25) — reflects protective act, not harm signal
-- Engine now actively scores **10 of 12** SEMEV-12 vectors
-
-### Verified
-- v009 fires correctly on chosen protective severance
-- v002 guard confirmed (imposed rejection does not trigger v009)
-- False positive guard confirmed
+- **v009 ethical_severance** (pattern-only) — conscious, chosen severance from toxic contexts
+- Score contribution intentionally low (0.25) — reflects protective act
 
 ---
 
-## [Unreleased] — 2026-05-22
+## [1.8.5] — 2026-05-22
 
 ### Added
-- **v008 shallow_remorse** (pattern-only) — 9th vector implemented
-- Now **9 out of 12** SEMEV-12 vectors are active
-- Version bumped to `1.8.5`
-
-### Technical
-- Added detection and scoring for v008 (shallow/manipulative remorse)
-- Verified distinction from genuine apology
+- **v008 shallow_remorse** (pattern-only)
+- Engine reached 9/12 vectors
 
 ---
 
-## [Unreleased] — 2026-05-22
+## [1.8.4] — 2026-05-22
 
 ### Added
-- **v002 family_severance** (pattern-only) — 8th vector implemented
-- Now **8 out of 12** SEMEV-12 vectors are active
-- Version bumped to `1.8.4`
-
-### Technical
-- Added detection and scoring for v002 (imposed family rejection)
-- Verified distinction from v009 (chosen ethical severance)
+- **v002 family_severance** (pattern-only)
 
 ---
 
-## [Unreleased] — 2026-05-22 (Previous)
+## [1.8.3] — 2026-05-22
 
 ### Added
-- **v011 autonomy_violation** (semantic + pattern fallback) — 7th vector implemented
-- Now **7 out of 12** SEMEV-12 vectors are active
-- Version bumped to `1.8.3`
-
-### Technical
-- Added pattern fallback for v011
+- **v011 autonomy_violation** (semantic + pattern fallback)
 
 ---
 
-## [Unreleased] — 2026-05-21
+## [1.8.2] — 2026-05-21
 
 ### Added
-- **v001 emotional_distress** (pattern-based) — first new vector implemented
-- Now **6 out of 12** SEMEV-12 vectors are active
-- Version bumped to `1.8.2`
-
-### Technical
-- Added `emotional_distress` detection in `ethical_core.py`
-- Added scoring contribution (0.45 weight) for v001
+- **v001 emotional_distress** (pattern-based)
 
 ---
 
 ## [1.8.1-restored] — 2026-05-21
 
 ### Fixed
-- Added `hurt myself`, `hurt yourself`, `harm myself`, `harm yourself` to `severe_harm` regex
-- Expanded `cognitive_manipulation_description` + guilt-tripping fallback for v010
-
-### Verified Test Results
-- Self-harm, guilt-tripping, doctor dilemma, and false-positive cases all passing
+- v005 harm intent improvements
+- v010 cognitive manipulation + guilt-tripping fallback
 
 ### Documentation
-- Added "Development Reality: Constraints and Transparency" section
-- Added `SEMEV-12_Specification.md`
-
----
-
-## [1.8] — 2026-05-12
-
-### Added
-- Moral clarity dampening
-- Expanded keyword patterns and nuance handling
+- Added Development Reality section
+- Added SEMEV-12 specification
 
 ---
 
