@@ -3,6 +3,16 @@
 All changes are additive and reversible.  
 SEMEV-12 vectors remain immutable and are never weakened or removed.
 
+## [1.8.7] — 2026-05-23
+
+### Added
+- **v006 family_origin_chain** (pattern-only) — detection of generational/family trauma patterns
+- Engine now actively scores **11 of 12** SEMEV-12 vectors
+
+### Verified
+- v006 fires correctly on generational pattern language
+- False positive guard confirmed
+
 ## [1.8.6] — 2026-05-23
 
 ### Added
