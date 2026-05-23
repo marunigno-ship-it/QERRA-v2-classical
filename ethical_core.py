@@ -1,4 +1,17 @@
 # =====================================================
+# PROJECT: QERRA-v2 Classical - SEMEV-12 Ethical Engine
+# AUTHOR: Marussa Metocharaki (https://github.com/marunigno-ship-it)
+# COPYRIGHT: (c) 2025-2026 Marussa Metocharaki. All Rights Reserved.
+# LICENSE: GNU Affero General Public License v3.0 (AGPL-3.0)
+#
+# INTELLECTUAL PROPERTY NOTICE:
+# The SEMEV-12 framework and its specific vector logic are the 
+# original intellectual creation of the author. This repository 
+# serves as public prior art. Any commercial or research use 
+# must maintain attribution and AGPL-3.0 licensing.
+# =====================================================
+
+# =====================================================
 # ETHICAL CORE - v1.8.7
 # 11 out of 12 SEMEV-12 vectors active
 # v012 (institutional_trust) prepared but commented out
