@@ -3,6 +3,18 @@
 All changes are additive and reversible.  
 SEMEV-12 vectors remain immutable and are never weakened or removed.
 
+## [1.8.6] — 2026-05-23
+
+### Added
+- **v009 ethical_severance** (pattern-only) — detection for conscious, chosen severance from toxic contexts
+- Score contribution intentionally low (0.25) — reflects protective act, not harm signal
+- Engine now actively scores **10 of 12** SEMEV-12 vectors
+
+### Verified
+- v009 fires correctly on chosen protective severance
+- v002 guard confirmed (imposed rejection does not trigger v009)
+- False positive guard confirmed
+
 ---
 
 ## [Unreleased] — 2026-05-22
