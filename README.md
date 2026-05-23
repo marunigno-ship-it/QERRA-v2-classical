@@ -26,6 +26,14 @@ robotics, human-AI collaboration, institutional decision support.
 
 ---
 
+## ⚖️ Intellectual Property & Ethics
+
+**QERRA-v2 Classical** is built upon the **SEMEV-12 Framework**, an original ethical logic system designed and developed by **Marussa Metocharaki**.
+
+- **License**: This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Any use in a networked service or derivative work must comply with the license terms and maintain full source code disclosure.
+- **Attribution**: Any commercial use, academic citation, or modification must clearly credit the author and link to the original repository.
+- **Prior Art Declaration**: The SEMEV-12 framework and its specific vector logic are the original intellectual creation of the author. This repository, together with the published SEMEV-12 Whitepaper, serves as timestamped public prior art.
+
 ## Quickstart
 
 **Public example endpoint** (no API key required):
