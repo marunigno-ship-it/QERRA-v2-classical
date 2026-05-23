@@ -33,6 +33,7 @@ robotics, human-AI collaboration, institutional decision support.
 - **License**: This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Any use in a networked service or derivative work must comply with the license terms and maintain full source code disclosure.
 - **Attribution**: Any commercial use, academic citation, or modification must clearly credit the author and link to the original repository.
 - **Prior Art Declaration**: The SEMEV-12 framework and its specific vector logic are the original intellectual creation of the author. This repository, together with the published SEMEV-12 Whitepaper, serves as timestamped public prior art.
+  
   **DOI (Zenodo - Prior Art):** https://doi.org/10.5281/zenodo.20356394
 
 ## Quickstart
