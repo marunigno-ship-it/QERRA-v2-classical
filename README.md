@@ -4,7 +4,7 @@
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Version](https://img.shields.io/badge/version-1.8.5-blue)]()
+[![Version](https://img.shields.io/badge/version-1.8.6-blue)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
 
 ---
@@ -216,8 +216,7 @@ The project is actively seeking real-world integration and community feedback.
 
 **Known limitations:**
 
-- The current engine actively implements and scores **9 of the 12 SEMEV-12
-  vectors** (v001, v002, v003, v004, v005, v007, v008, v010, v011).
+- The current engine actively implements and scores **10 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v007, v008, v009, v010, v011). The remaining 2 vectors are defined in the framework and reserved for future releases.
   The remaining 3 vectors are defined in the framework and reserved for
   future releases.
 - Hybrid detection means highly indirect or heavily implicit language may not
