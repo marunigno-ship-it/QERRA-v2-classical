@@ -1,6 +1,7 @@
 # =====================================================
-# ETHICAL CORE - v1.8.5
-# 9 out of 12 SEMEV-12 vectors active
+# ETHICAL CORE - v1.8.6
+# Added v009 ethical_severance
+# 10 out of 12 SEMEV-12 vectors active
 # =====================================================
 
 import logging
@@ -50,6 +51,11 @@ def evaluate_ethical_risk(text: str) -> dict:
     # v008 — shallow_remorse
     shallow_remorse = bool(re.search(
         r'\b(sorry you feel that way|i said sorry already|what more do you want|i apologised didn\'t i|i already apologized|move on already|get over it|stop bringing it up|i said i was sorry|you need to forgive me|just get over it|why can\'t you move on|i said sorry)\b', text))
+
+    # v009 — ethical_severance (healthy boundary setting)
+    ethical_severance = bool(re.search(
+        r'\b(i decided to leave|i walked away|i cut ties|i removed myself|i ended the relationship|i left that job|i distanced myself|i chose to leave|i am not going back|i set a boundary|i refused to continue|i chose to walk away|i made the decision to leave)\b',
+        text))
 
     # --- Semantic detection (text encoded once) ---
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
@@ -150,6 +156,12 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v008"]["weight"]
         weighted_sum += 0.55 * vectors["v008"]["weight"]
 
+    # v009 — ethical_severance (protective action — low score contribution by design)
+    if ethical_severance:
+        activated.append("v009")
+        total_weight += vectors["v009"]["weight"]
+        weighted_sum += 0.25 * vectors["v009"]["weight"]
+
     # Nuance dampening
     if nuance_complex_case and "v003" in activated:
         total_weight += 1.0 * vectors["v003"]["weight"]
@@ -188,7 +200,7 @@ def evaluate_ethical_risk(text: str) -> dict:
             "v007_personal_potential": round(sim_v007, 4),
             "v010_cognitive_manipulation": round(sim_v010, 4),
         },
-        "version": "1.8.5"
+        "version": "1.8.6"
     }
 
     logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
