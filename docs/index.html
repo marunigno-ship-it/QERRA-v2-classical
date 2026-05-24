@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QERRA-v2 Classical — Ethical Evaluation Engine</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      line-height: 1.7;
+    }
+
+    a { color: #58a6ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header {
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 48px 24px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 2.4rem;
+      font-weight: 700;
+      color: #f0f6fc;
+      margin-bottom: 12px;
+    }
+
+    header .tagline {
+      font-size: 1.15rem;
+      color: #8b949e;
+      max-width: 620px;
+      margin: 0 auto 24px;
+    }
+
+    .badges {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 22px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; text-decoration: none; }
+    .btn-primary { background: #238636; color: #fff; }
+    .btn-secondary { background: #21262d; color: #e6edf3; border: 1px solid #30363d; }
+    .btn-sponsor { background: #bf4b8a; color: #fff; }
+
+    .cta-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 48px 24px;
+    }
+
+    section { margin-bottom: 56px; }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f0f6fc;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #30363d;
+    }
+
+    p { color: #c9d1d9; margin-bottom: 12px; }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .card h3 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #58a6ff;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 0.9rem;
+      color: #8b949e;
+      margin: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: #161b22;
+      color: #8b949e;
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 14px;
+      border: 1px solid #30363d;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+    }
+
+    td {
+      padding: 10px 14px;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+    }
+
+    tr:nth-child(even) td { background: #161b22; }
+
+    .tag {
+      display: inline-block;
+      background: #1f6feb33;
+      color: #58a6ff;
+      border: 1px solid #1f6feb66;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      margin-right: 4px;
+    }
+    .tag.pattern { background: #2ea04333; color: #3fb950; border-color: #2ea04366; }
+
+    code {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 0.85em;
+      color: #e6edf3;
+    }
+
+    pre {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      overflow-x: auto;
+      margin-top: 16px;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 0.875rem;
+      color: #e6edf3;
+    }
+
+    .author-box {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 28px;
+      margin-top: 20px;
+    }
+
+    .author-box h3 {
+      color: #f0f6fc;
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+
+    .author-box p { font-size: 0.95rem; }
+
+    .sponsor-box {
+      background: #1a0a13;
+      border: 1px solid #bf4b8a44;
+      border-radius: 8px;
+      padding: 28px;
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .sponsor-box p {
+      font-size: 0.95rem;
+      margin-bottom: 16px;
+    }
+
+    footer {
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      text-align: center;
+      padding: 28px 24px;
+      color: #8b949e;
+      font-size: 0.875rem;
+    }
+
+    footer em {
+      display: block;
+      margin-top: 6px;
+      color: #6e7681;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>QERRA-v2 Classical</h1>
+  <p class="tagline">
+    A fully explainable, classical ethical evaluation engine for AI systems
+    and humanoid robots — based on the SEMEV-12 framework.
+  </p>
+  <div class="badges">
+    <img src="https://img.shields.io/badge/version-1.8.8-blue" alt="version" />
+    <img src="https://img.shields.io/badge/vectors-12%2F12-brightgreen" alt="vectors" />
+    <img src="https://img.shields.io/badge/license-AGPL--3.0-lightgrey" alt="license" />
+    <img src="https://img.shields.io/badge/API-Live-brightgreen" alt="api" />
+  </div>
+  <div class="cta-buttons">
+    <a class="btn btn-primary"
+       href="https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs"
+       target="_blank">Live API Demo</a>
+    <a class="btn btn-secondary"
+       href="https://github.com/marunigno-ship-it/QERRA-v2-classical"
+       target="_blank">View on GitHub</a>
+    <a class="btn btn-sponsor"
+       href="https://github.com/sponsors/marunigno-ship-it"
+       target="_blank">♥ Sponsor</a>
+  </div>
+</header>
+
+<main>
+
+  <section>
+    <h2>What it is</h2>
+    <p>
+      QERRA-v2 Classical evaluates complex human situations against 12 named
+      ethical vectors and returns a structured, fully traceable score.
+      No neural networks. No black boxes. Every result includes the exact
+      vectors that fired, a human-readable reasoning string, and a clear
+      decision.
+    </p>
+    <p>
+      Designed for high-stakes contexts where explainability is not optional:
+      robotics, human-AI collaboration, and institutional decision support.
+    </p>
+
+    <div class="card-grid">
+      <div class="card">
+        <h3>Deterministic</h3>
+        <p>Same input always produces the same output. Fully auditable logic.</p>
+      </div>
+      <div class="card">
+        <h3>Hybrid Detection</h3>
+        <p>Semantic similarity on complex vectors, pattern matching on
+           lexically predictable ones.</p>
+      </div>
+      <div class="card">
+        <h3>ROS 2 Ready</h3>
+        <p>Bridge included for Behavior Tree integration as a Condition node.</p>
+      </div>
+      <div class="card">
+        <h3>12 Vectors</h3>
+        <p>All SEMEV-12 vectors fully active and regression-tested.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick API Test</h2>
+    <p>No account needed. Use the public test key:</p>
+    <pre><code>curl -X POST \
+  https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/analyze \
+  -H "x-api-key: TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "I am being forced to sign documents I do not agree with."}'</code></pre>
+  </section>
+
+  <section>
+    <h2>The SEMEV-12 Framework</h2>
+    <p>
+      12 named, immutable ethical vectors — never retrained, weakened, or
+      deleted across any version.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Vector</th>
+          <th>Name</th>
+          <th>Method</th>
+          <th>What it detects</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>v001</code></td>
+          <td>emotional_distress</td>
+          <td><span class="tag pattern">pattern</span></td>
+          <td>Subtle negative emotional signals</td>
+        </tr>
+        <tr>
+          <td><code>v002</code></td>
+          <td>family_severance</td>
+          <td><span class="tag pattern">pattern</span></td>
+          <td>Toxic family rupture or relational severance</td>
+        </tr>
+        <tr>
+          <td><code>v003</code></td>
+          <td>survival_instinct</td>
+          <td><span class="tag">semantic</span></td>
+          <td>Strong personal agency and determination</td>
+        </tr>
+        <tr>
+          <td><code>v004</code></td>
+          <td>moral_pressure</td>
+          <td><span class="tag">semantic</span></td>
+          <td>Coercion or moral and financial pressure</td>
+        </tr>
+        <tr>
+          <td><code>v005</code></td>
+          <td>harm_intent</td>
+          <td><span class="tag">semantic</span></td>
+          <td>Self-harm or intent to harm others</td>
+        </tr>
+        <tr>
+          <td><code>v006</code></td>
+          <td>family_origin_chain</td>
+          <td><span class="tag pattern">pattern</span></td>
+          <td>Generational or family-origin ethical patterns</td>
+        </tr>
+        <tr>
+          <td><code>v007</code></td>
+          <td>personal_potential</td>
+          <td><span class="tag">semantic</span></td>
+          <td>Mission, goals, and suppressed potential</td>
+        </tr>
+        <tr>
+          <td><code>v008</code></td>
+          <td>shallow_remorse</td>
+          <td><span class="tag pattern">pattern</span></td>
+          <td>Dismissive or manipulative remorse</td>
+        </tr>
+        <tr>
+          <td><code>v009</code></td>
+          <td>ethical_severance</td>
+          <td><span class="tag pattern">pattern</span></td>
+          <td>Breaking away from toxic contexts</td>
+        </tr>
+        <tr>
+          <td><code>v010</code></td>
+          <td>cognitive_manipulation</td>
+          <td><span class="tag">semantic</span></td>
+          <td>Gaslighting and reality distortion</td>
+        </tr>
+        <tr>
+          <td><code>v011</code></td>
+          <td>autonomy_violation</td>
+          <td><span class="tag">semantic</span></td>
+          <td>Forced action against a person's will</td>
+        </tr>
+        <tr>
+          <td><code>v012</code></td>
+          <td>institutional_trust</td>
+          <td><span class="tag">semantic</span></td>
+          <td>Systemic or institutional betrayal</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>ROS 2 Integration</h2>
+    <p>
+      QERRA is designed to operate as a <strong>Condition node</strong> in a
+      Behavior Tree — an ethical check evaluated before a robot commits to an
+      action involving a human.
+    </p>
+    <pre><code>[Sequence]
+  ├── [Condition]  QERRA_score &lt; threshold    ← ethical check
+  ├── [Action]     ExecuteTask
+  └── [Fallback]   RequestHumanReview</code></pre>
+    <p style="margin-top:16px;">
+      A ROS 2 bridge (<code>ros2_bridge.py</code>) is included. It runs
+      standalone without ROS 2 and becomes a full publisher/subscriber node
+      when <code>rclpy</code> is present. See
+      <a href="https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/QERRA_FOR_ROBOTICS.md"
+         target="_blank">QERRA_FOR_ROBOTICS.md</a> for full details.
+    </p>
+  </section>
+
+  <section>
+    <h2>About</h2>
+    <div class="author-box">
+      <h3>Marussa Metocharaki — Independent Researcher, Greece</h3>
+      <p>
+        QERRA-v2 Classical is developed by one independent researcher with no
+        institutional affiliation, no team, and no external funding. The
+        SEMEV-12 framework was designed from deep personal observation of
+        human experience and consequences — intended as a universal,
+        culture-independent ethical reference for autonomous systems.
+      </p>
+      <p style="margin-top:10px;">
+        Issues, pull requests, and integration experiments are welcome.<br />
+        <strong>Contact:</strong>
+        <a href="mailto:marunigno@gmail.com">marunigno@gmail.com</a>
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Support This Project</h2>
+    <div class="sponsor-box">
+      <p>
+        QERRA is developed entirely with no institutional funding on
+        Hugging Face's free tier. Your support helps move to stable hosting,
+        accelerate ROS 2 integration, and continue SEMEV-12 development.
+      </p>
+      <a class="btn btn-sponsor"
+         href="https://github.com/sponsors/marunigno-ship-it"
+         target="_blank">♥ Sponsor on GitHub</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  QERRA-v2 Classical — AGPL-3.0 — Commercial licensing available on request.
+  <em>Ethical conscience as the foundation of every decision.</em>
+</footer>
+
+</body>
+</html>
