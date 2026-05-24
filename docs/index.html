@@ -52,17 +52,23 @@
         </div>
     </div>
 
-    <!-- What it is -->
+    <!-- What it is (Improved) -->
     <div class="max-w-screen-xl mx-auto px-6 pb-16">
         <div class="grid md:grid-cols-2 gap-x-16 gap-y-10">
             <div>
                 <h2 class="text-3xl font-semibold tracking-tight">What it is</h2>
+
                 <p class="mt-4 text-zinc-300">
-                    QERRA-v2 Classical evaluates complex human situations against 12 named ethical vectors 
-                    and returns a structured, fully traceable score. No neural networks. No black boxes.
+                    QERRA-v2 Classical is a fully explainable, classical ethical evaluation engine. 
+                    It analyses complex human situations against the <strong>SEMEV-12 framework</strong> — 
+                    12 immutable, human-centred ethical vectors — and returns a structured, fully traceable score 
+                    with clear reasoning.
                 </p>
+
                 <p class="mt-3 text-zinc-300">
-                    Designed for high-stakes contexts where explainability is not optional: 
+                    No neural networks. No black boxes. Every result shows exactly which vectors activated, 
+                    why they fired, and delivers a transparent decision. The engine is designed for high-stakes 
+                    environments where explainability and auditability are essential: 
                     <span class="text-white">robotics, human-AI collaboration, and institutional decision support</span>.
                 </p>
             </div>
@@ -118,7 +124,7 @@
                     <div class="text-xs tracking-[2px] text-emerald-400 font-medium">SCALE-UP</div>
                     <div class="mt-4 text-4xl font-semibold">€3,500</div>
                     <div class="text-sm text-zinc-400">per year</div>
-                    <div class="mt-6 text-sm">20–100 employees — unlimited internal use</div>
+                    <div class="mt-6 text-sm">20–100 employees — unlimited internal deployments</div>
                 </div>
                 <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-6">
                     <div class="text-xs tracking-[2px] text-emerald-400 font-medium">ENTERPRISE</div>
@@ -140,7 +146,6 @@
     <div class="max-w-screen-xl mx-auto px-6 py-16">
         <div class="grid lg:grid-cols-5 gap-x-12 gap-y-12">
             
-            <!-- Quick API -->
             <div class="lg:col-span-2">
                 <h3 class="font-semibold text-xl mb-4">Quick API Test</h3>
                 <pre class="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 text-sm overflow-auto"><code>curl -X POST \
@@ -150,59 +155,9 @@
   -d '{"text": "I am being forced to sign documents I do not agree with."}'</code></pre>
             </div>
 
-            <!-- Framework -->
             <div class="lg:col-span-3">
                 <h3 class="font-semibold text-xl mb-4">The SEMEV-12 Framework</h3>
                 <p class="text-sm text-zinc-400 mb-4">All 12 vectors are fully active in v1.8.8.</p>
                 
                 <div class="text-sm">
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-2 text-zinc-300">
-                        <div>v001 emotional_distress <span class="text-xs text-zinc-500">(pattern)</span></div>
-                        <div>v002 family_severance <span class="text-xs text-zinc-500">(pattern)</span></div>
-                        <div>v003 survival_instinct <span class="text-xs text-zinc-500">(semantic)</span></div>
-                        <div>v004 moral_pressure <span class="text-xs text-zinc-500">(semantic)</span></div>
-                        <div>v005 harm_intent <span class="text-xs text-zinc-500">(semantic)</span></div>
-                        <div>v006 family_origin_chain <span class="text-xs text-zinc-500">(pattern)</span></div>
-                        <div>v007 personal_potential <span class="text-xs text-zinc-500">(semantic)</span></div>
-                        <div>v008 shallow_remorse <span class="text-xs text-zinc-500">(pattern)</span></div>
-                        <div>v009 ethical_severance <span class="text-xs text-zinc-500">(pattern)</span></div>
-                        <div>v010 cognitive_manipulation <span class="text-xs text-zinc-500">(semantic)</span></div>
-                        <div>v011 autonomy_violation <span class="text-xs text-zinc-500">(semantic)</span></div>
-                        <div>v012 institutional_trust <span class="text-xs text-zinc-500">(semantic)</span></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- About + Support -->
-    <div class="max-w-screen-xl mx-auto px-6 pb-16">
-        <div class="grid md:grid-cols-2 gap-x-16 gap-y-10">
-            <div>
-                <h3 class="font-semibold mb-3">About</h3>
-                <p class="text-sm text-zinc-300">
-                    Developed by <strong>Marussa Metocharaki</strong>, independent researcher in Greece.<br>
-                    Solo project with no institutional funding.
-                </p>
-                <p class="mt-4 text-sm">
-                    <a href="mailto:marunigno@gmail.com" class="text-emerald-400">marunigno@gmail.com</a>
-                </p>
-            </div>
-            <div>
-                <h3 class="font-semibold mb-3">Support This Project</h3>
-                <p class="text-sm text-zinc-300 mb-4">Your support helps move to stable hosting and continue development.</p>
-                <a href="https://github.com/sponsors/marunigno-ship-it" target="_blank"
-                   class="inline-flex items-center gap-x-2 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-3xl text-sm">
-                    <i class="fa-brands fa-github"></i>
-                    <span>Sponsor on GitHub</span>
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <footer class="border-t border-zinc-800 py-8 text-center text-xs text-zinc-500">
-        © 2026 Marussa Metocharaki — AGPL-3.0 • Commercial licensing available
-    </footer>
-
-</body>
-</html>
+                    <
