@@ -310,6 +310,17 @@ communities is also a meaningful contribution that costs nothing.
 
 ---
 
+## Commercial Licensing
+
+QERRA-v2 Classical is free for open-source, academic, and personal use under AGPL-3.0.
+
+For proprietary, closed-source, or commercial deployments (including robotics products and SaaS), a **commercial license** is available.
+
+See [`COMMERCIAL_LICENSE.md`](./COMMERCIAL_LICENSE.md) for tiers and details.  
+A full license agreement template is available upon request.
+
+**Contact:** marunigno@gmail.com (Subject: `QERRA Commercial License Request`)
+
 ## License
 
 AGPL-3.0 — see `LICENSE` for full terms.
