@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: "QERRA-v2 Classical — Ethical Evaluation Engine"
+message: "If you use this software, please cite it using the metadata below."
+type: software
+authors:
+  - family-names: Metocharaki
+    given-names: Marussa
+    email: marunigno@gmail.com
+    country: GR
+repository-code: "https://github.com/marunigno-ship-it/QERRA-v2-classical"
+url: "https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs"
+abstract: >
+  QERRA-v2 Classical is a fully explainable, classical ethical evaluation
+  engine based on the SEMEV-12 framework — 12 immutable, human-centred
+  ethical vectors. Designed for robotics, human-AI collaboration, and
+  high-stakes decision support. No neural networks. No black boxes.
+keywords:
+  - ethics
+  - robotics
+  - explainable-ai
+  - ai-safety
+  - behavior-trees
+  - ros2
+  - semev12
+license: AGPL-3.0
+version: "1.8.8"
+date-released: "2026-05-24"
