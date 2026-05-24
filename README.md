@@ -4,7 +4,7 @@
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Version](https://img.shields.io/badge/version-1.8.7-blue)]()
+[![Version](https://img.shields.io/badge/version-1.8.8-blue)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
 
 ---
@@ -216,24 +216,17 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8.7`
-**Stage:** Stable core engine with active development on ROS 2 integration
-and nuance refinement.
+**Version:** `1.8.8` — **SEMEV-12 COMPLETE**  
+**All 12 vectors fully active and verified.**
 
-The ethical scoring engine is stable and calibrated. The API is protected,
-rate-limited, and fully documented. Canonical benchmarks are regression-tested.
-The project is actively seeking real-world integration and community feedback.
+The ethical scoring engine is stable, fully calibrated, and regression-tested.  
+All canonical benchmarks pass.
 
 **Known limitations:**
 
-- The current engine actively implements and scores **11 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v006, v007, v008, v009, v010, v011). The remaining vector (v012) is defined in the framework and ready for final activation.
-  The remaining 3 vectors are defined in the framework and reserved for
-  future releases.
-- Hybrid detection means highly indirect or heavily implicit language may not
-  activate all relevant vectors.
-- This is a research and integration tool, not a certified clinical, legal,
-  or production safety system.
-
+- All 12 SEMEV-12 vectors are now fully active.
+- Hybrid detection means highly indirect or heavily implicit language may not activate every vector.
+- This is a research and integration tool, not a certified clinical, legal, or production safety system.
 ---
 
 ## Development Reality: Constraints and Transparency
