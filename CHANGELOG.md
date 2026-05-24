@@ -5,6 +5,24 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 
 ---
 
+## [1.8.8] — 2026-05-24
+
+### Added
+- **v012 institutional_trust** (semantic + pattern fallback) — detection of systemic betrayal and institutional failure
+- All **12 SEMEV-12 vectors** now fully active and verified
+- Final weighted scoring (0.65 contribution for v012)
+
+### Verified
+- All test cases pass (v005, v012, regression, guard)
+- No regressions from previous versions
+- Nuance dampening logic intact
+
+### Technical
+- Version string updated to exactly "1.8.8"
+- Full sacred semantic descriptions and pattern detections
+
+---
+
 ## [1.8.7] — 2026-05-23
 
 ### Added
