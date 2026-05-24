@@ -4,7 +4,7 @@
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Version](https://img.shields.io/badge/version-1.8.1--restored-blue)]()
+[![Version](https://img.shields.io/badge/version-1.8.7-blue)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
 
 ---
@@ -25,6 +25,16 @@ Designed for high-stakes contexts where explainability is not optional:
 robotics, human-AI collaboration, institutional decision support.
 
 ---
+
+## ⚖️ Intellectual Property & Ethics
+
+**QERRA-v2 Classical** is built upon the **SEMEV-12 Framework**, an original ethical logic system designed and developed by **Marussa Metocharaki**.
+
+- **License**: This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Any use in a networked service or derivative work must comply with the license terms and maintain full source code disclosure.
+- **Attribution**: Any commercial use, academic citation, or modification must clearly credit the author and link to the original repository.
+- **Prior Art Declaration**: The SEMEV-12 framework and its specific vector logic are the original intellectual creation of the author. This repository, together with the published SEMEV-12 Whitepaper, serves as timestamped public prior art.
+  
+  **DOI (Zenodo - Prior Art):** https://doi.org/10.5281/zenodo.20356394
 
 ## Quickstart
 
@@ -180,7 +190,7 @@ details and open questions for the robotics community.
 ## Repository Structure
 
 ```
-├── ethical_core.py                      # SEMEV-12 scoring engine (v1.8.1)
+├── ethical_core.py                      # SEMEV-12 scoring engine (v1.8.5)
 ├── vectors.py                           # Immutable vector definitions and weights
 ├── app.py                               # FastAPI application
 ├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
@@ -206,7 +216,7 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8.1-restored`
+**Version:** `1.8.7`
 **Stage:** Stable core engine with active development on ROS 2 integration
 and nuance refinement.
 
@@ -216,9 +226,13 @@ The project is actively seeking real-world integration and community feedback.
 
 **Known limitations:**
 
-- The current engine actively implements and scores **5 of the 12 SEMEV-12 vectors** (v003, v004, v005, v007, v010). The remaining 7 vectors are defined in the framework and reserved for future releases.
-- Hybrid detection means highly indirect or heavily implicit language may not activate all relevant vectors.
-- This is a research and integration tool, not a certified clinical, legal, or production safety system.
+- The current engine actively implements and scores **11 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v006, v007, v008, v009, v010, v011). The remaining vector (v012) is defined in the framework and ready for final activation.
+  The remaining 3 vectors are defined in the framework and reserved for
+  future releases.
+- Hybrid detection means highly indirect or heavily implicit language may not
+  activate all relevant vectors.
+- This is a research and integration tool, not a certified clinical, legal,
+  or production safety system.
 
 ---
 

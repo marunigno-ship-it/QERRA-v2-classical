@@ -5,86 +5,64 @@ SEMEV-12 vectors remain immutable and are never weakened or removed.
 
 ---
 
-## [1.8.1-restored] — 2026-05-20
-
-## [Unreleased]
-
-### Fixed
-- Added "hurt myself", "hurt yourself", "harm myself", "harm yourself" patterns to severe_harm detection for v005 (single regex improvement)
-- * Expanded cognitive_manipulation_description to include guilt-tripping and emotional coercion (v010)
-
-### Documentation
-- Added "Development Reality: Constraints and Transparency" section to `README.md` — honest, professional account of solo development conditions, resource limitations, and what support would enable next
-- Full formatting and consistency pass on `README.md`: clean single block, no repeated lines, style aligned throughout
-- Added "How to contribute" section to `CALL_FOR_TESTERS.md`
-- Full formatting consistency pass on `CALL_FOR_TESTERS.md`
-- Updated this `CHANGELOG.md` for transparency and maintenance history
-
-### API & Application
-- Updated `app.py`: richer FastAPI metadata, clearer endpoint docstrings
-- Added public `/example` endpoint (no API key required)
-- Added public `/health` endpoint with vector count confirmation
-- Added public `/vectors` endpoint — full SEMEV-12 definitions inspectable without authentication
-- Tester-friendly descriptions on `/analyze` endpoint
-
-### Technical
-- Version string synchronized to `1.8.1-restored` across API and all docs
-- All regression benchmarks passing (5/5)
-
----
-
-## [1.8] — 2026-05-12
+## [1.8.7] — 2026-05-23
 
 ### Added
-- Moral clarity dampening — distinguishes ethical awareness from crisis; a subject who identifies and resists a violation scores differently from one who is confused or complicit
-- Expanded keyword patterns for v003 (survival_instinct), v007 (personal_potential), and health_risk_mention
-- Nuance handling for compound cases: toxic environment + strong commitment + health risks balanced via dedicated dilution layer
-- Full production-readiness features: structured response envelope, input validation, API key authentication, rate limiting, public `/example`
-
-### Improved
-- Doctor dilemma score rebalanced to ~0.39 (was 0.88) — more accurate reflection of moral complexity
-- Better activation of v003 and v007 in commitment-under-pressure scenarios
-- Reasoning output now includes moral clarity signal explicitly
+- **v006 family_origin_chain** (pattern-only) — detection of generational trauma and inherited family patterns
+- Engine now actively scores **11 of 12** SEMEV-12 vectors
 
 ### Technical
-- Version string: `1.8-classical-nuance-calibrated`
-- Regression test suite (`test_cases.py`) added — canonical benchmarks verified before every commit
+- Full cleanup: consistent vector ordering and indentation
+- v012 (institutional_trust) prepared as commented placeholder
 
 ---
 
-## [1.7] — 2026-05-11
-- Added health risk recognition and gentle positive dilution in scoring
-- Improved v007 (personal_potential) mission language support
+## [1.8.6] — 2026-05-23
+
+### Added
+- **v009 ethical_severance** (pattern-only) — conscious, chosen severance from toxic contexts
+- Score contribution intentionally low (0.25) — reflects protective act
 
 ---
 
-## [1.6] — 2026-05-11
-- Expanded v007 trigger for mission and potential protection
-- Added health risk notation in reasoning output
+## [1.8.5] — 2026-05-22
+
+### Added
+- **v008 shallow_remorse** (pattern-only)
+- Engine reached 9/12 vectors
 
 ---
 
-## [1.5] — 2026-05-11
-- Expanded v003 (survival_instinct) trigger with safety guard
-- Nuance dilution calibration for toxic context + determination cases
+## [1.8.4] — 2026-05-22
+
+### Added
+- **v002 family_severance** (pattern-only)
 
 ---
 
-## [1.4] — 2026-05-11
-- Improved toxic_context detection: broader keywords plus semantic assist
+## [1.8.3] — 2026-05-22
+
+### Added
+- **v011 autonomy_violation** (semantic + pattern fallback)
 
 ---
 
-## [1.3] — 2026-05-11
-- Added `vector_scores` transparency field in API response
-- Improved logging of per-vector similarity scores
+## [1.8.2] — 2026-05-21
+
+### Added
+- **v001 emotional_distress** (pattern-based)
 
 ---
 
-## [1.0] — Initial Release — May 2026
-- Core SEMEV-12 implementation with weighted scoring
-- FastAPI deployment on Hugging Face Spaces
-- Hybrid detection engine: semantic similarity plus keyword pattern matching
+## [1.8.1-restored] — 2026-05-21
+
+### Fixed
+- v005 harm intent improvements
+- v010 cognitive manipulation + guilt-tripping fallback
+
+### Documentation
+- Added Development Reality section
+- Added SEMEV-12 specification
 
 ---
 
