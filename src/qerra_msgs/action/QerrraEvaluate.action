@@ -1,0 +1,48 @@
+# =====================================================
+# QerraEvaluate.action
+# QERRA-v2 Classical — ROS 2 Action Interface
+# Package: qerra_msgs
+# =====================================================
+
+# --- GOAL ---
+# The situation text the robot needs ethically evaluated
+# before committing to an action.
+string situation_text
+
+---
+
+# --- RESULT ---
+# The complete ethical assessment from SEMEV-12.
+
+# Risk score: 0.0 = no concern, 1.0 = critical
+float32 score
+
+# Primary decision gate: "safe" or "modified"
+string decision
+
+# Human-readable label for the score band
+# e.g. "low / moderate / significant / critical ethical concern"
+string score_explanation
+
+# Full reasoning string: which vectors fired and why
+string reasoning
+
+# List of activated SEMEV-12 vector IDs e.g. ["v004", "v003", "v007"]
+string[] vectors_activated
+
+# True = evaluation came from local CPU fallback
+# False = evaluation came from remote HF API
+bool evaluation_source_local
+
+# True = evaluation completed without internal errors
+bool success
+
+# Empty on success. Contains error description if success is False.
+string error_message
+
+---
+
+# --- FEEDBACK ---
+# Real-time status updates published during evaluation.
+# Consumed by dashboards, loggers, and monitoring nodes.
+string status
