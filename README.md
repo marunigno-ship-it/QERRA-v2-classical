@@ -216,7 +216,7 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8.7`
+**Version:** `1.8.8`
 **Stage:** Stable core engine with active development on ROS 2 integration
 and nuance refinement.
 
