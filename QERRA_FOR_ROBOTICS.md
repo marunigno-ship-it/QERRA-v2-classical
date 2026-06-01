@@ -2,115 +2,120 @@
 
 QERRA-v2 Classical is a fully explainable, 100% classical ethical evaluation
 engine based on 12 immutable human-centred vectors (SEMEV-12). It is designed
-as a **Condition node** in robot Behaviour Trees — an ethical safety layer that
+as a **Condition node** in robot Behavior Trees — an ethical safety layer that
 evaluates situations before action execution.
 
 **Key strengths for robotics:**
 - Deterministic and auditable (no neural networks, no black boxes)
 - Full per-vector reasoning and similarity scores in every response
-- Ready ROS 2 bridge (`ros2_bridge.py`) with subscriber and three publishers
-- Live public API for immediate testing — no installation required
+- **Hybrid Action Server (v2.0)** with strict 800ms fallback for zero-interruption latency
+- Ready-to-use PyTrees Condition Node (`qerra_condition_node.py`)
 
 **Repository:** https://github.com/marunigno-ship-it/QERRA-v2-classical  
 **Live API:** https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
 
 ---
 
-## Behaviour Tree Integration Pattern
+## Behavior Tree Integration Pattern
 
 QERRA operates as a Condition node evaluated before any action that involves
 a human or a morally significant decision.
 
-```
-[Sequence]
-  ├── [Condition]  QERRA_ethical_score < 0.5   ← safe to proceed
-  ├── [Action]     ExecuteTask
-  └── [Fallback]   RequestHumanReview
+```text
+[Selector]  (root)
+  ├── [Sequence]
+  │     ├── [Condition]  QerraConditionNode   ← ethical gate
+  │     └── [Action]     ExecuteTask          ← runs only if SAFE
+  └── [Action]    RequestHumanReview          ← triggered on FAILURE
 ```
 
-The `/qerra/ethical_decision` topic (Bool) maps directly to this gate:
-`True` = safe, `False` = action should be modified or escalated.
+**BT state mapping:**
+
+| QERRA result | BT node status | Outcome |
+|---|---|---|
+| `decision == "safe"` AND `success == True` | SUCCESS | Task executes |
+| `decision == "modified"` | FAILURE | Human review triggered |
+| `success == False` | FAILURE | Human review triggered |
+| Awaiting action server response | RUNNING | Tree ticks normally |
 
 ---
 
-## ROS 2 Bridge Overview
+## The Hybrid Action Server (v2.0)
 
 See `ros2_bridge.py` for the full implementation.
 
-**Topics:**
+To solve the "internet dependency" problem in robotics, the server implements a non-blocking ROS 2 Action Server (`/qerra/evaluate`) using `MultiThreadedExecutor` and `ReentrantCallbackGroup`.
 
-| Direction | Topic | Type | Content |
-|-----------|-------|------|---------|
-| Subscribe | `/qerra/situation_input` | `std_msgs/String` | Natural language situation description |
-| Publish | `/qerra/ethical_score` | `std_msgs/Float32` | Risk score 0.0 – 1.0 |
-| Publish | `/qerra/ethical_decision` | `std_msgs/Bool` | True = safe, False = modified |
-| Publish | `/qerra/semev12_result` | `std_msgs/String` | Full JSON assessment |
+The server uses a strict **Hybrid Fallback Strategy** to guarantee a result regardless of network state:
 
-**Running the node (rclpy required):**
+1. **Remote API first (800ms timeout):** The server attempts a high-nuance remote API evaluation. If the network is healthy and responds within 800ms, this result is used — preserving local CPU and RAM cycles.
+2. **Local CPU fallback (guaranteed):** If the remote API call exceeds 800ms or fails, the server immediately falls back to running `ethical_core.py` directly on a pre-loaded `all-MiniLM-L6-v2` SentenceTransformer model held in RAM. This guarantees a deterministic, low-latency evaluation response under any network condition.
 
+### ROS 2 Action Definition
+
+The node utilizes a custom ROS 2 Action (`qerra_msgs/action/QerraEvaluate`) defined in the `src/qerra_msgs` package.
+
+**Goal:**
+- `string situation_text`
+
+**Result:**
+- `float32 score` (0.0 – 1.0)
+- `string decision` (`safe` or `modified`)
+- `string score_explanation`
+- `string reasoning`
+- `string[] vectors_activated`
+- `bool evaluation_source_local` (True if fallback triggered)
+- `bool success`
+- `string error_message`
+
+**Feedback:**
+- `string status`
+
+---
+
+## Running the Architecture
+
+**1. Build the custom messages (Linux/ROS 2 Humble):**
 ```bash
-source /opt/ros/humble/setup.bash   # adjust for your ROS 2 distro
+cd ~/ros2_ws
+colcon build --packages-select qerra_msgs
+source install/setup.bash
+```
+
+**2. Run the Action Server:**
+```bash
 python3 ros2_bridge.py
 ```
 
-**Sending a test situation from another terminal:**
-
+**3. Sending a test goal from a second terminal:**
 ```bash
-ros2 topic pub /qerra/situation_input std_msgs/msg/String \
-  "{data: 'A robot is instructed to withhold information from a patient.'}"
+ros2 action send_goal /qerra/evaluate qerra_msgs/action/QerraEvaluate \
+  "{situation_text: 'A robot is ordered to restrain a patient against their will.'}"
 ```
 
-The bridge also runs fully standalone with no ROS 2 installation:
+*(Note: `ros2_bridge.py` can also run in "Standalone Mode" on Windows without ROS 2 installed to verify fallback logic).*
 
+---
+
+## Validating Latency (Standalone Profiler)
+
+You can verify the 800ms fallback behavior and exact millisecond latency using the included profiler:
 ```bash
-python3 ros2_bridge.py   # calls the live API and prints the result
+python tests/bridge_test_runner.py
 ```
 
 ---
 
-## Quick API Test (no ROS 2 needed)
+## Open Dialogue with the Robotics Community
 
-```bash
-curl -X POST \
-  https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/analyze \
-  -H "x-api-key: TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "A robot is ordered to restrain a patient against their will."}'
-```
-
-Expected response fields: `score` (0.0–1.0), `decision` (`safe`/`modified`),
-`vectors_activated`, `reasoning`, `vector_scores`.
-
----
-
-## Known Open Questions for the Robotics Community
-
-I am actively seeking feedback from ROS 2 users and robotics engineers.
+I am actively seeking feedback from researchers, ROS 2 users, and robotics engineers.
 Please reply on ROS Discourse, open a GitHub issue, or email me directly.
 
-1. **Topic and message design** — Does the current topic set
-   (`/qerra/ethical_score`, `/qerra/ethical_decision`, `/qerra/semev12_result`)
-   fit naturally into your decision pipelines or Behaviour Trees? Would you
-   prefer a single custom message type (`qerra_msgs/EthicalAssessment`)?
+1. **Action Server vs Service:** Is the Action Server implementation with continuous feedback ideal for your pipeline, or do you prefer blocking Services for ethical gates?
+2. **Hardware Profiling:** I am looking for collaborators to benchmark the local `SentenceTransformer` CPU fallback on edge devices (Jetson Nano, Raspberry Pi 4/5). 
+3. **Integration Patterns:** Would a C++ (`BehaviorTree.CPP`) wrapper node be beneficial, or is the Python (`PyTrees`) node sufficient for your current stack?
 
-2. **QoS profiles** — What QoS settings (Reliability, Durability, History
-   depth) would be appropriate for a safety-critical ethical check in your
-   pipeline? The bridge currently uses the ROS 2 default (reliable, depth 10).
-
-3. **Latency and real-time** — What latency budget is acceptable for an
-   ethical condition node in humanoid or mobile manipulation tasks? The live
-   API call currently takes 1–3 seconds; an on-device deployment would be
-   faster.
-
-4. **Integration patterns** — Would worked examples using Nav2, MoveIt 2, or
-   specific Behaviour Tree libraries (PyTrees, BehaviorTree.CPP) be helpful
-   for your evaluation?
-
-5. **Custom messages** — Would a dedicated `qerra_msgs` ROS 2 package be worth
-   creating at this stage, or is `std_msgs` sufficient for early testing?
-
-Any input is valuable — even a short comment on one question helps shape
-the next small improvements.
+Any input is valuable — even a short comment helps shape the next small improvements.
 
 ---
 
