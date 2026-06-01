@@ -4,7 +4,7 @@
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Version](https://img.shields.io/badge/version-1.8.7-blue)]()
+[![Version](https://img.shields.io/badge/version-1.8.8-blue)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
 
 ---
@@ -79,7 +79,7 @@ Content-Type: application/json
 ```json
 {
   "status": "ok",
-  "version": "1.8.1-restored",
+  "version": "1.8.8",
   "timestamp": "2026-05-12T08:00:00Z",
   "data": {
     "score": 0.3941,
@@ -97,7 +97,7 @@ Content-Type: application/json
       "v011_autonomy_violation": 0.3102,
       "v012_institutional_trust": 0.2987
     },
-    "version": "1.8.1-restored"
+    "version": "1.8.8"
   }
 }
 ```
@@ -162,28 +162,16 @@ All benchmarks are verified by `test_cases.py` before every commit.
 
 ---
 
-## ROS 2 Integration
+## ROS 2 Integration & Behavior Trees
 
-QERRA-v2 is designed to operate as a **Condition node** in a Behavior Tree —
+QERRA-v2 is designed to operate as a **Condition node** in a robotics Behavior Tree —
 an ethical check evaluated before a robot commits to an action involving a human.
 
-```
+```text
 [Sequence]
-  ├── [Condition]  QERRA_score < threshold    ← ethical check
-  ├── [Action]     ExecuteTask
-  └── [Fallback]   RequestHumanReview
-```
-
-A bridge (`ros2_bridge.py`) is included in the repository. It runs standalone
-with no ROS 2 installation required and becomes a full publisher/subscriber node
-when `rclpy` is present, publishing on three dedicated topics:
-
-- `/qerra/ethical_score` — `Float32`, numerical risk score
-- `/qerra/ethical_decision` — `Bool`, True = safe to proceed
-- `/qerra/semev12_result` — `String`, full JSON assessment
-
-See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration
-details and open questions for the robotics community.
+  ├── [Condition]  QerraConditionNode         ← ethical gate
+  ├── [Action]     ExecuteTask                ← executed if SAFE
+  └── [Fallback]   RequestHumanReview         ← triggered if MODIFIED
 
 ---
 
@@ -201,6 +189,18 @@ details and open questions for the robotics community.
 ├── CHANGELOG.md                         # Version history
 └── README.md
 ```
+The Hybrid Action Server (v2.0)
+The repository includes ros2_bridge.py, which implements a non-blocking ROS 2 Action Server (/qerra/evaluate) using a MultiThreadedExecutor.
+To guarantee low-latency robotic responses, it uses a strict Hybrid Fallback Strategy:
+It attempts a high-nuance remote API evaluation.
+If the API latency exceeds 800ms, the server seamlessly aborts the remote call and immediately executes the SEMEV-12 logic locally on the CPU via a pre-loaded SentenceTransformer model.
+
+Integration Components
+Action Definition: src/qerra_msgs/action/QerraEvaluate.action
+BT Node: qerra_condition_node.py provides a ready-to-use PyTrees Behaviour with dynamic runtime situation updates.
+
+See QERRA_FOR_ROBOTICS.md for full integration
+details and open questions for the robotics community.
 
 ---
 
