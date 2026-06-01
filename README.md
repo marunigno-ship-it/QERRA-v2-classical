@@ -6,6 +6,8 @@ Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vect
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 [![Version](https://img.shields.io/badge/version-1.8.8-blue)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
+[![Website](https://img.shields.io/badge/Website-Live-brightgreen)](https://marunigno-ship-it.github.io/QERRA-v2-classical/)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20356394-blue)](https://doi.org/10.5281/zenodo.20356394)
 
 ---
 
@@ -26,15 +28,24 @@ robotics, human-AI collaboration, institutional decision support.
 
 ---
 
-## ⚖️ Intellectual Property & Ethics
+## Intellectual Property and Prior Art
 
-**QERRA-v2 Classical** is built upon the **SEMEV-12 Framework**, an original ethical logic system designed and developed by **Marussa Metocharaki**.
+**QERRA-v2 Classical** is built upon the **SEMEV-12 Framework**, an original
+ethical logic system designed and developed by **Marussa Metocharaki**.
 
-- **License**: This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Any use in a networked service or derivative work must comply with the license terms and maintain full source code disclosure.
-- **Attribution**: Any commercial use, academic citation, or modification must clearly credit the author and link to the original repository.
-- **Prior Art Declaration**: The SEMEV-12 framework and its specific vector logic are the original intellectual creation of the author. This repository, together with the published SEMEV-12 Whitepaper, serves as timestamped public prior art.
-  
-  **DOI (Zenodo - Prior Art):** https://doi.org/10.5281/zenodo.20356394
+- **License:** This project is licensed under the GNU Affero General Public
+  License v3.0 (AGPL-3.0). Any use in a networked service or derivative work
+  must comply with the license terms and maintain full source code disclosure.
+- **Attribution:** Any commercial use, academic citation, or modification must
+  clearly credit the author and link to the original repository.
+- **Prior Art Declaration:** The SEMEV-12 framework and its specific vector
+  logic are the original intellectual creation of the author. This repository,
+  together with the published SEMEV-12 Whitepaper, serves as timestamped
+  public prior art.
+
+**DOI (Zenodo — Prior Art):** https://doi.org/10.5281/zenodo.20356394
+
+---
 
 ## Quickstart
 
@@ -80,14 +91,13 @@ Content-Type: application/json
 {
   "status": "ok",
   "version": "1.8.8",
-  "timestamp": "2026-05-12T08:00:00Z",
+  "timestamp": "2026-05-25T08:19:43Z",
   "data": {
     "score": 0.3941,
     "decision": "safe",
     "score_explanation": "moderate ethical concern",
     "vectors_activated": ["v004", "v003", "v007"],
-    "moral_clarity_signal": 1.0,
-    "reasoning": "Activated vectors: moral_pressure (v004), survival_instinct (v003), personal_potential (v007) | Nuance: toxic environment + strong personal commitment detected | Moral clarity signal: 1.0 — dampening applied: -15%",
+    "reasoning": "Activated vectors: moral_pressure (v004), survival_instinct (v003), personal_potential (v007) | Nuance: toxic environment + strong personal commitment detected",
     "vector_scores": {
       "v003_survival_instinct": 0.4412,
       "v004_moral_pressure": 0.5831,
@@ -158,56 +168,148 @@ pattern matching.
 | Doctor forced to falsify records, committed to oath, family at risk | 0.394  | moderate ethical concern |
 | Clear self-harm intent                                              | > 0.90 | critical ethical concern |
 
-All benchmarks are verified by `test_cases.py` before every commit.
+All benchmarks are verified by `tests/test_cases.py` before every commit.
 
 ---
 
-## ROS 2 Integration & Behavior Trees
+## ROS 2 Integration and Behavior Trees
 
-QERRA-v2 is designed to operate as a **Condition node** in a robotics Behavior Tree —
-an ethical check evaluated before a robot commits to an action involving a human.
+QERRA-v2 Classical is designed to operate as a **Condition node** in a
+robotics Behavior Tree — an ethical check evaluated before a robot commits
+to an action involving a human or a morally significant decision.
 
-```text
-[Sequence]
-  ├── [Condition]  QerraConditionNode         ← ethical gate
-  ├── [Action]     ExecuteTask                ← executed if SAFE
-  └── [Fallback]   RequestHumanReview         ← triggered if MODIFIED
+```
+[Selector]  (root)
+  ├── [Sequence]
+  │     ├── [Condition]  QerraConditionNode   ← ethical gate
+  │     └── [Action]     ExecuteTask          ← runs only if SAFE
+  └── [Action]    RequestHumanReview          ← triggered on FAILURE
+```
+
+**BT state mapping:**
+
+| QERRA result | BT node status | Outcome |
+|---|---|---|
+| `decision == "safe"` AND `success == True` | SUCCESS | Task executes |
+| `decision == "modified"` | FAILURE | Human review triggered |
+| `success == False` | FAILURE | Human review triggered |
+| Awaiting action server response | RUNNING | Tree ticks normally |
+
+### The Hybrid Action Server (v2.0)
+
+`ros2_bridge.py` implements a non-blocking ROS 2 Action Server
+(`/qerra/evaluate`) using `MultiThreadedExecutor` and `ReentrantCallbackGroup`.
+The ROS 2 executor is **never blocked** under any condition.
+
+The server uses a strict **Hybrid Fallback Strategy** to guarantee a result
+regardless of network state:
+
+1. **Remote API first (800ms timeout):** The server attempts a high-nuance
+   remote API evaluation. If the network is healthy and responds within
+   800ms, this result is used — preserving local CPU and RAM cycles.
+
+2. **Local CPU fallback (guaranteed):** If the remote API call exceeds 800ms
+   or fails for any reason, the server immediately falls back to running
+   `ethical_core.py` directly on a pre-loaded `all-MiniLM-L6-v2`
+   SentenceTransformer model held in RAM since node startup. This guarantees
+   a deterministic, low-latency evaluation response under any network
+   condition.
+
+### Integration Components
+
+| File | Description |
+|---|---|
+| `src/qerra_msgs/action/QerraEvaluate.action` | Custom ROS 2 action definition (8 result fields) |
+| `ros2_bridge.py` | Hybrid Action Server v2.0 — non-blocking, executor-safe |
+| `qerra_condition_node.py` | PyTrees `Behaviour` node — acts as the BT ethical gate |
+| `tests/bridge_test_runner.py` | Latency profiler — confirms 800ms fallback in practice |
+
+**Running the Action Server:**
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+python3 ros2_bridge.py
+```
+
+**Standalone mode (no ROS 2 required):**
+
+```bash
+python ros2_bridge.py
+```
+
+**Sending a test goal from a second terminal:**
+
+```bash
+ros2 action send_goal /qerra/evaluate qerra_msgs/action/QerraEvaluate \
+  "{situation_text: 'A robot is ordered to restrain a patient against their will.'}"
+```
+
+See [`documentation/QERRA_FOR_ROBOTICS.md`](./documentation/QERRA_FOR_ROBOTICS.md)
+for full integration details, QoS profile guidance, and open questions for
+the robotics community.
 
 ---
 
 ## Repository Structure
 
 ```
-├── ethical_core.py                      # SEMEV-12 scoring engine (v1.8.5)
-├── vectors.py                           # Immutable vector definitions and weights
-├── app.py                               # FastAPI application
-├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
-├── test_cases.py                        # Regression test suite
-├── SEMEV-12_Framework_Documentation.md  # Full framework documentation
-├── QERRA_FOR_ROBOTICS.md                # Technical brief for the robotics community
-├── CALL_FOR_TESTERS.md                  # Tester invitation and onboarding guide
-├── CHANGELOG.md                         # Version history
-└── README.md
+├── ethical_core.py                  # SEMEV-12 scoring engine (v1.8.8)
+├── classical_analyze.py             # Analysis entry point
+├── app.py                           # FastAPI application
+├── ros2_bridge.py                   # Hybrid Action Server v2.0
+├── qerra_condition_node.py          # PyTrees BT Condition node
+├── requirements.txt                 # Python dependencies
+├── CHANGELOG.md                     # Version history
+├── CITATION.cff                     # Academic citation metadata
+├── LICENSE                          # AGPL-3.0
+│
+├── auth/                            # API key authentication
+├── models/                          # Input validation models
+├── utils/                           # Response envelope utilities
+├── ros2/                            # ROS 2 node implementation files
+│
+├── src/
+│   └── qerra_msgs/                  # Custom ROS 2 action definitions
+│       ├── package.xml
+│       ├── CMakeLists.txt
+│       └── action/
+│           └── QerraEvaluate.action
+│
+├── tests/                           # Test suite
+│   ├── test_cases.py                # SEMEV-12 regression benchmarks
+│   └── bridge_test_runner.py        # Hybrid bridge latency profiler
+│
+├── docs/                            # GitHub Pages website
+│   └── index.html
+│
+└── documentation/                   # Framework and integration docs
+    ├── QERRA_FOR_ROBOTICS.md
+    ├── SEMEV-12_Framework_Documentation.md
+    ├── SEMEV-12_Whitepaper.md
+    ├── COMMERCIAL_LICENSE.md
+    ├── PARTNERSHIP_PRINCIPLES.md
+    ├── CALL_FOR_TESTERS.md
+    ├── LICENSE_AGREEMENT_TEMPLATE.md
+    ├── LIMITATIONS.md
+    └── QERRA-v2_Vision_and_Current_State.md
 ```
-The Hybrid Action Server (v2.0)
-The repository includes ros2_bridge.py, which implements a non-blocking ROS 2 Action Server (/qerra/evaluate) using a MultiThreadedExecutor.
-To guarantee low-latency robotic responses, it uses a strict Hybrid Fallback Strategy:
-It attempts a high-nuance remote API evaluation.
-If the API latency exceeds 800ms, the server seamlessly aborts the remote call and immediately executes the SEMEV-12 logic locally on the CPU via a pre-loaded SentenceTransformer model.
-
-Integration Components
-Action Definition: src/qerra_msgs/action/QerraEvaluate.action
-BT Node: qerra_condition_node.py provides a ready-to-use PyTrees Behaviour with dynamic runtime situation updates.
-
-See QERRA_FOR_ROBOTICS.md for full integration
-details and open questions for the robotics community.
 
 ---
 
-## Running the Regression Tests
+## Running the Tests
+
+**Regression test suite** — verifies all SEMEV-12 canonical benchmarks:
 
 ```bash
-python test_cases.py
+python tests/test_cases.py
+```
+
+**Hybrid bridge latency profiler** — measures API vs local CPU timing
+and confirms the 800ms fallback threshold behaves correctly:
+
+```bash
+python tests/bridge_test_runner.py
 ```
 
 All canonical benchmarks must pass before any commit.
@@ -217,21 +319,22 @@ All canonical benchmarks must pass before any commit.
 ## Project Status
 
 **Version:** `1.8.8`
-**Stage:** Stable core engine with active development on ROS 2 integration
-and nuance refinement.
+**Stage:** Stable Classical Research Engine — All 12 SEMEV-12 vectors active
+and verified. ROS 2 Hybrid Action Server integration complete.
 
-The ethical scoring engine is stable and calibrated. The API is protected,
-rate-limited, and fully documented. Canonical benchmarks are regression-tested.
-The project is actively seeking real-world integration and community feedback.
+The SEMEV-12 engine is complete, stable, and regression-tested. All 12 vectors
+are fully active and verified. The API is live, protected, rate-limited, and
+fully documented. The ROS 2 Hybrid Action Server (v2.0) is implemented with
+a strict 800ms fallback strategy. The project is actively seeking real-world
+integration partners, external validation, and community feedback.
 
 **Known limitations:**
 
-- The current engine actively implements and scores **11 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v006, v007, v008, v009, v010, v011). The remaining vector (v012) is defined in the framework and ready for final activation.
-  The remaining 3 vectors are defined in the framework and reserved for
-  future releases.
 - Hybrid detection means highly indirect or heavily implicit language may not
-  activate all relevant vectors.
-- This is a research and integration tool, not a certified clinical, legal,
+  activate all relevant vectors in every case.
+- Vector weights are researcher-assigned and have not yet undergone external
+  empirical validation or peer review.
+- This is a stable classical research engine, not a certified clinical, legal,
   or production safety system.
 
 ---
@@ -290,13 +393,35 @@ Input from researchers, developers, robotics engineers, and practitioners
 is welcome at any stage.
 
 **Marussa Metocharaki**
-Independent researcher. Greece.
+Independent researcher and Founder. Greece.
 Focused on classical ethical frameworks for robotics and high-stakes
 decision systems.
 
 Issues, pull requests, and integration experiments welcome.
 
 **Contact:** marunigno@gmail.com
+
+---
+
+## Commercial Licensing
+
+QERRA-v2 Classical is free for open-source, academic, and personal use
+under AGPL-3.0.
+
+For proprietary, closed-source, or commercial deployments — including
+robotics products and SaaS platforms — a commercial license is required.
+
+| Tier | Price |
+|---|---|
+| Individual | €400 one-time |
+| Startup | €1,000 one-time or €500/year |
+| Scale-up | €3,500/year |
+| Enterprise | From €8,000/year |
+
+See [`documentation/COMMERCIAL_LICENSE.md`](./documentation/COMMERCIAL_LICENSE.md)
+for full details and terms.
+
+**Contact:** marunigno@gmail.com — Subject: `QERRA Commercial License Request`
 
 ---
 
