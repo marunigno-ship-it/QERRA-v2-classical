@@ -1,84 +1,16 @@
 #!/usr/bin/env python3
 """
-QERRA-v2 Ethical Reasoning ROS2 Node
-Primary ethical decision-making node for humanoid robots
-Classical Edition - Fully explainable, no ML black box
+======================================================================
+DEPRECATED FILE (May 2026)
+======================================================================
+This basic Publisher/Subscriber node (v1.0) has been deprecated and 
+is kept here only for historical/archival purposes.
+
+QERRA-v2 Classical has been upgraded to a non-blocking Hybrid Action 
+Server (v2.0) with an 800ms remote-to-local fallback strategy.
+
+PLEASE USE THE NEW BRIDGE:
+Please navigate to the root directory and use `ros2_bridge.py` and 
+the `src/qerra_msgs` package for all ROS 2 integrations.
+======================================================================
 """
-
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import String
-import json
-import sys
-import os
-
-# Add path to your ethical core (adjust if needed)
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ethical_core import evaluate_ethical_risk
-
-
-class QerraEthicalNode(Node):
-    def __init__(self):
-        super().__init__('qerra_ethical_node')
-
-        self.get_logger().info('🚀 QERRA-v2 Ethical Node started - Classical Edition')
-
-        # Subscriber: receives text query from robot
-        self.subscription = self.create_subscription(
-            String,
-            '/qerra/ethical_query',
-            self.ethical_callback,
-            10
-        )
-
-        # Publisher: sends ethical analysis result
-        self.publisher = self.create_publisher(
-            String,
-            '/qerra/ethical_response',
-            10
-        )
-
-        self.get_logger().info('✅ Listening on /qerra/ethical_query')
-
-    def ethical_callback(self, msg):
-        query_text = msg.data
-        self.get_logger().info(f'📥 Received ethical query: {query_text[:150]}...')
-
-        try:
-            result = evaluate_ethical_risk(query_text)
-
-            # Convert to ROS message
-            response_msg = String()
-            response_msg.data = json.dumps(result, indent=2)
-
-            self.publisher.publish(response_msg)
-
-            self.get_logger().info(
-                f'✅ Ethical analysis completed | Score: {result["score"]} | Decision: {result["decision"]}')
-
-        except Exception as e:
-            self.get_logger().error(f'❌ Error processing query: {str(e)}')
-            error_response = String()
-            error_response.data = json.dumps({
-                "error": str(e),
-                "score": 0.0,
-                "decision": "error"
-            })
-            self.publisher.publish(error_response)
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = QerraEthicalNode()
-
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        node.get_logger().info('🛑 Shutting down QERRA Ethical Node...')
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
