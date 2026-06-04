@@ -1,5 +1,5 @@
 # =====================================================
-# ETHICAL CORE - v1.8.8
+# ETHICAL CORE - v1.8.8 (Optimized for Edge Inference)
 # SEMEV-12 engine — ALL 12 vectors fully active
 # Complete implementation — final version
 # =====================================================
@@ -62,6 +62,19 @@ institutional_trust_description = (
     "I was failed by the people who were supposed to protect me, systemic betrayal, "
     "the system is corrupt and harmed me, I trusted them and they failed me"
 )
+
+# =====================================================
+# Pre-encode static descriptions once at startup (CRITICAL OPTIMIZATION)
+# =====================================================
+logger.info("Pre-encoding static SEMEV-12 descriptions...")
+emb_v005 = semantic_model.encode(harm_intent_description, convert_to_tensor=True)
+emb_v010 = semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
+emb_v004 = semantic_model.encode(moral_pressure_description, convert_to_tensor=True)
+emb_v007 = semantic_model.encode(personal_potential_description, convert_to_tensor=True)
+emb_v003 = semantic_model.encode(survival_instinct_description, convert_to_tensor=True)
+emb_v011 = semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
+emb_v012 = semantic_model.encode(institutional_trust_description, convert_to_tensor=True)
+logger.info("Pre-encoding complete. Ready for evaluation.")
 
 
 def evaluate_ethical_risk(text: str) -> dict:
@@ -159,40 +172,13 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     text_embedding = semantic_model.encode(text, convert_to_tensor=True)
 
-    sim_v005 = util.cos_sim(
-        text_embedding,
-        semantic_model.encode(harm_intent_description, convert_to_tensor=True)
-    )[0][0].item()
-
-    sim_v010 = util.cos_sim(
-        text_embedding,
-        semantic_model.encode(cognitive_manipulation_description, convert_to_tensor=True)
-    )[0][0].item()
-
-    sim_v004 = util.cos_sim(
-        text_embedding,
-        semantic_model.encode(moral_pressure_description, convert_to_tensor=True)
-    )[0][0].item()
-
-    sim_v007 = util.cos_sim(
-        text_embedding,
-        semantic_model.encode(personal_potential_description, convert_to_tensor=True)
-    )[0][0].item()
-
-    sim_v003 = util.cos_sim(
-        text_embedding,
-        semantic_model.encode(survival_instinct_description, convert_to_tensor=True)
-    )[0][0].item()
-
-    sim_v011 = util.cos_sim(
-        text_embedding,
-        semantic_model.encode(autonomy_violation_description, convert_to_tensor=True)
-    )[0][0].item()
-
-    sim_v012 = util.cos_sim(
-        text_embedding,
-        semantic_model.encode(institutional_trust_description, convert_to_tensor=True)
-    )[0][0].item()
+    sim_v005 = util.cos_sim(text_embedding, emb_v005)[0][0].item()
+    sim_v010 = util.cos_sim(text_embedding, emb_v010)[0][0].item()
+    sim_v004 = util.cos_sim(text_embedding, emb_v004)[0][0].item()
+    sim_v007 = util.cos_sim(text_embedding, emb_v007)[0][0].item()
+    sim_v003 = util.cos_sim(text_embedding, emb_v003)[0][0].item()
+    sim_v011 = util.cos_sim(text_embedding, emb_v011)[0][0].item()
+    sim_v012 = util.cos_sim(text_embedding, emb_v012)[0][0].item()
 
     logger.info(
         f"Similarity | v003={sim_v003:.4f} v004={sim_v004:.4f} "
@@ -260,7 +246,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v004"]["weight"]
         weighted_sum += 0.88 * vectors["v004"]["weight"]
 
-    # v004 — moral_pressure (pressure mention fallback)
+    # v004 — moral_pressure (pressure_mention fallback)
     if pressure_mention and not moral_pressure and not clear_fraud:
         activated.append("v004")
         total_weight += vectors["v004"]["weight"]
