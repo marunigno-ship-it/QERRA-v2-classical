@@ -4,7 +4,7 @@
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Version](https://img.shields.io/badge/version-1.8.8-blue)]()
+[![Version](https://img.shields.io/badge/version-2.0.0--alpha-blue)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
 [![Website](https://img.shields.io/badge/Website-Live-brightgreen)](https://marunigno-ship-it.github.io/QERRA-v2-classical/)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20356394-blue)](https://doi.org/10.5281/zenodo.20356394)
@@ -138,6 +138,8 @@ pattern matching.
 ---
 
 ## Features
+
+- **Low-Latency Local Core (v2.0.0-alpha)** — Pre-encodes SEMEV-12 descriptions globally at startup. This reduces local CPU evaluation runtime down to **~31ms** inside your workspace (network and hosting latency for the remote public API will vary).
 
 - **Hybrid detection** — semantic similarity on v003, v004, v005, v007, v010,
   v011, v012; keyword pattern matching on v001, v002, v006, v008, v009
@@ -318,7 +320,7 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8.8`
+**Version:** `2.0.0-alpha`
 **Stage:** Stable Classical Research Engine — All 12 SEMEV-12 vectors active
 and verified. ROS 2 Hybrid Action Server integration complete.
 
