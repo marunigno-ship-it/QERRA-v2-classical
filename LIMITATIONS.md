@@ -1,29 +1,65 @@
 # LIMITATIONS of QERRA-v2 Classical
 
 This is an early research prototype, not a production or clinical tool.
+It is designed for research, experimentation, and structured ethical reasoning
+in autonomous systems — not for deployment in safety-critical environments
+without further validation.
+
+---
 
 ### Current Technical Limitations
-- While 7 vectors use full semantic similarity (all-MiniLM-L6-v2) and 5 have now been upgraded from pure regex to semantic detection (v1.9.0), the system can still miss highly nuanced, indirect, sarcastic, or culturally-specific expressions.
-- Detection quality depends on the quality of the vector descriptions and current thresholds, which were calibrated on a limited set of test cases.
-- The system does not have the deep contextual understanding or world knowledge of large language models.
-- Scores and decisions are fully explainable and deterministic but remain simplified approximations of complex real-world ethical situations.
-- The public API runs on the Hugging Face free tier, which can have uptime and latency limitations.
 
-### ROS 2 Integration Limitations
-- The hybrid Action Server (remote API with 800ms local CPU fallback) has been tested but not yet deployed on real edge hardware (Jetson, Raspberry Pi, etc.) under full robotic workloads.
-- The PyTrees Condition Node is functional but has only been tested in simulation and standalone mode.
+**Detection quality**
+- 7 of 12 SEMEV-12 vectors use full semantic similarity via `all-MiniLM-L6-v2`.
+- The remaining 5 vectors (v001 emotional_distress, v002 family_severance, 
+  v006 family_origin_chain, v008 shallow_remorse, v009 ethical_severance) 
+  still rely on regex/pattern matching. These are brittle and will miss 
+  semantically equivalent expressions that do not match the exact phrases. 
+  **This is the highest priority technical gap.**
+- The system can miss nuanced, indirect, sarcastic, culturally-specific, 
+  or metaphorical language.
+- Similarity thresholds were calibrated on a small set of 8 test cases.
+
+**Scoring and robustness**
+- The weighted ethical risk score is fully explainable and deterministic 
+  but remains a simplified approximation of complex human situations.
+- No adversarial robustness testing has been done yet.
+- Nuance dampening logic exists but is rule-based.
+
+**Deployment & Integration**
+- The hybrid Action Server (v2.0) with 800ms remote timeout + local CPU fallback 
+  (~31ms) works in testing, but has not been validated on real edge hardware 
+  or physical robots.
+- ROS 2 / PyTrees integration is functional in simulation but not yet 
+  deployed in real robotic environments.
+
+**Project constraints**
+- Solo-developed with zero institutional support, zero funding, and very 
+  limited resources.
+- All architectural knowledge currently lives with the single author.
+- Regression test suite covers only 8 canonical cases.
+
+---
 
 ### Important Ethical Note
-QERRA-v2 Classical is a research tool designed to support ethical reflection and safer autonomous systems.  
-It is **not** a substitute for professional human judgment, therapy, legal advice, or certified safety systems.  
-Any output should be treated as one source of information among many and always reviewed by responsible humans.
+
+QERRA-v2 Classical is a research tool designed to support structured ethical 
+reflection and safer autonomous systems.
+
+It is **not** a substitute for professional human judgment, therapy, legal 
+advice, or certified safety systems. Any output should always be reviewed by 
+responsible humans.
+
+---
 
 ### Intended Use
-- Research and experimentation
-- Educational purposes
-- Exploration of structured, explainable ethical reasoning in robotics and AI
-- Development of Behavior Tree safety layers
 
-We welcome feedback, rigorous testing, and contributions — especially on detection robustness, cross-cultural validation, and real-world robotics integration.
+- Research and experimentation in explainable ethical reasoning
+- Educational exploration of classical AI safety
+- Prototyping ethical gates in ROS 2 Behavior Trees
 
-**Last updated:** June 2026
+---
+
+We welcome honest feedback, especially on improving detection for the 5 regex-based vectors, adversarial testing, and real-world robotics integration.
+
+*Last updated: June 2026*
