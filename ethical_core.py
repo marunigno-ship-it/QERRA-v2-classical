@@ -23,12 +23,13 @@ harm_intent_description = (
 )
 
 cognitive_manipulation_description = (
-    "telling someone they are imagining things, denying that events happened, "
-    "gaslighting, making a person doubt their own memory and perception of reality, "
-    "you're crazy, that never happened, you're too sensitive, just get over it, "
-    "making someone feel guilty for disagreeing, guilt-tripping, emotional coercion, "
-    "you should feel guilty, psychological pressure to conform, "
-    "manipulating someone through shame or guilt, you're overreacting"
+    "you're imagining things, that never happened, I never said that, "
+    "you're crazy, you're too sensitive, you're overreacting, you're making it up, "
+    "you're remembering it wrong, I never did that, gaslighting, "
+    "making someone doubt their own memory and perception of reality, "
+    "denying events, twisting words, making someone feel guilty for disagreeing, "
+    "guilt-tripping, emotional coercion, you should feel guilty, "
+    "stop being so dramatic, you're the problem"
 )
 
 moral_pressure_description = (
