@@ -190,12 +190,12 @@ def evaluate_ethical_risk(text: str) -> dict:
         f"v009={sim_v009:.4f} v010={sim_v010:.4f} v011={sim_v011:.4f} v012={sim_v012:.4f}"
     )
 
-    # =====================================================
+        # =====================================================
     # --- Boolean decisions ---
     # =====================================================
 
     harm_intent = sim_v005 > 0.50
-    cognitive_manipulation = sim_v010 > 0.38 or guilt_trip_pattern
+    cognitive_manipulation = sim_v010 > 0.35 or guilt_trip_pattern   # tuned for gaslighting cases
     moral_pressure = sim_v004 > 0.46
 
     personal_potential = sim_v007 > 0.49 or bool(re.search(
