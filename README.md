@@ -4,7 +4,7 @@
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Version](https://img.shields.io/badge/version-1.8.7-blue)]()
+[![Version](https://img.shields.io/badge/version-2.0--alpha-blue)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
 
 ---
@@ -79,7 +79,7 @@ Content-Type: application/json
 ```json
 {
   "status": "ok",
-  "version": "1.8.1-restored",
+  "version": "2.0-alpha",
   "timestamp": "2026-05-12T08:00:00Z",
   "data": {
     "score": 0.3941,
@@ -97,7 +97,7 @@ Content-Type: application/json
       "v011_autonomy_violation": 0.3102,
       "v012_institutional_trust": 0.2987
     },
-    "version": "1.8.1-restored"
+    "version": "1.9.0"
   }
 }
 ```
@@ -190,7 +190,8 @@ details and open questions for the robotics community.
 ## Repository Structure
 
 ```
-├── ethical_core.py                      # SEMEV-12 scoring engine (v1.8.5)
+├── hsr/                                 # QERRA-HSR v0.1 physical safety companion (3 vectors)
+├── ethical_core.py                      # SEMEV-12 scoring engine (v1.9.0)
 ├── vectors.py                           # Immutable vector definitions and weights
 ├── app.py                               # FastAPI application
 ├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
@@ -216,9 +217,8 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `1.8.7`
-**Stage:** Stable core engine with active development on ROS 2 integration
-and nuance refinement.
+**Version:** `2.0-alpha`
+**Stage:** Stable core engine (v1.9.0) with active development on QERRA-HSR v0.1 physical safety companion, ROS 2 integration, and nuance refinement.
 
 The ethical scoring engine is stable and calibrated. The API is protected,
 rate-limited, and fully documented. Canonical benchmarks are regression-tested.
@@ -227,8 +227,7 @@ The project is actively seeking real-world integration and community feedback.
 **Known limitations:**
 
 - The current engine actively implements and scores **11 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v006, v007, v008, v009, v010, v011). The remaining vector (v012) is defined in the framework and ready for final activation.
-  The remaining 3 vectors are defined in the framework and reserved for
-  future releases.
+- The 3 physical safety vectors are now active and implemented under the QERRA-HSR v0.1 safety companion layer.
 - Hybrid detection means highly indirect or heavily implicit language may not
   activate all relevant vectors.
 - This is a research and integration tool, not a certified clinical, legal,
