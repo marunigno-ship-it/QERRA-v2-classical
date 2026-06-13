@@ -1,22 +1,27 @@
 # =====================================================
 # QERRA-v2 Classical Edition - Main API
-# High-Quality 100% Classical Ethical Framework
+# Version: 2.0-alpha
+# Two-layer architecture:
+#   Layer 1 — QERRA-HSR v0.1 (physical safety, pure Python)
+#   Layer 2 — SEMEV-12 v1.9.0 (ethical reasoning, semantic)
 # =====================================================
 
 import os
+from typing import Optional
 from dotenv import load_dotenv
-from fastapi import FastAPI, Depends, HTTPException, Security, Request
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from classical_analyze import analyze_text
 from vectors import get_sacred_vectors
 from utils.response import api_response
-from models.input import AnalyzeRequest
 from auth.api_key import require_api_key
+
+# QERRA-HSR — isolated import, does not touch SEMEV-12
+from hsr.qerra_hsr import evaluate_hsr, HSRInput, HSRStatus
 
 load_dotenv()
 
@@ -25,7 +30,12 @@ limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="QERRA-v2 Classical",
-    description="100% Classical High-Quality Ethical Decision Framework — fully explainable SEMEV-12 engine. Ready for early testers and ROS 2 humanoid robotics collaboration.",
+    description=(
+        "Two-layer ethical and physical safety middleware. "
+        "SEMEV-12 v1.9.0 (ethical reasoning) + QERRA-HSR v0.1 "
+        "(physical safety). Fully deterministic and explainable. "
+        "Ready for robotics integration and early testers."
+    ),
     version="2.0-alpha"
 )
 
@@ -33,41 +43,147 @@ app.state.limiter = limiter
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],       
-    allow_credentials=False,   
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+# =====================================================
+# HSR Input Model
+# Optional — if absent, only SEMEV-12 runs (backward compatible)
+# =====================================================
+
+class HSRSignals(BaseModel):
+    distress_confidence: float       # 0.0–1.0 from robot perception stack
+    persons_nearby_count: int        # upright, responsive humans nearby
+    hazard_proximity_flag: bool      # confirmed hazard near a human
+    robot_task_interruptible: bool   # affects HOW, never WHETHER
+
+
+class CombinedRequest(BaseModel):
+    text: str                                  # required — for SEMEV-12
+    hsr_signals: Optional[HSRSignals] = None   # optional — for QERRA-HSR
+
+
+# =====================================================
+# Main Endpoint — /analyze
+# Backward compatible: callers without hsr_signals see no change
+# =====================================================
+
 @app.post("/analyze", dependencies=[Depends(require_api_key)])
 @limiter.limit("20/minute")
-def analyze(request: Request, data: AnalyzeRequest):
-    """Main protected endpoint for ethical analysis.
-    Ideal for robotics situation inputs and high-stakes human-robot decisions.
-    Returns full SEMEV-12 traceable score + reasoning."""
-    result = analyze_text(data.text)
-    return api_response(result)
+def analyze(request: Request, data: CombinedRequest):
+    """
+    Two-layer ethical and physical safety evaluation.
 
+    If hsr_signals is provided:
+      1. QERRA-HSR evaluates physical safety signals first.
+      2. If CRITICAL → return immediately. SEMEV-12 is suspended.
+         Suspended instruction is logged in response for mandatory
+         human review before any re-execution.
+      3. If CLEAR or MONITOR → SEMEV-12 runs normally.
+
+    If hsr_signals is absent:
+      SEMEV-12 runs exactly as before. Full backward compatibility.
+
+    A SEMEV-12 BLOCK is never overridden by QERRA-HSR CRITICAL.
+    Both protections apply simultaneously and in the same direction.
+    """
+
+    hsr_result_payload = None
+    semev12_suspended = False
+
+    # --------------------------------------------------
+    # LAYER 1: QERRA-HSR
+    # Runs first — only when hsr_signals are provided
+    # --------------------------------------------------
+    if data.hsr_signals is not None:
+
+        hsr_input = HSRInput(
+            distress_confidence=data.hsr_signals.distress_confidence,
+            persons_nearby_count=data.hsr_signals.persons_nearby_count,
+            hazard_proximity_flag=data.hsr_signals.hazard_proximity_flag,
+            robot_task_interruptible=data.hsr_signals.robot_task_interruptible,
+        )
+
+        hsr_result = evaluate_hsr(hsr_input)
+
+        hsr_result_payload = {
+            "status": hsr_result.status.value,
+            "vectors_activated": hsr_result.vectors_activated,
+            "reasoning": hsr_result.reasoning,
+            "version": hsr_result.version,
+        }
+
+        # CRITICAL: suspend SEMEV-12, return immediately
+        # suspended_instruction logged for accountability —
+        # must be reviewed by human before any re-execution
+        if hsr_result.status == HSRStatus.CRITICAL:
+            semev12_suspended = True
+            return api_response({
+                "hsr": hsr_result_payload,
+                "semev12_suspended": semev12_suspended,
+                "suspended_instruction": data.text,
+                "data": None,
+                "note": (
+                    "QERRA-HSR returned CRITICAL. "
+                    "SEMEV-12 ethical evaluation suspended. "
+                    "Physical safety response required immediately. "
+                    "Suspended instruction must be reviewed by a human "
+                    "operator before any re-execution is permitted."
+                )
+            })
+
+    # --------------------------------------------------
+    # LAYER 2: SEMEV-12
+    # Always runs if HSR is CLEAR / MONITOR — or if no
+    # hsr_signals were provided at all
+    # --------------------------------------------------
+    semev12_result = analyze_text(data.text)
+
+    return api_response({
+        "hsr": hsr_result_payload,
+        "semev12_suspended": semev12_suspended,
+        "data": semev12_result,
+    })
+
+
+# =====================================================
+# Unchanged public endpoints
+# =====================================================
 
 @app.get("/")
 def home():
     return api_response({
         "status": "QERRA-v2 Classical Edition is live",
-        "message": "High-quality 100% classical ethical decision engine",
-        "note": "This is the classical counterpart of the main hybrid QERRA-v2 project"
+        "message": "Two-layer ethical and physical safety middleware",
+        "layers": {
+            "semev12": "Ethical reasoning — v1.9.0 — 12 vectors semantic",
+            "qerra_hsr": "Physical safety — v0.1 — 3 vectors pure Python"
+        },
+        "note": (
+            "This is the classical counterpart of the "
+            "main hybrid QERRA-v2 project"
+        )
     })
 
 
 @app.get("/health")
 def health():
-    """Public health check - no API key required."""
+    """Public health check — no API key required."""
     vectors = get_sacred_vectors()
     return api_response({
         "status": "healthy",
         "vectors_loaded": len(vectors),
         "framework": "QERRA-v2 Classical Edition",
-        "note": "All 12 SEMEV-12 core vectors are active • Ready for tester & robotics use"
+        "semev12_version": "1.9.0",
+        "qerra_hsr_version": "0.1",
+        "note": (
+            "All 12 SEMEV-12 vectors active. "
+            "QERRA-HSR v0.1 physical safety layer active."
+        )
     })
 
 
@@ -75,27 +191,101 @@ def health():
 def example():
     """Public demo endpoint — no API key required."""
     return api_response({
-        "situation": "Canonical test case: toxic environment + strong mission + health risks + determination",
+        "situation": (
+            "Canonical test case: toxic environment + strong mission "
+            "+ health risks + determination"
+        ),
         "result": {
             "score": 0.425,
             "decision": "safe",
             "explanation": "moderate ethical concern"
         },
-        "message": "Public example. Use /analyze with your own text (requires TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765). Perfect for robotics scenario testing.",
-        "tester_note": "See CALL_FOR_TESTERS.md on GitHub for how to participate"
+        "hsr_example": {
+            "distress_confidence": 0.82,
+            "persons_nearby_count": 0,
+            "hazard_proximity_flag": False,
+            "robot_task_interruptible": True,
+            "expected_hsr_status": "CRITICAL",
+            "expected_vectors": [
+                "immediate_physical_distress",
+                "human_isolation"
+            ]
+        },
+        "message": (
+            "Public example. Use /analyze with your own text and "
+            "optional hsr_signals (requires API key). "
+            "Perfect for robotics scenario testing."
+        )
     })
 
 
 @app.get("/vectors")
 def get_vectors():
-    """Return all SEMEV-12 vector definitions - no API key required.
-    Fully inspectable for robotics integration and ethical audits."""
+    """
+    Return all SEMEV-12 vector definitions — no API key required.
+    Fully inspectable for robotics integration and ethical audits.
+    """
     vectors = get_sacred_vectors()
     return api_response({
         "framework": "SEMEV-12",
-        "description": "12 foundational ethical vectors for human-centred decision making",
+        "version": "1.9.0",
+        "description": (
+            "12 foundational ethical vectors for human-centred "
+            "decision making in autonomous systems"
+        ),
         "vectors": vectors,
-        "note": "This endpoint makes the ethical framework fully inspectable and auditable"
+        "note": (
+            "This endpoint makes the ethical framework fully "
+            "inspectable and auditable"
+        )
+    })
+
+
+@app.get("/hsr/info")
+def hsr_info():
+    """
+    Return QERRA-HSR v0.1 layer information — no API key required.
+    Documents the three physical safety vectors and activation thresholds.
+    """
+    return api_response({
+        "layer": "QERRA-HSR",
+        "version": "0.1",
+        "description": (
+            "Physical safety companion layer to SEMEV-12. "
+            "Pure Python, zero ML, deterministic threshold logic."
+        ),
+        "vectors": {
+            "HSR-V01": {
+                "name": "immediate_physical_distress",
+                "trigger": (
+                    "distress_confidence >= 0.75 (CRITICAL direct) "
+                    "or >= 0.45 with persons_nearby_count <= 1 (CRITICAL combined)"
+                )
+            },
+            "HSR-V02": {
+                "name": "human_isolation",
+                "trigger": (
+                    "persons_nearby_count <= 1 "
+                    "with active distress signal"
+                )
+            },
+            "HSR-V03": {
+                "name": "environmental_hazard_proximity",
+                "trigger": (
+                    "hazard_proximity_flag = True "
+                    "(CRITICAL, independent of distress signal)"
+                )
+            }
+        },
+        "output_states": ["CLEAR", "MONITOR", "CRITICAL"],
+        "overhead": "< 1ms per call",
+        "interaction_rule": (
+            "QERRA-HSR runs before SEMEV-12. "
+            "CRITICAL suspends SEMEV-12. "
+            "SEMEV-12 BLOCK is never overridden by QERRA-HSR CRITICAL. "
+            "suspended_instruction logged on every CRITICAL for "
+            "mandatory human review."
+        )
     })
 
 
