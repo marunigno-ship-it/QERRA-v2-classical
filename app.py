@@ -26,7 +26,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="QERRA-v2 Classical",
     description="100% Classical High-Quality Ethical Decision Framework — fully explainable SEMEV-12 engine. Ready for early testers and ROS 2 humanoid robotics collaboration.",
-    version="1.8.1-restored"
+    version="2.0-alpha"
 )
 
 app.state.limiter = limiter
