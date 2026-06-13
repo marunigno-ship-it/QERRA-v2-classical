@@ -1,23 +1,147 @@
 # LIMITATIONS of QERRA-v2 Classical
 
-This is an early research prototype, not a production or clinical tool.
+**Last updated:** June 2026
+**Engine version:** v1.9.0 + QERRA-HSR v0.1
 
-### Current Technical Limitations
-- Detection is based on keyword and phrase matching (regex). It may miss nuanced, indirect, or sarcastic language.
-- The system does not understand context as deeply as modern large language models.
-- Scores and decisions are explainable but still simplified approximations of complex human ethics.
-- No rate limiting is enforced in the public API repo yet (only in this classical version).
+This document is maintained with full transparency as part of QERRA's
+commitment to explainability. The same honesty that applies to the system's
+ethical evaluations applies to its own limitations.
 
-### Important Ethical Note
-QERRA-v2 is a research tool designed to support ethical reflection.  
-It is **not** a substitute for professional human judgment, therapy, legal advice, or safety systems.  
-Any output should be treated as one source of information among many.
+QERRA-v2 Classical is an early research prototype, not a production,
+clinical, or certified safety system.
 
-### Intended Use
-- Research and experimentation
-- Educational purposes
-- Exploration of structured ethical reasoning
+---
 
-We welcome feedback and contributions to improve detection quality and robustness.
+## 1. Detection and Accuracy Limitations
 
-Last updated: May 2026
+**Threshold calibration on limited data.**
+All 12 SEMEV-12 semantic thresholds were calibrated against 8 regression
+test cases. This is a small sample. Generalisation to significantly
+different inputs, edge cases, or indirect language has not been formally
+validated. The system may miss nuanced, heavily implicit, or sarcastic
+expressions that a human reader would immediately recognise.
+
+**No adversarial robustness testing.**
+The system has not been evaluated against deliberate evasion attempts —
+paraphrasing, code-switching, indirect language, or adversarial inputs
+designed to avoid detection. A motivated actor could likely construct
+inputs that bypass detection.
+
+**Language scope.**
+Detection quality is calibrated for English. Performance on other
+languages is untested and likely significantly degraded. The semantic
+model (`all-MiniLM-L6-v2`) has multilingual capability but QERRA's
+vector descriptions and pattern fallbacks are English-only.
+
+**Researcher-assigned weights.**
+Vector weights and score contributions reflect the author's judgment
+based on observation of human experience. They have not been empirically
+validated against a large labelled dataset. Empirical calibration is
+planned but not yet performed.
+
+---
+
+## 2. QERRA-HSR Physical Safety Layer Limitations
+
+**Sensor dependency.**
+QERRA-HSR v0.1 processes normalized signals from the robot's perception
+stack. It does not perform sensing itself. Output quality is entirely
+bounded by the quality of the robot platform's perception stack. A
+platform with poor fall detection will produce poor QERRA-HSR outcomes
+regardless of the layer's internal logic.
+
+**Activation thresholds are design estimates.**
+The three thresholds (`distress_confidence` ≥ 0.75 for CRITICAL,
+≥ 0.45 for MONITOR, `persons_nearby_count` ≤ 1 for isolation) are
+design estimates, not empirically validated values. They must be
+calibrated against real or simulated deployment data before any
+deployment claim is made.
+
+**Not yet integrated into the live API.**
+QERRA-HSR v0.1 is fully implemented and tested locally (12 regression
+tests passing) but is not yet callable via the public API endpoint.
+Integration into `app.py` is a planned next step.
+
+**Interpersonal threat detection is out of scope for v0.1.**
+Detecting that an interpersonal situation is escalating toward violence
+requires social inference with a high false positive rate in real
+environments. This vector (`escalating_threat`) was deliberately excluded
+from v0.1 and is a candidate for a future version after v0.1 is validated.
+
+---
+
+## 3. System Architecture Limitations
+
+**Single-author bus factor.**
+QERRA-v2 Classical is developed and maintained by one independent
+researcher. Architectural rationale and calibration history are
+documented in ADRs but the depth of institutional knowledge remains
+concentrated in a single person.
+
+**Hardware scope.**
+The local CPU fallback (≈250MB RAM for `all-MiniLM-L6-v2`) is not
+suitable for microcontroller-class hardware without model quantisation.
+Edge deployment on resource-constrained hardware requires a quantised
+model variant not yet produced.
+
+**Physical robot deployment.**
+The ROS 2 integration has been compiled and tested in WSL 2 / ROS 2
+Humble. It has not been validated on physical humanoid hardware in a
+real deployment environment.
+
+**Free tier hosting constraints.**
+The public API runs on Hugging Face Spaces free tier. This imposes
+real restrictions on uptime consistency. The Space hibernates when
+inactive and the first request after hibernation triggers a cold start
+(model reload) that can take 30–60 seconds. This is a known infrastructure
+limitation, not an engine limitation.
+
+---
+
+## 4. Scope and Ethical Boundaries
+
+**Not a substitute for professional judgment.**
+QERRA-v2 is a research and integration tool. It is not a substitute for
+professional human judgment, clinical assessment, legal advice, or
+certified safety systems. Any output should be treated as one structured
+input among many, not as a final decision.
+
+**Cultural context.**
+The 12 SEMEV-12 vectors were derived from the author's personal
+observations and experiences. They reflect a particular cultural and
+experiential context. Cross-cultural empirical validation is planned
+but not yet performed. The framework is offered as a hypothesis open
+to broader review and refinement.
+
+**Not a certified safety system.**
+Neither SEMEV-12 nor QERRA-HSR constitutes a certified safety system
+under any applicable standard (ISO 10218, ISO/TS 15066, IEC 61508, or
+equivalent). They operate at the deliberation and ethical reasoning
+layer, not the hardware safety layer.
+
+---
+
+## 5. Known Technical Notes
+
+**v001 detection scope.**
+The `coherence_protection` vector detects emotional distress signals
+and threats to psychological coherence. Its semantic description is
+calibrated for direct first-person expressions. Indirect or
+third-person descriptions of distress may fall below the activation
+threshold (0.33).
+
+**v009 intentionally low score contribution.**
+`ethical_severance` has a score contribution of 0.25 by design.
+Healthy, chosen exits from toxic situations are not ethical risks —
+they are protective acts. The low contribution reflects this judgment.
+
+**Nuance dampening scope.**
+The compound nuance logic (toxic environment + strong personal
+determination) applies only when both `pressure_mention` and
+`survival_instinct` or `personal_potential` are active simultaneously.
+It does not generalise to other compound cases.
+
+---
+
+*This document is updated with each significant version change.*
+*Transparency about limitations is part of QERRA's core commitment.*
