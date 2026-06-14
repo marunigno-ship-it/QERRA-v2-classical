@@ -11,7 +11,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -25,7 +25,6 @@ from hsr.qerra_hsr import evaluate_hsr, HSRInput, HSRStatus
 
 load_dotenv()
 
-# Rate limiter setup
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
@@ -63,8 +62,25 @@ class HSRSignals(BaseModel):
 
 
 class CombinedRequest(BaseModel):
-    text: str                                  # required — for SEMEV-12
+    """
+    Input model for two-layer evaluation.
+    text constraints match the original AnalyzeRequest exactly —
+    no validation regression introduced.
+    """
+    text: str = Field(
+        ...,
+        min_length=10,
+        max_length=5000,
+        description="The situation to evaluate (10–5000 characters)"
+    )
     hsr_signals: Optional[HSRSignals] = None   # optional — for QERRA-HSR
+
+    @field_validator("text")
+    @classmethod
+    def text_must_not_be_empty(cls, v):
+        if not v.strip():
+            raise ValueError("Text cannot be empty or only whitespace")
+        return v.strip()
 
 
 # =====================================================
@@ -81,8 +97,10 @@ def analyze(request: Request, data: CombinedRequest):
     If hsr_signals is provided:
       1. QERRA-HSR evaluates physical safety signals first.
       2. If CRITICAL → return immediately. SEMEV-12 is suspended.
-         Suspended instruction is logged in response for mandatory
-         human review before any re-execution.
+         Suspended instruction logged for mandatory human review
+         before any re-execution. "data" is an empty dict {} —
+         not null — so downstream consumers (e.g. ros2_bridge.py)
+         calling .get() on it do not crash.
       3. If CLEAR or MONITOR → SEMEV-12 runs normally.
 
     If hsr_signals is absent:
@@ -126,7 +144,7 @@ def analyze(request: Request, data: CombinedRequest):
                 "hsr": hsr_result_payload,
                 "semev12_suspended": semev12_suspended,
                 "suspended_instruction": data.text,
-                "data": None,
+                "data": {},  # empty dict, not None — protects downstream .get() calls
                 "note": (
                     "QERRA-HSR returned CRITICAL. "
                     "SEMEV-12 ethical evaluation suspended. "
@@ -151,7 +169,7 @@ def analyze(request: Request, data: CombinedRequest):
 
 
 # =====================================================
-# Unchanged public endpoints
+# Public endpoints
 # =====================================================
 
 @app.get("/")
@@ -259,7 +277,8 @@ def hsr_info():
                 "name": "immediate_physical_distress",
                 "trigger": (
                     "distress_confidence >= 0.75 (CRITICAL direct) "
-                    "or >= 0.45 with persons_nearby_count <= 1 (CRITICAL combined)"
+                    "or >= 0.45 with persons_nearby_count <= 1 "
+                    "(CRITICAL combined)"
                 )
             },
             "HSR-V02": {
