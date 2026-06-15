@@ -55,6 +55,49 @@ https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
 
 ---
 
+## Try QERRA in a Behavior Tree — 2 minutes, no ROS 2 required
+
+QERRA-v2 includes a standalone PyTrees Condition node that calls the
+live API directly over HTTP. No ROS 2 installation, no `qerra_msgs`
+package, no build step.
+
+```bash
+pip install -r requirements-pytrees.txt
+```
+
+```bash
+export QERRA_API_KEY=TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765
+python test_bt_tick.py --live
+```
+
+This runs a real Behavior Tree against the live two-layer API
+(SEMEV-12 + QERRA-HSR), showing both a **SAFE** scenario (ethical
+check passes, task executes) and a **HIGH RISK** scenario (ethical
+check blocks, robot holds and requests human review).
+
+```bash
+python test_bt_tick.py --live --risk    # high risk scenario only
+python test_bt_tick.py --live --safe    # safe scenario only
+python test_bt_tick.py                  # offline mock mode, no API call
+```
+
+To use the node in your own tree:
+
+```python
+from qerra_pytrees_node import QerraConditionNode
+
+ethical_check = QerraConditionNode(
+    name="EthicalCheck",
+    situation_text="Robot is about to enter the patient's room.",
+)
+```
+
+See [`qerra_pytrees_node.py`](./qerra_pytrees_node.py) for the full
+decision logic and optional `hsr_signals` for physical safety
+evaluation.
+
+---
+
 ## API
 
 **Endpoint:** `POST /analyze`
