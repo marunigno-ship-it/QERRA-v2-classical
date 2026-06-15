@@ -16,6 +16,13 @@
 # Standalone mode: if rclpy is not installed, the script
 # runs a direct local evaluation on a test sentence and
 # prints the result. No ROS 2 required.
+#
+# Response parsing note (June 2026):
+#   As of the QERRA-HSR v0.1 integration, /analyze returns a
+#   two-layer envelope: data = {"hsr": ..., "semev12_suspended": ...,
+#   "data": {score, decision, ...}}. _call_remote_api() unwraps this
+#   so downstream code always receives a flat SEMEV-12-shaped dict,
+#   same as before the HSR integration.
 # =====================================================
 
 import json
@@ -85,7 +92,17 @@ def _call_remote_api(situation_text: str) -> dict:
     """
     Attempt a remote call to the QERRA HF API with a strict 800ms timeout.
 
-    Returns the inner `data` dict from the API response envelope on success.
+    Returns a flat SEMEV-12-shaped dict on success:
+        {score, decision, score_explanation, reasoning, vectors_activated, ...}
+
+    Handles the two-layer response envelope introduced by QERRA-HSR v0.1:
+      - If QERRA-HSR returned CRITICAL (semev12_suspended == True), SEMEV-12
+        was not evaluated. In that case, returns a synthetic result with
+        score=0.98, decision="modified" (fails closed), using the QERRA-HSR
+        reasoning and activated vectors so the caller still receives a
+        meaningful, safety-first result.
+      - Otherwise, returns the nested SEMEV-12 result dict unchanged.
+
     Raises requests.exceptions.Timeout if the deadline is exceeded.
     Raises requests.exceptions.RequestException on any other network error.
 
@@ -101,9 +118,24 @@ def _call_remote_api(situation_text: str) -> dict:
         timeout=API_TIMEOUT_SECONDS
     )
     response.raise_for_status()
-    # Extract the nested data dict from the QERRA response envelope.
-    # Envelope format: { "status": "ok", "version": "...", "data": { ... } }
-    return response.json().get("data", {})
+    envelope = response.json()
+    inner = envelope.get("data", {})
+
+    # QERRA-HSR returned CRITICAL — SEMEV-12 was suspended, nested "data" is {}.
+    # Fail closed: synthesize a high-severity "modified" result so downstream
+    # consumers (ROS 2 action result, PyTrees node) correctly block the action.
+    if inner.get("semev12_suspended"):
+        hsr = inner.get("hsr") or {}
+        return {
+            "score": 0.98,
+            "decision": "modified",
+            "score_explanation": "critical physical safety concern (QERRA-HSR)",
+            "reasoning": hsr.get("reasoning", ""),
+            "vectors_activated": hsr.get("vectors_activated", []),
+        }
+
+    # Normal case — unwrap the nested SEMEV-12 result.
+    return inner.get("data", {})
 
 
 def _call_local_engine(situation_text: str) -> dict:
