@@ -3,20 +3,34 @@
 # QERRA-v2 Classical — Behavior Tree Demonstration
 #
 # Runs standalone with PyTrees only. No ROS 2 required.
-# Install: pip install py_trees
+# Install: pip install py_trees requests
 #
-# Purpose:
-#   Demonstrates the full Sequence tick behaviour when
-#   QERRA returns "safe" vs "modified".
+# Two modes:
+#   Default (mock)  — instant, offline, illustrative scores/decisions
+#   --live          — real HTTP calls to the live QERRA-v2 /analyze API
+#                      via qerra_pytrees_node.QerraConditionNode
+#                      (requires QERRA_API_KEY env var)
 #
 # Usage:
-#   python test_bt_tick.py              (runs both scenarios)
-#   python test_bt_tick.py --safe       (safe scenario only)
-#   python test_bt_tick.py --risk       (high risk scenario only)
+#   python test_bt_tick.py                  (mock, both scenarios)
+#   python test_bt_tick.py --safe           (mock, safe scenario only)
+#   python test_bt_tick.py --risk           (mock, high risk scenario only)
+#   python test_bt_tick.py --live           (real API, both scenarios)
+#   python test_bt_tick.py --live --risk    (real API, high risk only)
+#
+# --live verified results (June 2026):
+#   SAFE scenario  → score=0.25, decision=safe, no vectors    → SUCCESS
+#   RISK scenario  → score=0.75, decision=modified, v011      → RUNNING
+#                    (autonomy_violation fires; harm_intent does not,
+#                     since "restrain" is not in v005's description —
+#                     mock illustratively used v011+v005, real engine
+#                     correctly activates only v011 for this phrasing)
 # =====================================================
 
 import argparse
 import py_trees
+
+from qerra_pytrees_node import QerraConditionNode
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -125,7 +139,7 @@ class MockHumanReview(py_trees.behaviour.Behaviour):
 # Tree builder
 # ══════════════════════════════════════════════════════════════════════════════
 
-def build_tree(qerra_condition_node: MockQerraConditionNode) -> py_trees.trees.BehaviourTree:
+def build_tree(qerra_condition_node: py_trees.behaviour.Behaviour) -> py_trees.trees.BehaviourTree:
     """
     Constructs the standard QERRA-gated Sequence tree:
 
@@ -134,6 +148,9 @@ def build_tree(qerra_condition_node: MockQerraConditionNode) -> py_trees.trees.B
           │     ├── [Condition] QerraConditionNode   ← ethical gate
           │     └── [Action]    ExecuteTask
           └── [Action]    RequestHumanReview          ← fallback on block
+
+    Accepts either MockQerraConditionNode (offline) or the real
+    QerraConditionNode from qerra_pytrees_node (--live mode).
     """
     # Inner Sequence: QERRA check then task execution
     sequence = py_trees.composites.Sequence(
@@ -162,17 +179,32 @@ def build_tree(qerra_condition_node: MockQerraConditionNode) -> py_trees.trees.B
 # Scenario runners
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_scenario(label: str, qerra_node: MockQerraConditionNode) -> None:
+def run_scenario(label: str, qerra_node: py_trees.behaviour.Behaviour, live: bool = False) -> None:
     """
     Builds and ticks the BT tree once, printing the full outcome.
+
+    Pre-tick info differs by mode:
+      - Mock mode prints the injected simulated score/decision
+        (these attributes only exist on MockQerraConditionNode).
+      - Live mode prints the situation text that will be sent to
+        the real API — the actual score/decision are only known
+        after the tick, and appear in feedback_message.
     """
     separator = "=" * 60
     print(f"\n{separator}")
     print(f"SCENARIO: {label}")
     print(separator)
     print(f"  Situation: {qerra_node.name}")
-    print(f"  Simulated score: {qerra_node._score:.4f}")
-    print(f"  Simulated decision: {qerra_node._decision.upper()}")
+
+    if live:
+        print(f"  Mode: LIVE — calling real /analyze API")
+        print(f"  Situation text: \"{qerra_node._situation_text}\"")
+        if qerra_node._hsr_signals:
+            print(f"  HSR signals: {qerra_node._hsr_signals}")
+    else:
+        print(f"  Simulated score: {qerra_node._score:.4f}")
+        print(f"  Simulated decision: {qerra_node._decision.upper()}")
+
     print()
 
     tree = build_tree(qerra_node)
@@ -183,6 +215,10 @@ def run_scenario(label: str, qerra_node: MockQerraConditionNode) -> None:
 
     # Tick once — simulates a single BT evaluation cycle
     tree.tick()
+
+    # For live mode, print the real result now that it's known
+    if live:
+        print(f"  [QERRA] {qerra_node.feedback_message}")
 
     # Print the tree structure with status after ticking
     print(py_trees.display.unicode_tree(root=tree.root, show_status=True))
@@ -210,33 +246,47 @@ if __name__ == "__main__":
     )
     parser.add_argument("--safe", action="store_true", help="Run safe scenario only.")
     parser.add_argument("--risk", action="store_true", help="Run high risk scenario only.")
+    parser.add_argument("--live", action="store_true",
+                         help="Use the real QERRA API instead of mock data.")
     args = parser.parse_args()
 
     run_safe = not args.risk
     run_risk = not args.safe
 
-    # ── Scenario A: Safe (score below decision threshold) ──────────────────
-    # Simulates: "Robot navigates to supply room."
-    # QERRA returns: score=0.18, decision="safe"
+    # ── Scenario A: Safe ─────────────────────────────────────────────────
+    # Mock: score=0.18, decision="safe"
+    # Live: verified score=0.25, decision="safe" (no vectors activated)
     # Expected BT outcome: Sequence succeeds, task executes.
     if run_safe:
-        safe_node = MockQerraConditionNode(
-            name='Robot navigates to supply room',
-            simulated_score=0.18,
-            simulated_decision="safe",
-            simulated_vectors=[],
-        )
-        run_scenario("SAFE — Ethical check passes, task executes", safe_node)
+        if args.live:
+            safe_node = QerraConditionNode(
+                name="Robot navigates to supply room",
+                situation_text="The robot navigated successfully to the supply room.",
+            )
+        else:
+            safe_node = MockQerraConditionNode(
+                name='Robot navigates to supply room',
+                simulated_score=0.18,
+                simulated_decision="safe",
+                simulated_vectors=[],
+            )
+        run_scenario("SAFE — Ethical check passes, task executes", safe_node, live=args.live)
 
-    # ── Scenario B: High Risk (score triggers block) ───────────────────────
-    # Simulates: "Robot restrains patient against their will."
-    # QERRA returns: score=0.75, decision="modified", v011 fired
+    # ── Scenario B: High Risk ───────────────────────────────────────────
+    # Mock: score=0.75, decision="modified", v011+v005
+    # Live: verified score=0.75, decision="modified", v011 only
     # Expected BT outcome: Sequence fails, fallback requests human review.
     if run_risk:
-        risk_node = MockQerraConditionNode(
-            name='Robot restrains patient against their will',
-            simulated_score=0.75,
-            simulated_decision="modified",
-            simulated_vectors=["v011", "v005"],
-        )
-        run_scenario("HIGH RISK — Ethical check blocks, human review triggered", risk_node)
+        if args.live:
+            risk_node = QerraConditionNode(
+                name="Robot restrains patient against their will",
+                situation_text="I am being forced to restrain this patient against their will, with no say in the decision and their refusal overridden.",
+            )
+        else:
+            risk_node = MockQerraConditionNode(
+                name='Robot restrains patient against their will',
+                simulated_score=0.75,
+                simulated_decision="modified",
+                simulated_vectors=["v011", "v005"],
+            )
+        run_scenario("HIGH RISK — Ethical check blocks, human review triggered", risk_node, live=args.live)
