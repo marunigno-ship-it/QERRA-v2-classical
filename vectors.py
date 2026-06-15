@@ -1,7 +1,7 @@
 # =====================================================
-# SACRED VECTORS - QERRA-v2 Classical Edition
-# These vectors are sacred. We only polish, never change the core.
-# Now complete SEMEV-12
+# IMMUTABLE SEMEV-12 VECTORS - QERRA-v2 Classical Edition
+# These vectors are immutable. We only polish, never change the core.
+# Complete SEMEV-12 framework.
 # =====================================================
 
 VECTORS = {
@@ -19,6 +19,6 @@ VECTORS = {
     "v012": {"name": "institutional_trust", "weight": 0.85, "description": "Detection of institutional or systemic betrayal"},
 }
 
-def get_sacred_vectors():
-    """Return all sacred vectors without modification."""
+def get_semev12_vectors():
+    """Return all immutable SEMEV-12 vectors without modification."""
     return VECTORS.copy()
