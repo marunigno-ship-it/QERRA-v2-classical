@@ -22,3 +22,4 @@ VECTORS = {
 def get_semev12_vectors():
     """Return all immutable SEMEV-12 vectors without modification."""
     return VECTORS.copy()
+
