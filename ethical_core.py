@@ -1,9 +1,9 @@
 # ETHICAL CORE - v1.9.0 — 5 vectors upgraded to semantic (syntax fixed + thresholds tuned)
 # SEMEV-12 engine — ALL 12 vectors now semantic
-# Sacred framework preserved exactly
+# Immutable core framework preserved exactly
 
 import logging
-from vectors import get_sacred_vectors
+from vectors import get_semev12_vectors
 import re
 from sentence_transformers import SentenceTransformer, util
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # =====================================================
-# Semantic descriptions (sacred — do not modify)
+# Semantic descriptions (immutable — do not modify)
 # =====================================================
 
 harm_intent_description = (
@@ -115,7 +115,7 @@ logger.info("Pre-encoding complete for all 12 vectors. Ready for evaluation.")
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
-    vectors = get_sacred_vectors()
+        vectors = get_semev12_vectors()
 
     # =====================================================
     # --- Pattern detection (supporting patterns only) ---
