@@ -6,7 +6,7 @@
 from datetime import datetime, timezone
 
 # Single source of truth for version
-PROJECT_VERSION = "1.7-classical-nuance-calibrated"
+PROJECT_VERSION = "2.0-alpha"
 
 def api_response(data: dict, status: str = "ok") -> dict:
     """
