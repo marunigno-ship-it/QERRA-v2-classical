@@ -13,13 +13,19 @@ The framework was developed from deep personal observation of human experience a
 
 ## Origins and Development of SEMEV-12
 
-The development of SEMEV-12 began from direct observation of a growing gap in autonomous systems: the absence of a practical, structured ethical evaluation layer capable of guiding real-time decisions in complex environments.
+SEMEV-12 was developed from direct, first-person observation of real human ethical dilemmas rather than purely theoretical analysis. The framework emerged in early 2025 during a period of solitary work on the island of Amorgos, where the author developed a clear vision of humanoid robots entering widespread deployment. This vision brought into sharp focus a critical gap in current autonomous systems: the absence of a practical, real-time ethical evaluation layer capable of assessing proposed actions before execution.
 
-In early 2025, while living in isolation on Amorgos island with very limited resources, the author experienced a clear vision of humanoid robots like Optimus entering widespread use. This vision highlighted a fundamental problem: robots and advanced AI systems would soon be making decisions that directly affect human lives, yet no robust, embeddable mechanism existed to evaluate those decisions against consistent ethical criteria before execution.
+The 12 dimensions were shaped through three sources:
 
-This realization led to the creation of SEMEV-12, a 12-dimensional ethical evaluation framework. The core dimensions emerged from the author’s own life experiences, deep personal observation of human behaviour, and systematic reflection on universal human consequences that transcend specific cultures, regions, time periods, or legislative frameworks. Some dimensions were shaped directly by personal experiences, while others arose from a combination of personal insight and careful observation of others. The framework has been iteratively refined in the classical repository.
+**Lived experience.** Direct personal encounters with ethical pressure, gaslighting, family severance, autonomy violation, and institutional failure — conditions that recur across human contexts regardless of cultural or legislative setting.
 
-The SEMEV-12 framework was designed from the beginning as a practical tool rather than a philosophical or cultural model. It is intended to function as a computable, real-time safety layer that can be integrated into AI systems and, in the future, robotics stacks.
+**Systematic observation.** Identification of similar patterns across the lives of others, reinforcing which ethical tensions appear genuinely universal rather than context-specific.
+
+**Iterative reflection.** Sustained analysis of which human consequences are stable enough across cultures, regions, and time periods to serve as reliable computational anchors.
+
+Each vector is grounded in observable, recurring patterns of human harm or ethical tension. The framework was designed from the outset as a practical computational tool — a middleware safety layer for autonomous systems — rather than an abstract philosophical model.
+
+This experiential foundation is a deliberate methodological choice. Robust ethical frameworks for autonomous systems must be anchored in actual human consequences. Philosophical principles alone do not provide the specificity required for real-time computational evaluation.
 
 ## The Gap in Current Robotics & AI Systems
 
