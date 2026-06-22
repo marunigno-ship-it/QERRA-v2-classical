@@ -155,7 +155,11 @@ detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 
 | Vector | Name                   | Detection | What it detects                                |
 |--------|------------------------|-----------|------------------------------------------------|
-| v001   | emotional_distress     | semantic  | Subtle negative emotional signals              |
+| v001   | coherence_protection
+
+     | semantic  |  Mental and emotional coherence / distress
+
+           |
 | v002   | family_severance       | semantic  | Toxic family rupture or relational severance   |
 | v003   | survival_instinct      | semantic  | Strong personal agency and determination       |
 | v004   | moral_pressure         | semantic  | Coercion or moral and financial pressure       |
