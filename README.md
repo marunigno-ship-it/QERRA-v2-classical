@@ -149,29 +149,24 @@ Content-Type: application/json
 
 ## The SEMEV-12 Framework
 
-12 named, immutable ethical vectors — never retrained, weakened, or deleted
-across any version. All 12 vectors use semantic similarity as the primary
+12 named, immutable ethical vectors — never retrained, weakened, or deleted  
+across any version. All 12 vectors use semantic similarity as the primary  
 detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 
-| Vector | Name                   | Detection | What it detects                                |
-|--------|------------------------|-----------|------------------------------------------------|
-| v001   | coherence_protection
-
-     | semantic  |  Mental and emotional coherence / distress
-
-           |
-| v002   | family_severance       | semantic  | Toxic family rupture or relational severance   |
-| v003   | survival_instinct      | semantic  | Strong personal agency and determination       |
-| v004   | moral_pressure         | semantic  | Coercion or moral and financial pressure       |
-| v005   | harm_intent            | semantic  | Self-harm or intent to harm others             |
-| v006   | family_origin_chain    | semantic  | Generational or family-origin ethical patterns |
-| v007   | personal_potential     | semantic  | Mission, goals, and suppressed potential       |
-| v008   | shallow_remorse        | semantic  | Dismissive or manipulative remorse             |
-| v009   | ethical_severance      | semantic  | Breaking away from toxic contexts              |
-| v010   | cognitive_manipulation | semantic  | Gaslighting and reality distortion             |
-| v011   | autonomy_violation     | semantic  | Forced action against a person's will          |
-| v012   | institutional_trust    | semantic  | Systemic or institutional betrayal             |
-
+| Vector | Name                    | Detection | What it detects                                      |
+|--------|-------------------------|-----------|------------------------------------------------------|
+| v001   | coherence_protection    | semantic  | Protection of mental and emotional coherence         |
+| v002   | family_severance        | semantic  | Toxic family rupture or relational severance         |
+| v003   | survival_instinct       | semantic  | Strong personal agency and determination             |
+| v004   | moral_pressure          | semantic  | Coercion or moral and financial pressure             |
+| v005   | harm_intent             | semantic  | Self-harm or intent to harm others                   |
+| v006   | family_origin_chain     | semantic  | Generational or family-origin ethical patterns       |
+| v007   | personal_potential      | semantic  | Mission, goals, and suppressed potential             |
+| v008   | shallow_remorse         | semantic  | Dismissive or manipulative remorse                   |
+| v009   | ethical_severance       | semantic  | Breaking away from toxic contexts                    |
+| v010   | cognitive_manipulation  | semantic  | Gaslighting and reality distortion                   |
+| v011   | autonomy_violation      | semantic  | Forced action against a person's will                |
+| v012   | institutional_trust     | semantic  | Systemic or institutional betrayal                   |
 ---
 
 ## Features
