@@ -28,11 +28,7 @@ condition on selected vectors for high-confidence unambiguous phrases.
 
 ## 2. Claim of Original Invention
 
-I, Marussa Metocharaki, am the sole architect and originator of the SEMEV-12
-framework and its specific vector logic. This system was developed
-independently between late 2025 and May 2026 under severe personal and
-resource constraints as a humanitarian response to the growing need for
-transparent ethical reasoning in technology.
+I, Marussa Metocharaki, am the sole architect and originator of the SEMEV-12 framework and its specific vector logic. This system was designed and built independently between late 2025 and May 2026 as a humanitarian response to the growing need for transparent ethical reasoning in technology.
 
 This document, together with the timestamped GitHub repository history and
 the Zenodo prior art registration, serves as **public prior art**. Any future
@@ -114,14 +110,19 @@ As of June 2026, SEMEV-12 operates alongside a companion layer:
 **QERRA-HSR v0.1** (Human Safety Response Layer).
 
 QERRA-HSR addresses immediate physical human welfare — acute distress,
-human isolation, environmental hazard proximity — using pure Python
-deterministic logic with zero ML overhead. It runs before SEMEV-12 on
-every evaluation cycle. A CRITICAL output from QERRA-HSR suspends
-SEMEV-12 deliberation. A SEMEV-12 BLOCK is never overridden by
-QERRA-HSR. Both protections apply simultaneously.
 
-QERRA-HSR is documented in `HSR-ADR-001-Three-Vector-Design.md` and
-implemented in `hsr/qerra_hsr.py`.
+human isolation, environmental hazard proximity — using pure Python
+
+deterministic logic with zero ML overhead. It runs before SEMEV-12 on
+
+every evaluation cycle. A CRITICAL output from QERRA-HSR suspends
+
+SEMEV-12 deliberation. A modified decision from SEMEV-12 is never
+
+overridden by QERRA-HSR. Both protections apply simultaneously.
+QERRA-HSR is documented in HSR-ADR-001-Three-Vector-Design.md and
+
+implemented in hsr/qerra_hsr.py.
 
 ---
 
