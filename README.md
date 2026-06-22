@@ -16,10 +16,10 @@ vectors and returns a structured, fully traceable score. No neural networks.
 No black boxes. Every result includes the exact vectors that fired, a
 human-readable reasoning string, and a moral clarity signal.
 
-Detection uses a **hybrid approach**: semantic similarity via
-`sentence-transformers` on the vectors most sensitive to indirect language,
-combined with keyword pattern matching on the more lexically predictable ones.
-All scoring logic is classical, deterministic, and fully auditable.
+Detection uses **semantic similarity** via `sentence-transformers` across all
+12 vectors, with supporting regex patterns for specific high-certainty phrases
+on selected vectors. All scoring logic is classical, deterministic, and fully
+auditable.
 
 Designed for high-stakes contexts where explainability is not optional:
 robotics, human-AI collaboration, institutional decision support.
@@ -150,20 +150,20 @@ Content-Type: application/json
 ## The SEMEV-12 Framework
 
 12 named, immutable ethical vectors — never retrained, weakened, or deleted
-across any version. Detection uses a hybrid of semantic similarity and keyword
-pattern matching.
+across any version. All 12 vectors use semantic similarity as the primary
+detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 
 | Vector | Name                   | Detection | What it detects                                |
 |--------|------------------------|-----------|------------------------------------------------|
-| v001   | emotional_distress     | pattern   | Subtle negative emotional signals              |
-| v002   | family_severance       | pattern   | Toxic family rupture or relational severance   |
+| v001   | emotional_distress     | semantic  | Subtle negative emotional signals              |
+| v002   | family_severance       | semantic  | Toxic family rupture or relational severance   |
 | v003   | survival_instinct      | semantic  | Strong personal agency and determination       |
 | v004   | moral_pressure         | semantic  | Coercion or moral and financial pressure       |
 | v005   | harm_intent            | semantic  | Self-harm or intent to harm others             |
-| v006   | family_origin_chain    | pattern   | Generational or family-origin ethical patterns |
+| v006   | family_origin_chain    | semantic  | Generational or family-origin ethical patterns |
 | v007   | personal_potential     | semantic  | Mission, goals, and suppressed potential       |
-| v008   | shallow_remorse        | pattern   | Dismissive or manipulative remorse             |
-| v009   | ethical_severance      | pattern   | Breaking away from toxic contexts              |
+| v008   | shallow_remorse        | semantic  | Dismissive or manipulative remorse             |
+| v009   | ethical_severance      | semantic  | Breaking away from toxic contexts              |
 | v010   | cognitive_manipulation | semantic  | Gaslighting and reality distortion             |
 | v011   | autonomy_violation     | semantic  | Forced action against a person's will          |
 | v012   | institutional_trust    | semantic  | Systemic or institutional betrayal             |
@@ -172,8 +172,10 @@ pattern matching.
 
 ## Features
 
-- **Hybrid detection** — semantic similarity on v003, v004, v005, v007, v010,
-  v011, v012; keyword pattern matching on v001, v002, v006, v008, v009
+- **Full semantic detection** — all 12 vectors use semantic similarity via
+  `sentence-transformers` (all-MiniLM-L6-v2). Supporting regex patterns exist
+  for specific high-certainty phrases on selected vectors, but semantic
+  similarity is the primary detection mechanism for every vector.
 - **Multi-vector weighted scoring** — composite score with full per-vector
   breakdown included in every response
 - **Moral clarity dampening** — distinguishes ethical awareness from crisis;
@@ -263,15 +265,15 @@ All canonical benchmarks must pass before any commit.
 **Version:** `2.0-alpha`
 **Stage:** Stable core engine (v1.9.0) with active development on QERRA-HSR v0.1 physical safety companion, ROS 2 integration, and nuance refinement.
 
-The ethical scoring engine is stable and calibrated. The API is protected,
-rate-limited, and fully documented. Canonical benchmarks are regression-tested.
+The ethical scoring engine is stable and calibrated. All 12 SEMEV-12 vectors
+are fully active and scoring. The API is protected, rate-limited, and fully
+documented. Canonical benchmarks are regression-tested.
 The project is actively seeking real-world integration and community feedback.
 
 **Known limitations:**
 
-- The current engine actively implements and scores **11 of the 12 SEMEV-12 vectors** (v001, v002, v003, v004, v005, v006, v007, v008, v009, v010, v011). The remaining vector (v012) is defined in the framework and ready for final activation.
-- The 3 physical safety vectors are now active and implemented under the QERRA-HSR v0.1 safety companion layer.
-- Hybrid detection means highly indirect or heavily implicit language may not
+- The 3 physical safety vectors are active and implemented under the QERRA-HSR v0.1 safety companion layer.
+- Semantic detection means highly indirect or heavily implicit language may not
   activate all relevant vectors.
 - This is a research and integration tool, not a certified clinical, legal,
   or production safety system.
