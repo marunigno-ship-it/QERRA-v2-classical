@@ -4,9 +4,9 @@
 Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Version](https://img.shields.io/badge/version-2.0--alpha-blue)]()
-[![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)]()
-
+[![Website](https://img.shields.io/badge/Website-Live-blue)](https://marunigno-ship-it.github.io/QERRA-v2-classical/)
+[![Version](https://img.shields.io/badge/version-2.0--alpha-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
 ---
 
 ## What it is
