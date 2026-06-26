@@ -204,6 +204,8 @@ detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 
 All benchmarks are verified by `test_cases.py` before every commit.
 
+For the complete structured benchmark (80 verified test cases across all 12 vectors, including all findings and calibration analysis), see [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md).
+
 ---
 
 ## ROS 2 Integration
@@ -240,6 +242,7 @@ details and open questions for the robotics community.
 ├── app.py                               # FastAPI application
 ├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
 ├── test_cases.py                        # Regression test suite
+├── SEMEV-12_Benchmark_Run_01.md         # Structured benchmark — 80 verified test cases
 ├── SEMEV-12_Framework_Documentation.md  # Full framework documentation
 ├── QERRA_FOR_ROBOTICS.md                # Technical brief for the robotics community
 ├── CALL_FOR_TESTERS.md                  # Tester invitation and onboarding guide
@@ -266,7 +269,9 @@ All canonical benchmarks must pass before any commit.
 
 The ethical scoring engine is stable and calibrated. All 12 SEMEV-12 vectors
 are fully active and scoring. The API is protected, rate-limited, and fully
-documented. Canonical benchmarks are regression-tested.
+documented. Canonical benchmarks are regression-tested. SEMEV-12 Benchmark
+Run 01 — 80 structured test cases across all 12 vectors — is complete and
+committed to the repository.
 The project is actively seeking real-world integration and community feedback.
 
 **Known limitations:**
