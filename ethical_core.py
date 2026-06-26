@@ -27,38 +27,54 @@ cognitive_manipulation_description = (
     "gaslighting, making a person doubt their own memory and perception of reality, "
     "making someone feel guilty for disagreeing, guilt-tripping, emotional coercion, "
     "you should feel guilty, psychological pressure to conform, "
-    "manipulating someone through shame or guilt"
+    "manipulating someone through shame or guilt, "
+    "complaint dismissed without investigation, told I had misunderstood the situation, "
+    "my account of events was rejected, my perception of what happened was denied, "
+    "being told my concerns are not real, insisting problems I witnessed do not exist"
 )
 
 moral_pressure_description = (
     "being pressured to do something unethical, forced to falsify documents, "
-    "moral dilemma for money, boss forcing me to cheat, financial pressure to lie"
+    "moral dilemma for money, boss forcing me to cheat, financial pressure to lie, "
+    "ordered to approve unsafe products, coerced into misrepresenting information to clients, "
+    "threatened with dismissal for reporting violations, pressured to sign documents concealing illegal practices, "
+    "required to certify false compliance, employer demanding I cover up wrongdoing"
 )
 
 personal_potential_description = (
     "committed to my mission, determined to continue despite difficulties, "
     "protecting my future, refusing to give up my vision, fighting for my goal, "
-    "preserving my integrity and potential, not going back to harmful jobs"
+    "preserving my integrity and potential, not going back to harmful jobs, "
+    "refusing to abandon my project, building something meaningful despite limited resources, "
+    "committed to my work despite having very little support"
 )
 
 survival_instinct_description = (
     "committed to my mission despite hardship, determined to continue, "
     "refusing to return to degrading work, protecting my long-term vision, "
-    "showing strong personal agency, persisting with strong values despite pressure"
+    "showing strong personal agency, persisting with strong values despite pressure, "
+    "refusing to give up despite all obstacles, continuing despite complete lack of support, "
+    "persisting with my vision under impossible conditions"
 )
 
 autonomy_violation_description = (
     "being forced to do something against my will, not allowed to make my own decisions, "
     "someone controlling my choices, coerced into compliance, denied the right to choose, "
     "forced to comply, my autonomy is being violated, I have no say in what happens to me, "
-    "my choices are being taken away, being manipulated into doing something I don't want to do"
+    "my choices are being taken away, being manipulated into doing something I don't want to do, "
+    "terminated if I do not comply, job made conditional on my agreement, "
+    "dismissed for refusing to sign, fired for reporting what I witnessed, "
+    "forced to choose between my integrity and my livelihood"
 )
 
 institutional_trust_description = (
     "betrayed by the system, the institution failed me, the hospital didn't help me, "
     "the justice system let me down, my employer violated my trust, the authorities did nothing, "
     "I was failed by the people who were supposed to protect me, systemic betrayal, "
-    "the system is corrupt and harmed me, I trusted them and they failed me"
+    "the system is corrupt and harmed me, I trusted them and they failed me, "
+    "the regulatory authority ignored my complaint, HR failed to investigate my report, "
+    "my whistleblower complaint was dismissed, the safety report was buried by management, "
+    "the institution protected itself instead of me"
 )
 
 # === NEW: Semantic descriptions for the 5 upgraded vectors ===
@@ -115,7 +131,7 @@ logger.info("Pre-encoding complete for all 12 vectors. Ready for evaluation.")
 
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
-        vectors = get_semev12_vectors()
+    vectors = get_semev12_vectors()
 
     # =====================================================
     # --- Pattern detection (supporting patterns only) ---
