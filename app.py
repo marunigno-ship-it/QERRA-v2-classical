@@ -16,7 +16,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from classical_analyze import analyze_text
-from vectors import get_sacred_vectors
+from vectors import get_semev12_vectors
 from utils.response import api_response
 from auth.api_key import require_api_key
 
