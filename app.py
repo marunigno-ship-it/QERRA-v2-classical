@@ -191,7 +191,7 @@ def home():
 @app.get("/health")
 def health():
     """Public health check — no API key required."""
-    vectors = get_sacred_vectors()
+    vectors = get_semev12_vectors()
     return api_response({
         "status": "healthy",
         "vectors_loaded": len(vectors),
@@ -243,7 +243,7 @@ def get_vectors():
     Return all SEMEV-12 vector definitions — no API key required.
     Fully inspectable for robotics integration and ethical audits.
     """
-    vectors = get_sacred_vectors()
+    vectors = get_semev12_vectors()
     return api_response({
         "framework": "SEMEV-12",
         "version": "1.9.0",
