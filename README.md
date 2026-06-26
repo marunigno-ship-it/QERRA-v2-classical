@@ -123,22 +123,17 @@ Content-Type: application/json
 {
   "status": "ok",
   "version": "2.0-alpha",
-  "timestamp": "2026-05-12T08:00:00Z",
+  "timestamp": "2026-06-26T12:00:00Z",
   "data": {
     "score": 0.3941,
     "decision": "safe",
     "score_explanation": "moderate ethical concern",
+    "reasoning": "Activated vectors: v004, v003, v007 | Nuance: toxic environment + strong personal commitment detected",
     "vectors_activated": ["v004", "v003", "v007"],
-    "moral_clarity_signal": 1.0,
-    "reasoning": "Activated vectors: moral_pressure (v004), survival_instinct (v003), personal_potential (v007) | Nuance: toxic environment + strong personal commitment detected | Moral clarity signal: 1.0 — dampening applied: -15%",
     "vector_scores": {
       "v003_survival_instinct": 0.4412,
       "v004_moral_pressure": 0.5831,
-      "v005_harm_intent": 0.1203,
-      "v007_personal_potential": 0.4897,
-      "v010_cognitive_manipulation": 0.2341,
-      "v011_autonomy_violation": 0.3102,
-      "v012_institutional_trust": 0.2987
+      "v007_personal_potential": 0.4897
     },
     "version": "1.9.0"
   }
