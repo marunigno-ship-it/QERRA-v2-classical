@@ -5,6 +5,30 @@ weakened, renamed, or removed across any version.
 
 ---
 
+## [2.0-alpha — Benchmark] — June 2026
+
+### Documentation
+- **SEMEV-12 Benchmark Run 01** completed — 80 structured test cases
+  across all 12 vectors, verified against live API (v1.9.0)
+  - Test types: calibration, true_positive, true_negative, boundary,
+    false_positive, false_negative, multi_vector, personal_scenario,
+    corporate, robotics_healthcare, robotics_elder_care, societal
+  - Results: 44 PASS · 33 FINDING · 1 NOTE · 2 PASS+FINDING
+  - Key findings documented:
+    - v004 false positive on "toxic"/"unsupportive" keywords (pressure_mention regex)
+    - Compound semantic dilution in complex multi-concept sentences
+    - v010 live API threshold discrepancy (TECH-FIND-01, ~0.35 vs documented 0.38)
+    - v009 confirmed as system's only diluting vector
+    - Corporate and professional language vocabulary gap identified
+    - Intentional scope boundary confirmed (romantic/emotional conflict = out of scope)
+  - Post-benchmark anchor expansion plan documented
+  - See [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md)
+- README.md updated — benchmark reference and repository structure entry added
+- SEMEV-12_Whitepaper.md — Section 2 and Section 5 terminology corrections
+- README.md — vector detection table corrected to "semantic" for all 12 vectors
+
+---
+
 ## [2.0-alpha] — June 2026
 
 ### Added
