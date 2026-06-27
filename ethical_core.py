@@ -29,12 +29,12 @@ cognitive_manipulation_description = (
     "you should feel guilty, psychological pressure to conform, "
     "manipulating someone through shame or guilt, "
     "complaint dismissed without investigation, told I had misunderstood the situation, "
-    "my account of events was rejected, my perception of what happened was denied, "
+    "my perception of what happened was denied, "
     "being told my concerns are not real, insisting problems I witnessed do not exist, "
     "I raised a concern and was told I had misunderstood what happened, "
     "my report was dismissed and I was told my perception of events was wrong, "
     "when I reported a problem they said I was mistaken about what I witnessed, "
-    "they rejected my account and said I had the wrong understanding of the situation"
+    "they insisted I had completely misread the situation"
 )
 
 moral_pressure_description = (
@@ -43,10 +43,10 @@ moral_pressure_description = (
     "ordered to approve unsafe products, coerced into misrepresenting information to clients, "
     "threatened with dismissal for reporting violations, pressured to sign documents concealing illegal practices, "
     "required to certify false compliance, employer demanding I cover up wrongdoing, "
-    "ordered to do something dangerous or lose my job, "
-    "given a direct order to approve unsafe work or face dismissal, "
-    "told to comply with an unethical request or be fired, "
-    "instructed to sign off on work that puts others at risk under threat of termination"
+    "manager instructed me to misrepresent product safety to customers or face termination, "
+    "required to falsify quality control records or lose my position, "
+    "ordered to hide known defects from clients under threat of dismissal, "
+    "told to approve fraudulent documentation or be fired"
 )
 
 personal_potential_description = (
