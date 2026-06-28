@@ -359,6 +359,19 @@ communities is also a meaningful contribution that costs nothing.
 
 ---
 
+## Development Tools & AI Assistance
+
+QERRA-v2 Classical was developed with AI assistance as an active part of the engineering and research process.
+
+**AI tools used:**
+- **Claude (Anthropic)** — primary engineering co-pilot: architecture decisions, SEMEV-12 vector design, scoring logic, benchmark design and execution, anchor expansion, documentation, and strategic planning
+- **Grok (xAI)** — parallel co-pilot: benchmark continuation, anchor expansion verification, and cross-validation of technical decisions
+- **Google AI Studio (Google DeepMind)** — specialist tasks: ROS 2 colcon workspace structuring and Docker containerization planning
+
+All design decisions, framework logic, vector definitions, and final implementation choices were made and validated by the author. AI tools were used as engineering co-pilots — accelerating development, not replacing authorship or intellectual ownership.
+
+The SEMEV-12 framework, its 12 vectors, their semantic descriptions, scoring architecture, and nuance logic are the original intellectual creation of **Marussa Metocharaki**.
+
 ## License
 
 AGPL-3.0 — see `LICENSE` for full terms.
