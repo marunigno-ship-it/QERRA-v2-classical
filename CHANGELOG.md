@@ -5,6 +5,11 @@ weakened, renamed, or removed across any version.
 
 ---
 
+## [2.0.0-alpha] - 2026-06-29
+- Official Zenodo publication of QERRA-v2 Classical.
+- Integrated QERRA-HSR v0.1 physical safety companion layer (3 vectors: Distress, Isolation, Hazards).
+- Upgraded remaining 5 vectors to use SentenceTransformer semantic similarity (all 12 vectors now semantic).
+
 ## [2.0-alpha — Benchmark] — June 2026
 
 ### Documentation
