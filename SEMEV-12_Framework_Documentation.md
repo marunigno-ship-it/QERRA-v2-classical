@@ -107,11 +107,13 @@ These 12 core dimensions form a coherent, practical framework that can be comput
 
 ### Implementation in the Classical Version
 
-The classical version of QERRA-v2 (v1.7) is the current working implementation of the SEMEV-12 framework. It is a functional FastAPI service that receives text input and returns a structured ethical assessment based on the 12 core dimensions.
+The classical version of QERRA-v2 (v1.9.0 / API version 2.0-alpha) is the current working implementation of the SEMEV-12 framework. It is a functional FastAPI service that receives text input and returns a structured ethical assessment based on the 12 core dimensions.
 
-The system analyses input text using a combination of pattern matching and semantic similarity detection. Seven critical vectors (v003, v004, v005, v007, v010, v011, v012) now use sentence embeddings for more nuanced detection. The remaining vectors use targeted keyword and phrase matching. The implementation includes advanced nuance logic that recognises complex cases such as toxic environments combined with strong personal determination, and applies gentle dilution when health risks are mentioned alongside determination. For example, when a text shows both strong determination to continue a mission and mentions health risks from a toxic environment, the system gently reduces the risk score to reflect the balanced human reality.
+The system analyses input text using semantic similarity as the primary detection mechanism across all 12 vectors, computed via sentence embeddings from `all-MiniLM-L6-v2`. Five vectors (v004, v005, v010, v011, v012) additionally apply regex pattern matching as a secondary OR condition for high-confidence unambiguous phrases. The implementation includes advanced nuance logic that recognises complex cases such as toxic environments combined with strong personal determination, and applies a dampening adjustment in these compound cases. For example, when a text shows both strong determination to continue a mission and mentions pressure from a difficult environment, the system reduces the risk score to reflect the balanced human reality of resilience under hardship.
 
 Each activated vector contributes its assigned weight to a total ethical risk score (0.0 – 1.0). The system produces a clear decision (“safe” or “modified”), a risk level explanation, and a list of activated vectors with human-readable reasoning. The current prototype runs as a public API on Hugging Face Spaces and serves as a stable foundation for testing and further development.
+
+Since June 2026, SEMEV-12 operates alongside a companion layer, QERRA-HSR v0.1, which handles immediate physical safety signals — acute distress, human isolation, environmental hazard proximity — using pure deterministic logic with zero ML overhead. QERRA-HSR runs before SEMEV-12 on every evaluation cycle; a CRITICAL output from QERRA-HSR suspends SEMEV-12 deliberation entirely.
 
 ### Vision and Practical Roadmap
 
@@ -148,3 +150,18 @@ This documentation is provided with full transparency to accurately reflect the 
 
 These changes were made to address real test failures while keeping risk minimal.
 
+---
+
+## SEMEV-12 Benchmark Run 01 (June 2026)
+
+A structured benchmark of 80 verified test cases was conducted across all 12 vectors, run against the live API and fully documented with calibration analysis, findings, and a post-benchmark anchor expansion plan. See [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md) for the complete record.
+
+---
+
+## Formal Verification Status
+
+The QERRA-HSR physical safety layer is fully deterministic — pure Python threshold logic with no machine learning components — and its safety properties are provable by direct code inspection. Formal Linear Temporal Logic (LTL) specifications for QERRA-HSR are documented in `documentation/QERRA-HSR-Design-v0.1.md`.
+
+SEMEV-12 is a hybrid system. The scoring engine, weighting logic, decision thresholds, and nuance dampening layer are fully deterministic and auditable by code inspection. The semantic similarity computation, however, relies on `all-MiniLM-L6-v2`, a neural sentence transformer whose internal behavior cannot be formally proven the way deterministic threshold logic can. The relationship between input text and similarity score is characterized empirically — through the 80-case benchmark — rather than mathematically proven.
+
+This distinction is stated explicitly for transparency: SEMEV-12 is best described as a hybrid deterministic system, where deterministic decision logic operates on outputs from a classical (non-generative) neural similarity model. Future work may explore statistical verification methods such as conformal prediction to provide formal coverage guarantees for the semantic similarity layer.
