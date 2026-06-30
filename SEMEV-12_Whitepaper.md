@@ -12,18 +12,21 @@
 
 ## 1. Abstract
 
-The SEMEV-12 framework is a deterministic, classical, and fully explainable
-ethical evaluation system. It consists of 12 immutable, human-centred vectors
+The SEMEV-12 framework is a hybrid deterministic, fully explainable ethical
+evaluation system. It consists of 12 immutable, human-centred vectors
 designed to serve as a transparent safety layer for robotics, autonomous
 systems, and high-stakes AI decision-making.
 
-Unlike probabilistic or black-box neural approaches, SEMEV-12 uses fixed
-logical vectors with hybrid detection (semantic similarity via
-`all-MiniLM-L6-v2` + keyword pattern fallbacks) to produce auditable ethical
-scores and reasoning traces. As of v1.9.0, all 12 vectors use semantic
-similarity detection. Pattern matching is retained as a supporting OR
-condition on selected vectors for high-confidence unambiguous phrases.
-
+SEMEV-12 uses fixed logical vectors with hybrid detection (semantic
+similarity via `all-MiniLM-L6-v2`, a classical non-generative sentence
+transformer, combined with regex pattern fallbacks) to produce auditable
+ethical scores and reasoning traces. The scoring, weighting, threshold, and
+decision logic are fully deterministic and provable by code inspection. The
+semantic similarity computation itself is characterized empirically rather
+than formally proven, since it depends on a neural model. As of v1.9.0, all
+12 vectors use semantic similarity as the primary detection mechanism, with
+pattern matching retained as a supporting OR condition on five vectors
+(v004, v005, v010, v011, v012) for high-confidence unambiguous phrases.
 ---
 
 ## 2. Claim of Original Invention
