@@ -6,7 +6,6 @@
 #   Layer 2 — SEMEV-12 v1.9.0 (ethical reasoning, semantic)
 # =====================================================
 
-import os
 from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, Request
