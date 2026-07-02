@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>qerra_core</name>
+  <version>2.0.0</version>
+  <description>QERRA-v2 Classical: Deterministic Ethical Middleware</description>
+  <maintainer email="marunigno@gmail.com">Marussa Metocharaki</maintainer>
+  <license>AGPL-3.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>qerra_msgs</exec_depend>
+  <exec_depend>python3-requests</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
