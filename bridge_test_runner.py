@@ -74,9 +74,15 @@ def run_latency_profile() -> None:
             if threshold_triggered:
                 print(f"  ← API exceeded {TIMEOUT_MS:.0f}ms — fallback triggered ✓")
             else:
-                print(f"  ← within API timeout budget ✓")
-            print(f"  Score    : {result.get('score', 'N/A'):.4f}")
-            print(f"  Decision : {result.get('decision', 'N/A').upper()}")
+                print("  ← within API timeout budget ✓")
+
+            score_val = result.get("score")
+            decision_val = result.get("decision")
+            score_str = f"{score_val:.4f}" if isinstance(score_val, (int, float)) else "N/A"
+            decision_str = decision_val.upper() if isinstance(decision_val, str) else "N/A"
+
+            print(f"  Score    : {score_str}")
+            print(f"  Decision : {decision_str}")
             print(f"  Vectors  : {result.get('vectors_activated', [])}")
         else:
             print(f"  FAILED   : {error}")
