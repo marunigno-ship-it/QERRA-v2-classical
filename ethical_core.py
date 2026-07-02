@@ -87,7 +87,7 @@ institutional_trust_description = (
 
 # === NEW: Semantic descriptions for the 5 upgraded vectors ===
 # 100% faithful to original regex patterns — meaning unchanged
-v001_emotional_distress_description = (
+v001_coherence_protection_description = (
     "feeling hopeless, empty, numb, exhausted, falling apart, breaking down, overwhelmed, "
     "nobody cares, no one cares, nothing matters, losing hope, I give up, I feel nothing, I feel empty"
 )
@@ -128,7 +128,7 @@ emb_v011 = semantic_model.encode(autonomy_violation_description, convert_to_tens
 emb_v012 = semantic_model.encode(institutional_trust_description, convert_to_tensor=True)
 
 # Pre-encode the 5 newly semantic vectors
-emb_v001 = semantic_model.encode(v001_emotional_distress_description, convert_to_tensor=True)
+emb_v001 = semantic_model.encode(v001_coherence_protection_description, convert_to_tensor=True)
 emb_v002 = semantic_model.encode(v002_family_severance_description, convert_to_tensor=True)
 emb_v006 = semantic_model.encode(v006_family_origin_chain_description, convert_to_tensor=True)
 emb_v008 = semantic_model.encode(v008_shallow_remorse_description, convert_to_tensor=True)
@@ -163,10 +163,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'poor conditions|forcing me|falsify)\b',
         text))
 
-    # health_risk_mention — reserved for future nuance logic
-    health_risk_mention = bool(re.search(
-        r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b',
-        text))
+
 
     # Pattern fallbacks still used by semantic vectors
     guilt_trip_pattern = bool(re.search(
@@ -233,7 +230,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     institutional_trust = sim_v012 > 0.44 or institutional_pattern
 
     # Semantic booleans for the 5 upgraded vectors
-    emotional_distress = sim_v001 > 0.33
+    coherence_protection = sim_v001 > 0.33
     family_severance = sim_v002 > 0.48
     family_origin_chain = sim_v006 > 0.45
     shallow_remorse = sim_v008 > 0.49
@@ -252,7 +249,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     total_weight = 0.0
     weighted_sum = 0.0
 
-    if emotional_distress:
+    if coherence_protection:
         activated.append("v001")
         total_weight += vectors["v001"]["weight"]
         weighted_sum += 0.45 * vectors["v001"]["weight"]
@@ -362,7 +359,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         "reasoning": reasoning,
         "vectors_activated": unique_activated,
         "vector_scores": {
-            "v001_emotional_distress":     round(sim_v001, 4),
+            "v001_coherence_protection":   round(sim_v001, 4),
             "v002_family_severance":       round(sim_v002, 4),
             "v003_survival_instinct":      round(sim_v003, 4),
             "v004_moral_pressure":         round(sim_v004, 4),
