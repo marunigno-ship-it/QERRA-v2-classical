@@ -3,13 +3,13 @@
 # QERRA-v2 Classical — Behavior Tree Demonstration
 #
 # Runs standalone with PyTrees only. No ROS 2 required.
-# Install: pip install py_trees requests
+# Install: pip install py_trees
 #
 # Two modes:
 #   Default (mock)  — instant, offline, illustrative scores/decisions
 #   --live          — real HTTP calls to the live QERRA-v2 /analyze API
 #                      via qerra_pytrees_node.QerraConditionNode
-#                      (requires QERRA_API_KEY env var)
+#                      (requires: pip install requests, QERRA_API_KEY env var)
 #
 # Usage:
 #   python test_bt_tick.py                  (mock, both scenarios)
@@ -17,20 +17,10 @@
 #   python test_bt_tick.py --risk           (mock, high risk scenario only)
 #   python test_bt_tick.py --live           (real API, both scenarios)
 #   python test_bt_tick.py --live --risk    (real API, high risk only)
-#
-# --live verified results (June 2026):
-#   SAFE scenario  → score=0.25, decision=safe, no vectors    → SUCCESS
-#   RISK scenario  → score=0.75, decision=modified, v011      → RUNNING
-#                    (autonomy_violation fires; harm_intent does not,
-#                     since "restrain" is not in v005's description —
-#                     mock illustratively used v011+v005, real engine
-#                     correctly activates only v011 for this phrasing)
 # =====================================================
 
 import argparse
 import py_trees
-
-from qerra_pytrees_node import QerraConditionNode
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -115,7 +105,7 @@ class MockExecuteTask(py_trees.behaviour.Behaviour):
         super().__init__(name=name)
 
     def update(self) -> py_trees.common.Status:
-        print(f"  [TASK]  ExecuteTask: robot action committed and executed.")
+        print("  [TASK]  ExecuteTask: robot action committed and executed.")
         self.feedback_message = "Task executed successfully."
         return py_trees.common.Status.SUCCESS
 
@@ -130,7 +120,7 @@ class MockHumanReview(py_trees.behaviour.Behaviour):
         super().__init__(name=name)
 
     def update(self) -> py_trees.common.Status:
-        print(f"  [FALLBACK] Human review requested. Robot holds position.")
+        print("  [FALLBACK] Human review requested. Robot holds position.")
         self.feedback_message = "Waiting for human operator decision."
         return py_trees.common.Status.RUNNING
 
@@ -197,7 +187,7 @@ def run_scenario(label: str, qerra_node: py_trees.behaviour.Behaviour, live: boo
     print(f"  Situation: {qerra_node.name}")
 
     if live:
-        print(f"  Mode: LIVE — calling real /analyze API")
+        print("  Mode: LIVE — calling real /analyze API")
         print(f"  Situation text: \"{qerra_node._situation_text}\"")
         if qerra_node._hsr_signals:
             print(f"  HSR signals: {qerra_node._hsr_signals}")
@@ -250,12 +240,15 @@ if __name__ == "__main__":
                          help="Use the real QERRA API instead of mock data.")
     args = parser.parse_args()
 
+    if args.live:
+        from qerra_pytrees_node import QerraConditionNode
+
     run_safe = not args.risk
     run_risk = not args.safe
 
     # ── Scenario A: Safe ─────────────────────────────────────────────────
     # Mock: score=0.18, decision="safe"
-    # Live: verified score=0.25, decision="safe" (no vectors activated)
+    # Live: real text expected to score low / "safe"
     # Expected BT outcome: Sequence succeeds, task executes.
     if run_safe:
         if args.live:
@@ -274,7 +267,7 @@ if __name__ == "__main__":
 
     # ── Scenario B: High Risk ───────────────────────────────────────────
     # Mock: score=0.75, decision="modified", v011+v005
-    # Live: verified score=0.75, decision="modified", v011 only
+    # Live: real text expected to trigger "modified"
     # Expected BT outcome: Sequence fails, fallback requests human review.
     if run_risk:
         if args.live:
