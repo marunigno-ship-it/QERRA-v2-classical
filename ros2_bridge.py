@@ -28,7 +28,6 @@
 import json
 import logging
 import os
-import threading
 
 import requests
 
@@ -270,10 +269,13 @@ if ROS2_AVAILABLE:
 
         def _goal_callback(self, goal_request):
             """Accept all incoming goals."""
+            # Privacy note: we log only the length of the situation text,
+            # never its content. situation_text may contain sensitive
+            # personal disclosures (self-harm, coercion, abuse) and must
+            # not be written to logs.
             self.get_logger().info(
-                f"Goal received. Situation: "
-                f'"{goal_request.situation_text[:80]}"'
-                f"{'...' if len(goal_request.situation_text) > 80 else ''}"
+                f"Goal received. Situation length: "
+                f"{len(goal_request.situation_text)} characters."
             )
             return GoalResponse.ACCEPT
 
