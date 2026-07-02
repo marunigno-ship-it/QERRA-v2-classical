@@ -88,6 +88,10 @@ def evaluate_hsr(hsr_input: HSRInput) -> HSRResult:
         else:
             reasons.append(f"distress_monitor + isolated (count={hsr_input.persons_nearby_count})")
 
+    # Design note: human_isolation intentionally only activates alongside
+    # an active distress signal (critical or monitor). Isolation alone,
+    # with no distress, is normal human behavior and must NOT trigger
+    # a safety flag — that would create false alarms and alarm fatigue.
     # --- HSR-V02: human_isolation ---
     if (distress_critical or distress_monitor) and person_isolated:
         activated.append("human_isolation")
