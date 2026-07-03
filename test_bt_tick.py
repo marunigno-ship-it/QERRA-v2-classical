@@ -8,7 +8,7 @@
 # Two modes:
 #   Default (mock)  — instant, offline, illustrative scores/decisions
 #   --live          — real HTTP calls to the live QERRA-v2 /analyze API
-#                      via qerra_pytrees_node.QerraConditionNode
+#                      via qerra_standalone_remote_node.QerraConditionNode
 #                      (requires: pip install requests, QERRA_API_KEY env var)
 #
 # Usage:
@@ -140,7 +140,7 @@ def build_tree(qerra_condition_node: py_trees.behaviour.Behaviour) -> py_trees.t
           └── [Action]    RequestHumanReview          ← fallback on block
 
     Accepts either MockQerraConditionNode (offline) or the real
-    QerraConditionNode from qerra_pytrees_node (--live mode).
+    QerraConditionNode from qerra_standalone_remote_node (--live mode).
     """
     # Inner Sequence: QERRA check then task execution
     sequence = py_trees.composites.Sequence(
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.live:
-        from qerra_pytrees_node import QerraConditionNode
+        from qerra_standalone_remote_node import QerraConditionNode
 
     run_safe = not args.risk
     run_risk = not args.safe
