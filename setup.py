@@ -7,7 +7,12 @@ package_name = 'qerra_core'
 setup(
     name=package_name,
     version='2.0.0',
-    packages=[package_name],
+    py_modules=[
+        'ros2_bridge',
+        'ethical_core',
+        'vectors',
+    ],
+    packages=['hsr'],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
