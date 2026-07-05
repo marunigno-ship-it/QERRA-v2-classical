@@ -62,7 +62,7 @@ live API directly over HTTP. No ROS 2 installation, no `qerra_msgs`
 package, no build step.
 
 ```bash
-pip install -r requirements-pytrees.txt
+pip install py_trees requests
 ```
 
 ```bash
@@ -84,7 +84,7 @@ python test_bt_tick.py                  # offline mock mode, no API call
 To use the node in your own tree:
 
 ```python
-from qerra_pytrees_node import QerraConditionNode
+from qerra_standalone_remote_node import QerraConditionNode
 
 ethical_check = QerraConditionNode(
     name="EthicalCheck",
@@ -92,7 +92,7 @@ ethical_check = QerraConditionNode(
 )
 ```
 
-See [`qerra_pytrees_node.py`](./qerra_pytrees_node.py) for the full
+See [`qerra_standalone_remote_node.py`](./qerra_standalone_remote_node.py) for the full
 decision logic and optional `hsr_signals` for physical safety
 evaluation.
 
