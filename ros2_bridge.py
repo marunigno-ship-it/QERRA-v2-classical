@@ -1,13 +1,18 @@
 # =====================================================
 # ros2_bridge.py
 # QERRA-v2 Classical — ROS 2 Action Server Bridge
-# Version: 2.0 — Hybrid Evaluation Strategy
+# Version: 2.1 — Hybrid Evaluation Strategy + HSR signal passthrough
 #
 # Evaluation priority:
 #   1. Remote HF API call — 800ms strict timeout.
 #      Preserves local CPU and RAM on healthy networks.
 #   2. Local CPU fallback — model pre-loaded at startup.
 #      Guarantees evaluation under any network condition.
+#
+# HSR signals (distress_confidence, persons_nearby_count,
+# hazard_proximity_flag, robot_task_interruptible) are read from
+# the action goal and passed to BOTH evaluation paths, so physical
+# safety is checked whether the remote API or local fallback is used.
 #
 # The ROS 2 executor is NEVER blocked.
 # The action callback runs in its own thread via
@@ -16,13 +21,6 @@
 # Standalone mode: if rclpy is not installed, the script
 # runs a direct local evaluation on a test sentence and
 # prints the result. No ROS 2 required.
-#
-# Response parsing note (June 2026):
-#   As of the QERRA-HSR v0.1 integration, /analyze returns a
-#   two-layer envelope: data = {"hsr": ..., "semev12_suspended": ...,
-#   "data": {score, decision, ...}}. _call_remote_api() unwraps this
-#   so downstream code always receives a flat SEMEV-12-shaped dict,
-#   same as before the HSR integration.
 # =====================================================
 
 import json
@@ -30,6 +28,8 @@ import logging
 import os
 
 import requests
+
+from hsr.qerra_hsr import evaluate_hsr, HSRInput, HSRStatus
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -87,9 +87,12 @@ except ImportError:
 # Core evaluation functions
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _call_remote_api(situation_text: str) -> dict:
+def _call_remote_api(situation_text: str, hsr_signals: dict | None = None) -> dict:
     """
     Attempt a remote call to the QERRA HF API with a strict 800ms timeout.
+
+    If hsr_signals is provided, it is included in the request payload
+    so QERRA-HSR is evaluated server-side before SEMEV-12.
 
     Returns a flat SEMEV-12-shaped dict on success:
         {score, decision, score_explanation, reasoning, vectors_activated, ...}
@@ -104,12 +107,14 @@ def _call_remote_api(situation_text: str) -> dict:
 
     Raises requests.exceptions.Timeout if the deadline is exceeded.
     Raises requests.exceptions.RequestException on any other network error.
-
-    This function is intentionally thin — all error handling is in the caller.
     """
+    payload = {"text": situation_text}
+    if hsr_signals is not None:
+        payload["hsr_signals"] = hsr_signals
+
     response = requests.post(
         QERRA_API_URL,
-        json={"text": situation_text},
+        json=payload,
         headers={
             "x-api-key": QERRA_API_KEY,
             "Content-Type": "application/json",
@@ -137,11 +142,15 @@ def _call_remote_api(situation_text: str) -> dict:
     return inner.get("data", {})
 
 
-def _call_local_engine(situation_text: str) -> dict:
+def _call_local_engine(situation_text: str, hsr_signals: dict | None = None) -> dict:
     """
-    Run evaluate_ethical_risk() directly on the pre-loaded local CPU model.
+    Run local evaluation on the pre-loaded local CPU model.
 
-    Returns the result dict from ethical_core.evaluate_ethical_risk().
+    If hsr_signals is provided, QERRA-HSR is checked first, matching the
+    remote API's behavior: a CRITICAL result suspends SEMEV-12 and returns
+    a synthetic fail-closed result. Otherwise, evaluate_ethical_risk()
+    runs as before.
+
     Raises RuntimeError if the local engine was not loaded at startup.
     """
     if not LOCAL_ENGINE_AVAILABLE:
@@ -149,23 +158,47 @@ def _call_local_engine(situation_text: str) -> dict:
             "Local SEMEV-12 engine is not available. "
             "Check that ethical_core.py and its dependencies are installed."
         )
+
+    if hsr_signals is not None:
+        hsr_input = HSRInput(
+            distress_confidence=hsr_signals.get("distress_confidence", 0.0),
+            persons_nearby_count=hsr_signals.get("persons_nearby_count", 0),
+            hazard_proximity_flag=hsr_signals.get("hazard_proximity_flag", False),
+            robot_task_interruptible=hsr_signals.get("robot_task_interruptible", True),
+        )
+        hsr_result = evaluate_hsr(hsr_input)
+
+        if hsr_result.status == HSRStatus.CRITICAL:
+            return {
+                "score": 0.98,
+                "decision": "modified",
+                "score_explanation": "critical physical safety concern (QERRA-HSR)",
+                "reasoning": hsr_result.reasoning,
+                "vectors_activated": hsr_result.vectors_activated,
+            }
+
     return evaluate_ethical_risk(situation_text)
 
 
-def hybrid_evaluate(situation_text: str, feedback_callback=None) -> tuple[dict, bool]:
+def hybrid_evaluate(
+    situation_text: str,
+    hsr_signals: dict | None = None,
+    feedback_callback=None,
+) -> tuple[dict, bool]:
     """
     Hybrid evaluation: remote API first, local CPU fallback on failure.
 
     Args:
         situation_text: The natural language situation to evaluate.
+        hsr_signals: Optional dict with distress_confidence,
+                     persons_nearby_count, hazard_proximity_flag,
+                     robot_task_interruptible. Passed to whichever
+                     evaluation path succeeds.
         feedback_callback: Optional callable(str) for publishing status
-                           updates. Used by the ROS 2 action feedback
-                           mechanism. Safe to pass None.
+                           updates. Safe to pass None.
 
     Returns:
         (result_dict, used_local_fallback)
-        - result_dict: The evaluation result from whichever path succeeded.
-        - used_local_fallback: True if the local engine was used.
 
     Raises:
         RuntimeError if both paths fail.
@@ -178,7 +211,7 @@ def hybrid_evaluate(situation_text: str, feedback_callback=None) -> tuple[dict, 
     # ── Path 1: Remote API ─────────────────────────────────────────────────
     _publish("Attempting remote API evaluation (800ms timeout).")
     try:
-        result = _call_remote_api(situation_text)
+        result = _call_remote_api(situation_text, hsr_signals=hsr_signals)
         _publish("Remote API evaluation succeeded.")
         return result, False
 
@@ -196,7 +229,7 @@ def hybrid_evaluate(situation_text: str, feedback_callback=None) -> tuple[dict, 
     # ── Path 2: Local CPU fallback ─────────────────────────────────────────
     _publish("Running local SEMEV-12 evaluation on pre-loaded CPU model.")
     try:
-        result = _call_local_engine(situation_text)
+        result = _call_local_engine(situation_text, hsr_signals=hsr_signals)
         _publish("Local CPU evaluation complete.")
         return result, True
 
@@ -217,30 +250,13 @@ if ROS2_AVAILABLE:
         ROS 2 Action Server that provides SEMEV-12 ethical evaluation
         as a non-blocking action interface.
 
-        The action server uses a ReentrantCallbackGroup and a
-        MultiThreadedExecutor so that the execute_callback runs in its
-        own thread. The main ROS 2 executor is never blocked, regardless
-        of how long the evaluation takes.
-
         Action name : /qerra/evaluate
         Action type : qerra_msgs/action/QerraEvaluate
-
-        Integration pattern for Behavior Trees:
-          [Condition] QerraConditionNode
-            → sends goal with situation_text
-            → returns RUNNING while waiting
-            → returns SUCCESS if result.score < threshold
-            → returns FAILURE if result.score >= threshold
-              or if result.success is False
         """
 
         def __init__(self):
             super().__init__("qerra_action_server")
 
-            # ReentrantCallbackGroup allows the execute_callback to run
-            # in a dedicated thread managed by MultiThreadedExecutor.
-            # Without this, the action callback would share the executor
-            # thread and could block other callbacks.
             self._cb_group = ReentrantCallbackGroup()
 
             self._action_server = ActionServer(
@@ -254,7 +270,7 @@ if ROS2_AVAILABLE:
             )
 
             self.get_logger().info("=" * 60)
-            self.get_logger().info("QERRA-v2 Classical — Action Server v2.0")
+            self.get_logger().info("QERRA-v2 Classical — Action Server v2.1")
             self.get_logger().info("Action  : /qerra/evaluate")
             self.get_logger().info("Strategy: Hybrid (API → Local CPU fallback)")
             self.get_logger().info(f"API URL : {QERRA_API_URL}")
@@ -264,8 +280,6 @@ if ROS2_AVAILABLE:
                 f"{'READY' if LOCAL_ENGINE_AVAILABLE else 'NOT AVAILABLE'}"
             )
             self.get_logger().info("=" * 60)
-
-        # ── Goal and cancel handlers ───────────────────────────────────────
 
         def _goal_callback(self, goal_request):
             """Accept all incoming goals."""
@@ -284,39 +298,36 @@ if ROS2_AVAILABLE:
             self.get_logger().info("Goal cancellation requested. Accepting.")
             return CancelResponse.ACCEPT
 
-        # ── Main execution callback ────────────────────────────────────────
-        #
-        # This method runs in a SEPARATE THREAD managed by
-        # MultiThreadedExecutor. It is safe to block here.
-        # The main ROS 2 executor thread is never affected.
-
         def _execute_callback(self, goal_handle):
             """
             Execute the hybrid ethical evaluation for an incoming goal.
-
-            Thread safety: This callback runs in a dedicated thread.
-            The SentenceTransformer model is read-only during inference
-            and is safe for concurrent access.
+            Reads HSR signals from the goal and passes them through to
+            hybrid_evaluate(), so physical safety is checked on both the
+            remote API path and the local fallback path.
             """
             feedback_msg = QerraEvaluate.Feedback()
             result_msg = QerraEvaluate.Result()
 
             def publish_feedback(status: str):
-                """Publish a feedback update to the action client."""
                 feedback_msg.status = status
                 goal_handle.publish_feedback(feedback_msg)
                 self.get_logger().info(f"[FEEDBACK] {status}")
 
             situation_text = goal_handle.request.situation_text
+            hsr_signals = {
+                "distress_confidence": goal_handle.request.distress_confidence,
+                "persons_nearby_count": goal_handle.request.persons_nearby_count,
+                "hazard_proximity_flag": goal_handle.request.hazard_proximity_flag,
+                "robot_task_interruptible": goal_handle.request.robot_task_interruptible,
+            }
 
-            # ── Run hybrid evaluation ──────────────────────────────────────
             try:
                 data, used_local = hybrid_evaluate(
                     situation_text,
+                    hsr_signals=hsr_signals,
                     feedback_callback=publish_feedback
                 )
 
-                # ── Map result dict → Action Result message ────────────────
                 result_msg.score = float(data.get("score", 0.25))
                 result_msg.decision = str(data.get("decision", "modified"))
                 result_msg.score_explanation = str(
@@ -340,7 +351,6 @@ if ROS2_AVAILABLE:
                 )
 
             except RuntimeError as e:
-                # Both evaluation paths failed. Fail the goal safely.
                 self.get_logger().error(f"Both evaluation paths failed: {e}")
                 result_msg.score = 0.25
                 result_msg.decision = "modified"
@@ -354,19 +364,11 @@ if ROS2_AVAILABLE:
 
             return result_msg
 
-    # ── ROS 2 entry point ──────────────────────────────────────────────────
-
     def main(args=None):
-        """
-        Start the QERRA Action Server node.
-
-        Uses MultiThreadedExecutor so that action execute_callbacks
-        run in separate threads and never block the ROS 2 executor.
-        """
+        """Start the QERRA Action Server node."""
         rclpy.init(args=args)
         node = QerraActionServer()
 
-        # MultiThreadedExecutor is mandatory for non-blocking action callbacks.
         executor = MultiThreadedExecutor()
         executor.add_node(node)
 
