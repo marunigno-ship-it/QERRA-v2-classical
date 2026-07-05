@@ -23,6 +23,10 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
             situation_text="Robot is about to enter the patient's room.",
         )
 
+    hsr_signals is optional — pass a dict with distress_confidence,
+    persons_nearby_count, hazard_proximity_flag, robot_task_interruptible
+    to also evaluate physical safety. Omit it to run SEMEV-12 only.
+
     ── Dynamic usage (text updated at runtime from sensor/planner data) ──
     For real deployments, the situation text must change based on what
     the robot perceives or what the planner has decided to do.
@@ -60,18 +64,30 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
     ACTION_SERVER = "/qerra/evaluate"
     SERVER_WAIT_TIMEOUT_SEC = 5.0
 
-    def __init__(self, name: str, ros2_node: rclpy.node.Node, situation_text: str):
+    def __init__(
+        self,
+        name: str,
+        ros2_node: rclpy.node.Node,
+        situation_text: str,
+        hsr_signals: dict | None = None,
+    ):
         super().__init__(name=name)
         self._ros2_node = ros2_node
         self._situation_text = situation_text
+        self._hsr_signals = hsr_signals
         self._action_client = ActionClient(ros2_node, QerraEvaluate, self.ACTION_SERVER)
         self._send_goal_future = None
         self._goal_handle = None
         self._result_future = None
 
-    def update_situation(self, new_situation_text: str) -> None:
+    def update_situation(
+        self,
+        new_situation_text: str,
+        new_hsr_signals: dict | None = None,
+    ) -> None:
         """
-        Update the situation text evaluated on the next tree activation.
+        Update the situation text (and optionally hsr_signals) evaluated
+        on the next tree activation.
 
         Call this from your planner, perception layer, or external
         controller before the next tick. Thread-safe for single updates
@@ -79,6 +95,8 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
         Blackboard pattern described in the class docstring.
         """
         self._situation_text = new_situation_text
+        if new_hsr_signals is not None:
+            self._hsr_signals = new_hsr_signals
         self._ros2_node.get_logger().debug(
             f"[{self.name}] Situation text updated: "
             f'"{new_situation_text[:80]}"'
@@ -95,6 +113,13 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
         self._result_future = None
         goal_msg = QerraEvaluate.Goal()
         goal_msg.situation_text = self._situation_text
+
+        hsr = self._hsr_signals or {}
+        goal_msg.distress_confidence = float(hsr.get("distress_confidence", 0.0))
+        goal_msg.persons_nearby_count = int(hsr.get("persons_nearby_count", 0))
+        goal_msg.hazard_proximity_flag = bool(hsr.get("hazard_proximity_flag", False))
+        goal_msg.robot_task_interruptible = bool(hsr.get("robot_task_interruptible", True))
+
         self._send_goal_future = self._action_client.send_goal_async(
             goal_msg, feedback_callback=self._feedback_callback)
 
