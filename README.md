@@ -215,14 +215,20 @@ an ethical check evaluated before a robot commits to an action involving a human
   └── [Fallback]   RequestHumanReview
 ```
 
-A bridge (`ros2_bridge.py`) is included in the repository. It runs standalone
-with no ROS 2 installation required and becomes a full publisher/subscriber node
-when `rclpy` is present, publishing on three dedicated topics:
+A bridge (`ros2_bridge.py`) is included in the repository. In standalone mode
+(no ROS 2 installed), it runs a direct local evaluation and prints the result.
 
-- `/qerra/ethical_score` — `Float32`, numerical risk score
-- `/qerra/ethical_decision` — `Bool`, True = safe to proceed
-- `/qerra/semev12_result` — `String`, full JSON assessment
+When `rclpy` and the custom `qerra_msgs` package are present, it becomes a
+ROS 2 **Action Server**:
 
+- **Action name:** `/qerra/evaluate`
+- **Action type:** `qerra_msgs/action/QerraEvaluate`
+- Runs on a `MultiThreadedExecutor` with a `ReentrantCallbackGroup`, so a
+  slow evaluation never blocks the rest of the ROS 2 executor.
+- Uses a hybrid strategy: remote API first (strict 800ms timeout), then
+  falls back to a locally pre-loaded model if the network is slow or
+  unavailable.
+  
 See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration
 details and open questions for the robotics community.
 
