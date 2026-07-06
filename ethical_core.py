@@ -137,6 +137,35 @@ emb_v009 = semantic_model.encode(v009_ethical_severance_description, convert_to_
 logger.info("Pre-encoding complete for all 12 vectors. Ready for evaluation.")
 
 
+# =====================================================
+# Negation helper — used only by severe_harm / moderate_harm below.
+# Does not touch the semantic model, thresholds, or weights.
+#
+# Purpose: a plain keyword match like "harm myself" fires the same
+# way whether the sentence is "I want to harm myself" or "I do NOT
+# want to harm myself." This checks the few words immediately before
+# a match for a negation word, so a clear denial doesn't get scored
+# as if it were the opposite. This is a word-window heuristic, not
+# full grammatical negation detection — it directly fixes the tested
+# cases below, but is not claimed to catch every possible phrasing.
+# =====================================================
+NEGATION_PATTERN = r"\b(not|never|no|don't|dont|won't|wont|can't|cant|didn't|didnt|doesn't|doesnt|refuse|refuses|refused|refusing)\b"
+
+def _find_unnegated(pattern: str, text: str, window_words: int = 4):
+    """
+    Return the first regex match for `pattern` in `text` that is not
+    immediately preceded (within `window_words` words) by a negation
+    word. Returns None if every match is negated, or if there are no
+    matches at all.
+    """
+    for m in re.finditer(pattern, text):
+        preceding_words = text[:m.start()].split()[-window_words:]
+        preceding_snippet = " ".join(preceding_words)
+        if not re.search(NEGATION_PATTERN, preceding_snippet):
+            return m
+    return None
+
+
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
     vectors = get_semev12_vectors()
@@ -146,13 +175,15 @@ def evaluate_ethical_risk(text: str) -> dict:
     # =====================================================
 
     # v005 — harm intent (pattern tiers)
-    severe_harm = bool(re.search(
+    # Negation-aware: a match preceded by "not", "never", "don't", etc.
+    # within the last 4 words is ignored (see _find_unnegated above).
+    severe_harm = _find_unnegated(
         r'\b(kill yourself|end it all|want to die|suicide|kys|'
         r'hurt myself|hurt yourself|harm myself|harm yourself)\b',
-        text))
-    moderate_harm = bool(re.search(
+        text) is not None
+    moderate_harm = _find_unnegated(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b',
-        text))
+        text) is not None
 
     # v004 — moral pressure (pattern paths)
     clear_fraud = bool(re.search(
