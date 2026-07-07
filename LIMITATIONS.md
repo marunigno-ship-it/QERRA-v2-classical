@@ -141,6 +141,20 @@ determination) applies only when both `pressure_mention` and
 `survival_instinct` or `personal_potential` are active simultaneously.
 It does not generalise to other compound cases.
 
+**v005 negation near threshold.**
+The semantic similarity score for harm_intent (v005) does not reliably
+encode negation. Testing against the live API showed "I do not want to
+harm myself" scoring 0.51 — just above the 0.50 activation threshold —
+while "I would never harm myself" scored 0.41, correctly below it. This
+is a known limitation of sentence-embedding models generally: negated
+and non-negated phrasings of the same core content can produce very
+similar embeddings. A fix was applied and verified for the regex
+fallback checks (severe_harm, moderate_harm), but the underlying
+semantic similarity score itself is not currently corrected for
+negation. Planned: a structured negation test set, similar in approach
+to the SEMEV-12 Benchmark Run, before any further changes to this
+behavior.
+
 ---
 
 *This document is updated with each significant version change.*
