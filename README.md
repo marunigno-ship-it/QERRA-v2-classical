@@ -280,6 +280,11 @@ The project is actively seeking real-world integration and community feedback.
 - The 3 physical safety vectors are active and implemented under the QERRA-HSR v0.1 safety companion layer.
 - Semantic detection means highly indirect or heavily implicit language may not
   activate all relevant vectors.
+  - Negation near the v005 (harm_intent) semantic threshold can be
+  inconsistent — some negated phrases (e.g. "I do not want to harm
+  myself") may still score above threshold, while others (e.g. "I
+  would never harm myself") score correctly below it. See
+  LIMITATIONS.md for detail.
 - This is a research and integration tool, not a certified clinical, legal,
   or production safety system.
 
