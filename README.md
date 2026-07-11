@@ -26,13 +26,6 @@ robotics, human-AI collaboration, institutional decision support.
 
 ---
 
-### 📺 Webots Simulation Demo (QERRA-HSR v0.1)
-
-Click below to watch the physical safety evaluation loop run in Webots:
-
-https://github.com/marunigno-ship-it/QERRA-v2-classical/raw/main/DEMO.mp4
-
----
 
 
 
