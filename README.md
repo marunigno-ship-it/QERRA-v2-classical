@@ -26,6 +26,16 @@ robotics, human-AI collaboration, institutional decision support.
 
 ---
 
+### 📺 Webots Simulation Demo (QERRA-HSR v0.1)
+
+Click the preview below to watch the physical safety evaluation loop run in Webots:
+
+[![QERRA-HSR v0.1 Webots Simulation Demo](https://youtu.be/Wn-2N6LLWJQ?si=kCyqBCIyOIU3lq1W)
+
+---
+
+
+
 ## ⚖️ Intellectual Property & Ethics
 
 **QERRA-v2 Classical** is built upon the **SEMEV-12 Framework**, an original ethical logic system designed and developed by **Marussa Metocharaki**.
