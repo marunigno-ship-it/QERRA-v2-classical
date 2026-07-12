@@ -10,7 +10,7 @@ import os
 # Ensure project root is on Python path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from src.classical_analyze import analyze_text
+from classical_analyze import analyze_text
 
 
 class TestSEMEV12Vectors(unittest.TestCase):
