@@ -57,10 +57,11 @@ design estimates, not empirically validated values. They must be
 calibrated against real or simulated deployment data before any
 deployment claim is made.
 
-**Not yet integrated into the live API.**
-QERRA-HSR v0.1 is fully implemented and tested locally (12 regression
-tests passing) but is not yet callable via the public API endpoint.
-Integration into `app.py` is a planned next step.
+**Integrated into the live API.**
+QERRA-HSR v0.1 is fully implemented, tested locally (12 regression
+tests passing), and wired into the live `/analyze` endpoint via the
+optional `hsr_signals` field. Requests that omit `hsr_signals` run
+SEMEV-12 only, unchanged from prior behavior.
 
 **Interpersonal threat detection is out of scope for v0.1.**
 Detecting that an interpersonal situation is escalating toward violence
