@@ -27,5 +27,5 @@ jobs:
           python -c "import sentence_transformers; print('OK')"
           python -c "from vectors import get_semev12_vectors; print('OK')"
 
-      - name: Run SEMEV-12 tests
-        run: PYTHONPATH=. python -m unittest tests.test_vectors -v
+      - name: Run SEMEV-12 regression suite
+        run: python -m tests.test_cases
