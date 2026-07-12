@@ -25,7 +25,7 @@ jobs:
       - name: Verify imports
         run: |
           python -c "import sentence_transformers; print('OK')"
-          python -c "from src.vectors import get_sacred_vectors; print('OK')"
+          python -c "from vectors import get_semev12_vectors; print('OK')"
 
       - name: Run SEMEV-12 tests
-        run: PYTHONPATH=. python -m unittest test_vectors -v
+        run: PYTHONPATH=. python -m unittest tests.test_vectors -v
