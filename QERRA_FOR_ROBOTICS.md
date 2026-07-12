@@ -6,7 +6,7 @@ as a **Condition node** in robot Behaviour Trees — an ethical safety layer tha
 evaluates situations before action execution.
 
 **Key strengths for robotics:**
-- Deterministic and auditable (no neural networks, no black boxes)
+- Deterministic and auditable (no black boxes)
 - Full per-vector reasoning and similarity scores in every response
 - Ready ROS 2 bridge (`ros2_bridge.py`) with subscriber and three publishers
 - Live public API for immediate testing — no installation required
