@@ -1,5 +1,5 @@
 # =====================================================
-# qerra_pytrees_node.py
+# qerra_standalone_remote_node.py
 # QERRA-v2 Classical — Standalone PyTrees Condition Node
 #
 # Real, runnable Behavior Tree integration. No ROS 2 required.
@@ -13,7 +13,7 @@
 #   pip install py_trees requests
 #
 # Usage:
-#   from qerra_pytrees_node import QerraConditionNode
+#   from qerra_standalone_remote_node import QerraConditionNode
 #
 #   node = QerraConditionNode(
 #       name="EthicalCheck",
