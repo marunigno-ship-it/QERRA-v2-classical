@@ -160,8 +160,7 @@ A structured benchmark of 80 verified test cases was conducted across all 12 vec
 
 ## Formal Verification Status
 
-The QERRA-HSR physical safety layer is fully deterministic — pure Python threshold logic with no machine learning components — and its safety properties are provable by direct code inspection. Formal Linear Temporal Logic (LTL) specifications for QERRA-HSR are documented in `documentation/QERRA-HSR-Design-v0.1.md`.
-
+The QERRA-HSR physical safety layer is fully deterministic — pure Python threshold logic with no machine learning components — and its safety properties are provable by direct code inspection. Formal Linear Temporal Logic (LTL) specifications for QERRA-HSR are documented in `QERRA-HSR-Design-v0.1.md`.
 SEMEV-12 is a hybrid system. The scoring engine, weighting logic, decision thresholds, and nuance dampening layer are fully deterministic and auditable by code inspection. The semantic similarity computation, however, relies on `all-MiniLM-L6-v2`, a neural sentence transformer whose internal behavior cannot be formally proven the way deterministic threshold logic can. The relationship between input text and similarity score is characterized empirically — through the 80-case benchmark — rather than mathematically proven.
 
 This distinction is stated explicitly for transparency: SEMEV-12 is best described as a hybrid deterministic system, where deterministic decision logic operates on outputs from a classical (non-generative) neural similarity model. Future work may explore statistical verification methods such as conformal prediction to provide formal coverage guarantees for the semantic similarity layer.
