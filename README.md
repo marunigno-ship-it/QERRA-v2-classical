@@ -12,9 +12,9 @@ Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vect
 ## What it is
 
 QERRA-v2 Classical evaluates complex human situations against 12 named ethical
-vectors and returns a structured, fully traceable score. No neural networks.
-No black boxes. Every result includes the exact vectors that fired, a
-human-readable reasoning string, and a moral clarity signal.
+vectors and returns a structured, fully traceable score. No black boxes. Every
+result includes the exact vectors that fired, a human-readable reasoning
+string, and a moral clarity signal.
 
 Detection uses **semantic similarity** via `sentence-transformers` across all
 12 vectors, with supporting regex patterns for specific high-certainty phrases
