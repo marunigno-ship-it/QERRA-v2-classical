@@ -237,6 +237,25 @@ details and open questions for the robotics community.
 
 ---
 
+---
+
+## Simulation Demo: QERRA-HSR in Webots
+
+A 32-second Webots (R2025a) simulation showing QERRA-HSR's three safety states
+running live against a PAL Robotics TIAGo humanoid:
+
+- **CLEAR** — TIAGo patrols normally, no active safety signals.
+- **MONITOR** — a distress signal near the robot triggers a slowdown.
+- **CRITICAL** — the robot approaches a hazard (a marked oil-barrel platform)
+  and the safety wrapper cuts wheel velocity instantly, halting TIAGo before
+  it crosses the hazard boundary.
+
+[![QERRA-HSR Webots Demo](https://img.youtube.com/vi/Wn-2N6LLWJQ/maxresdefault.jpg)](https://youtu.be/Wn-2N6LLWJQ)
+
+Full write-up and discussion: [Open Robotics Discourse](https://discourse.openrobotics.org/t/hardening-hri-safety-with-a-deterministic-wrapper-a-webots-demo-using-tiago/56428)
+
+---
+
 ## Repository Structure
 
 ```
