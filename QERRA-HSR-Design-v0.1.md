@@ -41,6 +41,19 @@ HSRInput(
 
 ---
 
+### Note for integrators: computing `hazard_proximity_flag`
+
+QERRA-HSR receives `hazard_proximity_flag` as a plain true/false signal — it
+does not calculate proximity itself. For anyone computing this flag from a
+real distance sensor: raw distance alone is a weak signal, since a robot
+approaching fast and one drifting slowly can be the same distance away with
+very different real risk. A stronger approach is time-to-collision (distance
+divided by closing speed), combined with a fixed minimum-distance floor for
+the case where the robot isn't moving at all (distance alone, closing speed
+near zero, should still trigger if the robot is simply too close).
+
+---
+
 ## 4. Output States
 
 | State | Meaning |
