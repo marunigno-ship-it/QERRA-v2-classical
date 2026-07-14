@@ -71,3 +71,4 @@ class StabilizedHSR:
 
         raw_result.status = self._current_status
         return raw_result
+      
