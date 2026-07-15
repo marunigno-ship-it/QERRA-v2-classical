@@ -323,18 +323,16 @@ QERRA-v2 Classical is developed and maintained by one independent researcher
 with no team, no institutional affiliation, no grant funding, and no
 organisational infrastructure. Every design decision, every line of code,
 every document in this repository is the work of a single person operating
-under significant personal constraints.
+as an independent, self-funded developer.
 
 **Severe resource limitations.**
 The project runs on the Hugging Face free tier, which imposes real
 restrictions on uptime, deployment reliability, and the ability to expand
 the detection engine. Stable paid hosting would directly improve API
 reliability and unlock the next stage of development, but is not currently
-financially possible without external support. The development environment
-is further constrained by unstable internet connectivity and limited
-available energy. Progress is made in small, careful increments rather than
-sustained sprints. This is an accurate description of working conditions,
-not a limitation of vision or commitment.
+financially possible without external support. Progress is made in careful,
+iterative stages rather than continuous deployment cycles. This is an accurate
+description of working conditions, not a limitation of vision or commitment.
 
 **What this means in practice.**
 The core engine is stable and the SEMEV-12 framework is complete and
@@ -357,7 +355,6 @@ anyone who finds the framework useful or interesting, on whatever terms
 are realistic for both sides. If you are a robotics engineer, researcher,
 or developer who wants to discuss integration or contribution, the best
 first step is to open a GitHub issue or contact directly by email.
-
 ---
 
 ## Feedback and Collaboration
