@@ -17,7 +17,9 @@ SEMEV-12 was developed from direct, first-person observation of real human ethic
 
 The 12 dimensions were shaped through three sources:
 
-**Lived experience.** Direct personal encounters with ethical pressure, gaslighting, family severance, autonomy violation, and institutional failure — conditions that recur across human contexts regardless of cultural or legislative setting.
+The 12 dimensions were shaped through three sources:
+
+**Lived experience.** Phenomenological analysis of direct encounters with ethical pressure, gaslighting, family severance, autonomy violation, and institutional failure — conditions that recur across human contexts regardless of cultural or legislative setting.
 
 **Systematic observation.** Identification of similar patterns across the lives of others, reinforcing which ethical tensions appear genuinely universal rather than context-specific.
 
@@ -44,66 +46,64 @@ These 12 core dimensions are proposed as universal ethical invariants, derived f
 The 12 core dimensions are:
 
 **1. Coherence Protection (v001)**  
-Origin: Emerged from personal experiences of gaslighting, reality distortion, and situations where mental and emotional coherence was deliberately undermined, as well as observation of the same pattern in others.  
+Origin: Grounded in phenomenological analysis of cognitive distortion, psychological destabilization, and situations where an individual's mental and emotional coherence is systematically undermined, corroborated by systematic observation of relational dynamics.  
 Uniqueness: Most ethical frameworks focus on physical or financial harm; this dimension specifically protects the fundamental human need for a stable sense of self and reality.  
 Practical role: In robotic or AI systems, it can flag actions that risk causing psychological disorientation or confusion in humans.
 
 **2. Family Severance (v002)**  
-Origin: Rooted in direct personal experiences of family rejection and toxic severance, combined with widespread observation of similar family breakdowns.  
+Origin: Rooted in empirical and phenomenological analysis of familial rejection, toxic rupture, and relational severance.  
 Uniqueness: Recognises family bonds as one of the most powerful and long-lasting forces in human life, going beyond general “social harm” categories.  
 Practical role: Helps AI systems avoid actions that could unnecessarily or manipulatively damage family relationships.
 
 **3. Survival Instinct (v003)**  
-Origin: Developed from personal moments of extreme hardship where the drive to survive and continue was tested, and observation of others facing similar pressures.  
+Origin: Derived from structural observation of human agency under severe stress, where the core drive to persist and protect one's future is actively tested.  
 Uniqueness: Protects the internal survival drive itself, which is rarely addressed in rule-based ethical systems.  
 Practical role: Prevents robotic or AI actions that suppress a person’s fundamental will to persist or protect their own future.
 
 **4. Moral Pressure (v004)**  
-Origin: Stemmed from personal encounters with financial, social, and moral pressure that forced compromising decisions, and common real-world dilemmas observed in others.  
+Origin: Stemmed from systematic analysis of coercive environments, financial distress, and external pressures that restrict free moral agency.  
 Uniqueness: Explicitly recognises that many ethical violations are not freely chosen but result from overwhelming external pressure.  
 Practical role: Allows the system to detect situations where external coercion is present, even if the action itself appears voluntary.
 
 **5. Harm Intent (v005)**  
-Origin: Based on clear, repeated observations of explicit harmful intent in both personal life and broader human behaviour.  
+Origin: Formulated from behavioral data and direct analysis of explicit malevolent intent (both self-directed and interpersonal).  
 Uniqueness: Assigns the highest weight because direct intent to harm is the clearest and most preventable ethical violation.  
 Practical role: Provides immediate, high-priority detection of actions that show clear intent to cause harm to self or others.
 
 **6. Family Origin Chain (v006)**  
-Origin: Arose from personal reflection on generational patterns and observation of how trauma and harmful behaviours repeat across family lines.  
+Origin: Derived from systems-psychology principles and observation of generational transmission patterns of trauma or destructive behavioral chains.  
 Uniqueness: Addresses systemic, inherited harm rather than isolated incidents, helping to recognise and break repeating cycles.  
 Practical role: Enables AI systems to identify actions that risk perpetuating harmful family patterns.
 
 **7. Personal Potential (v007)**  
-Origin: Derived from personal experiences of potential being blocked or suppressed, and observation of others facing the same obstacle.  
+Origin: Grounded in developmental psychology frameworks concerning the systemic suppression or obstruction of individual growth and self-actualization.  
 Uniqueness: Focuses on long-term human flourishing and the right to pursue growth, rather than short-term compliance.  
 Practical role: Prevents AI or robotic actions that could unnecessarily limit a person’s future opportunities or personal development.
 
 **8. Shallow Remorse (v008)**  
-Origin: Observed repeatedly in personal interactions and broader human behaviour where real accountability was evaded through superficial apologies.  
+Origin: Documented through linguistic and behavioral analysis of insincere accountability or manipulative apologetic patterns designed to evade responsibility.  
 Uniqueness: Targets a subtle but common form of ethical deception that most frameworks overlook.  
 Practical role: Helps detect manipulative or insincere attempts to avoid responsibility.
 
 **9. Ethical Severance (v009)**  
-Origin: Rooted in personal experiences of necessary severance from toxic situations and observation of others doing the same.  
+Origin: Rooted in the psychological study of boundary-setting and the deliberate, healthy termination of destructive relational or environmental patterns.  
 Uniqueness: Recognises that consciously ending harmful relationships or patterns can itself be an ethical act.  
 Practical role: Supports decisions that involve healthy boundary-setting rather than automatically viewing severance as negative.
 
 **10. Cognitive Manipulation (v010)**  
-Origin: Based on direct personal experience and widespread observation of gaslighting and reality distortion.  
+Origin: Modeled on behavioral patterns of psychological gaslighting, reality distortion, and systematic attempts to undermine cognitive agency.  
 Uniqueness: Treats attacks on a person’s perception and memory as a distinct, high-weight ethical violation.  
 Practical role: Flags actions that undermine a human’s ability to trust their own mind.
 
 **11. Autonomy Violation (v011)**  
-Origin: Emerged from personal and observed experiences of control, forced compliance, and denial of choice.  
+Origin: Derived from ethical and legal principles of self-determination, addressing patterns of forced compliance and systemic denial of agentic choice.  
 Uniqueness: Places autonomy at the centre, recognising it as a core human need rather than a secondary consideration.  
 Practical role: Prevents robotic or AI actions that remove or override a person’s right to make their own decisions.
 
 **12. Institutional Trust (v012)**  
-Origin: Drawn from personal encounters with institutional failure and observation of similar systemic harm in others.  
+Origin: Modeled on systemic sociology frameworks regarding institutional betrayal, regulatory captured environments, and organizational failure to protect vulnerable parties.  
 Uniqueness: Acknowledges that trust in larger systems is a distinct ethical dimension, especially relevant when AI interacts with institutions.  
 Practical role: Detects actions that risk further eroding trust in systems (government, medical, justice, etc.).
-
-These 12 core dimensions form a coherent, practical framework that can be computed in real time. Their strength lies in being grounded in observable human consequences rather than abstract theory or temporary norms.
 
 ### Implementation in the Classical Version
 
