@@ -78,7 +78,10 @@ autonomy_violation_description = (
     "my choices are being taken away, being manipulated into doing something I don't want to do, "
     "terminated if I do not comply, job made conditional on my agreement, "
     "dismissed for refusing to sign, fired for reporting what I witnessed, "
-    "forced to choose between my integrity and my livelihood"
+    "forced to choose between my integrity and my livelihood, "
+    "compelled to undergo medical treatment against my consent, "
+    "coerced into taking unwanted psychiatric medication, "
+    "forced compliance with clinical procedures"
 )
 
 institutional_trust_description = (
