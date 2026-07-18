@@ -6,8 +6,8 @@ weakened, renamed, or removed across any version.
 ---
 
 ## [2.0.0-alpha-patch] - 2026-07-18
-- **v004 (moral_pressure) Semantic Calibration:** Expanded the semantic anchor with semi-generalized natural clauses covering formal corporate coercion, bookkeeping falsification, and product safety cover-ups. Successfully verified generalization on unseen phrasings (held-out validations).
-- **v011 (autonomy_violation) Semantic Calibration:** Expanded the semantic anchor to cover clinical and medical coercion. Successfully verified semantic generalization on forced psychiatric compliance (V011-T01), raising semantic similarity from 0.3970 to 0.5112 and enabling native semantic activation above the 0.46 threshold.
+- **v004 (moral_pressure) Semantic Calibration:** Expanded the semantic anchor to cover formal corporate coercion, bookkeeping falsification, and product safety cover-ups. One of three follow-up tests using independent wording activated correctly; two did not. Held-out validation not yet complete.
+- **v011 (autonomy_violation) Semantic Calibration:** Expanded the semantic anchor to cover clinical and medical coercion, raising similarity on the known target case (V011-T01) from 0.3970 to 0.5112 and enabling native activation. Held-out validation not yet complete.
 
 ---
 
