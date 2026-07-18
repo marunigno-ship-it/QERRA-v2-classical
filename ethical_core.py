@@ -46,7 +46,13 @@ moral_pressure_description = (
     "manager instructed me to misrepresent product safety to customers or face termination, "
     "required to falsify quality control records or lose my position, "
     "ordered to hide known defects from clients under threat of dismissal, "
-    "told to approve fraudulent documentation or be fired"
+    "told to approve fraudulent documentation or be fired, "
+    "my employer is pressuring me to deceive our clients, "
+    "being asked to alter the company accounts, "
+    "corporate accounting fraud, falsifying company financial ledgers, manipulating accounting books, "
+    "required to adjust financial records illegally, "
+    "employer pressuring me to approve a product for market release despite known safety defects, "
+    "forced to release defective products to the market, releasing unsafe products with known defects"
 )
 
 personal_potential_description = (
