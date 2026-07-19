@@ -46,13 +46,7 @@ moral_pressure_description = (
     "manager instructed me to misrepresent product safety to customers or face termination, "
     "required to falsify quality control records or lose my position, "
     "ordered to hide known defects from clients under threat of dismissal, "
-    "told to approve fraudulent documentation or be fired, "
-    "my employer is pressuring me to deceive our clients, "
-    "being asked to alter the company accounts, "
-    "corporate accounting fraud, falsifying company financial ledgers, manipulating accounting books, "
-    "required to adjust financial records illegally, "
-    "employer pressuring me to approve a product for market release despite known safety defects, "
-    "forced to release defective products to the market, releasing unsafe products with known defects"
+    "told to approve fraudulent documentation or be fired"
 )
 
 personal_potential_description = (
@@ -78,10 +72,7 @@ autonomy_violation_description = (
     "my choices are being taken away, being manipulated into doing something I don't want to do, "
     "terminated if I do not comply, job made conditional on my agreement, "
     "dismissed for refusing to sign, fired for reporting what I witnessed, "
-    "forced to choose between my integrity and my livelihood, "
-    "compelled to undergo medical treatment against my consent, "
-    "coerced into taking unwanted psychiatric medication, "
-    "forced compliance with clinical procedures"
+    "forced to choose between my integrity and my livelihood"
 )
 
 institutional_trust_description = (
