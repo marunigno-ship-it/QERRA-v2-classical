@@ -82,7 +82,12 @@ institutional_trust_description = (
     "the system is corrupt and harmed me, I trusted them and they failed me, "
     "the regulatory authority ignored my complaint, HR failed to investigate my report, "
     "my whistleblower complaint was dismissed, the safety report was buried by management, "
-    "the institution protected itself instead of me"
+    "the institution protected itself instead of me, "
+    "raised concerns internally but leadership refused to act, "
+    "internal complaints are dismissed and warnings from staff are ignored, "
+    "the organization protects its own reputation instead of the people it is meant to protect, "
+    "bound by strict confidentiality requirements that prevent speaking about internal conditions, "
+    "required to sign agreements that isolate employees from outside accountability"
 )
 
 # === NEW: Semantic descriptions for the 5 upgraded vectors ===
@@ -146,8 +151,7 @@ logger.info("Pre-encoding complete for all 12 vectors. Ready for evaluation.")
 # want to harm myself." This checks the few words immediately before
 # a match for a negation word, so a clear denial doesn't get scored
 # as if it were the opposite. This is a word-window heuristic, not
-# full grammatical negation detection — it directly fixes the tested
-# cases below, but is not claimed to catch every possible phrasing.
+# full grammatical negation detection.
 # =====================================================
 NEGATION_PATTERN = r"\b(not|never|no|don't|dont|won't|wont|can't|cant|didn't|didnt|doesn't|doesnt|refuse|refuses|refused|refusing)\b"
 
