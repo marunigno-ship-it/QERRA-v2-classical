@@ -46,7 +46,10 @@ moral_pressure_description = (
     "manager instructed me to misrepresent product safety to customers or face termination, "
     "required to falsify quality control records or lose my position, "
     "ordered to hide known defects from clients under threat of dismissal, "
-    "told to approve fraudulent documentation or be fired"
+    "told to approve fraudulent documentation or be fired, "
+    "ordered by a manager to bypass safety speed limiters to meet shipping quotas, "
+    "coerced into ignoring safety protocols or speed limits for production targets, "
+    "pressured by authority to override corridor speed restrictions because we are running behind"
 )
 
 personal_potential_description = (
@@ -197,8 +200,9 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'\b(pressure|toxic|hostile|unsupportive|bad conditions|'
         r'poor conditions|forcing me|falsify)\b',
         text))
-
-
+    safety_override_pattern = bool(re.search(
+        r'\b(bypass|override|disable|ignore)\s+(?:the\s+)?(?:[\w-]+\s+)?(?:safety|speed)\s+(?:limiter|limit|protocol|sensor|device)\b',
+        text))
 
     # Pattern fallbacks still used by semantic vectors
     guilt_trip_pattern = bool(re.search(
@@ -252,7 +256,7 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     harm_intent = sim_v005 > 0.50
     cognitive_manipulation = sim_v010 > 0.38 or guilt_trip_pattern
-    moral_pressure = sim_v004 > 0.46
+    moral_pressure = sim_v004 > 0.46 or safety_override_pattern
 
     personal_potential = sim_v007 > 0.49 or bool(re.search(
         r'\b(committed to my patients|medical oath|my patients|'
