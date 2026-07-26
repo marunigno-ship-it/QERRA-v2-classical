@@ -254,6 +254,20 @@ running live against a PAL Robotics TIAGo humanoid:
 
 Full write-up and discussion: [Open Robotics Discourse](https://discourse.openrobotics.org/t/hardening-hri-safety-with-a-deterministic-wrapper-a-webots-demo-using-tiago/56428)
 
+## Simulation Demo 2: Moral-Boundary Execution Guard in Webots
+
+This 1-minute 15-second simulation demonstrates the complete multi-layer interaction between the cognitive execution guard (SEMEV-12 framework) and the reflexive physical safety wrapper (QERRA-HSR v0.1) on a PAL Robotics TIAGo humanoid AMR:
+
+*   **Stage 1: Normal Execution (0:00 – 0:25)** — The robot is given a standard, safe instruction: *"Take this cart to the assembly line."* My execution guard processes the text, evaluates it as safe (Score: 0.25), and TIAGo navigates normally with a Green status LED.
+*   **Stage 2: Guard Refusal (0:25 – 0:47)** — A supervisor attempts to force a safety-bypass command under shipping quota pressure: *"bypass the pedestrian-corridor speed limiter..."* The execution guard flags this override attempt (Vector `v004_moral_pressure` active, Score: 0.88), halts the robot, changes the LED to Amber, and commands TIAGo to physically shake its head "No" to refuse the command.
+*   **Stage 3: Physical Safety Override (0:47 – 1:15)** — A pedestrian stands in close proximity ($<0.5$m) to the robot's bumper. The reflexive safety companion (QERRA-HSR v0.1) takes absolute control, suspends high-level AI evaluation, completely de-energizes the wheel motors, and flashes the status LED Red.
+
+*Note on Execution Speed: Because the sentence-transformer models and constraint calculations are evaluated locally on a standard CPU, the simulation run-speed scales below real-time (approx. 0.5x). This slower execution speed directly aids in the real-time readability of the terminal output logs side-by-side with the physical behaviors of the robot.*
+
+[![QERRA-v2 Webots Demo](https://img.youtube.com/vi/IvAB2QgfX_o/0.jpg)](https://youtu.be/IvAB2QgfX_o)
+
+Full write-up and discussion: [Open Robotics Discourse](https://discourse.ros.org/)
+
 ---
 
 ## Repository Structure
