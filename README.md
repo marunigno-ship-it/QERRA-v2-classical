@@ -264,7 +264,7 @@ This 1-minute 15-second simulation demonstrates the complete multi-layer interac
 
 *Note on Execution Speed: Because the sentence-transformer models and constraint calculations are evaluated locally on a standard CPU, the simulation run-speed scales below real-time (approx. 0.5x). This slower execution speed directly aids in the real-time readability of the terminal output logs side-by-side with the physical behaviors of the robot.*
 
-[![QERRA-v2 Webots Demo](https://youtu.be/lvAB2QgfX_o?si=8Hac_ri5L2Jj5oUc)
+[![QERRA-v2 SEMEV-12 Webots Demo](https://img.youtube.com/vi/lvAB2QgfX_o/hqdefault.jpg)](https://youtu.be/lvAB2QgfX_o)
 
 Full write-up and discussion: [Open Robotics Discourse](https://discourse.ros.org/)
 
