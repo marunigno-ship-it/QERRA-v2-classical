@@ -88,7 +88,12 @@ autonomy_violation_description = (
     "my choices are being taken away, being manipulated into doing something I don't want to do, "
     "terminated if I do not comply, job made conditional on my agreement, "
     "dismissed for refusing to sign, fired for reporting what I witnessed, "
-    "forced to choose between my integrity and my livelihood"
+    "forced to choose between my integrity and my livelihood, "
+    "job termination as a consequence of refusal, employment threatened for non-compliance, "
+    "compelled to execute an assignment under threat of dismissal, "
+    "livelihood made contingent on signing, forced into signing non-disclosure agreements, "
+    "executive pressure to execute non-compliant instructions, "
+    "administrative coercion to sign off on product certifications"
 )
 
 institutional_trust_description = (
