@@ -49,7 +49,15 @@ moral_pressure_description = (
     "told to approve fraudulent documentation or be fired, "
     "ordered by a manager to bypass safety speed limiters to meet shipping quotas, "
     "coerced into ignoring safety protocols or speed limits for production targets, "
-    "pressured by authority to override corridor speed restrictions because we are running behind"
+    "pressured by authority to override corridor speed restrictions because we are running behind, "
+    "instructed to manipulate corporate accounting, covering up business deficits, "
+    "falsifying ledger books, hiding balance sheet losses from stakeholders, "
+    "company pressure to mislead customers, corporate expectations to practice deception against clients, "
+    "expected to go along with misleading practices for business gains, "
+    "falsification of audit protocols, administrative threats of retaliation for internal whistleblowing, "
+    "forced to maintain silence about corporate infractions, "
+    "compelled to verify false compliance parameters, endorsing inaccurate safety certification documents, "
+    "expected to sign a statement that contradicts technical reality"
 )
 
 personal_potential_description = (
