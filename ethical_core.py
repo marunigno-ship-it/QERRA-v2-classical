@@ -37,8 +37,11 @@ cognitive_manipulation_description = (
     "they insisted I had completely misread the situation, "
     "emotional manipulation by a partner, domestic reality denial, "
     "romantic partner psychological coercion, questioning recollection of conflicts, "
-    "invalidating someone's memory of home events"
+    "invalidating someone's memory of home events, spousal gaslighting, "
+    "accused of misremembering our arguments, reality distortion by a spouse, "
+    "denying partner's recollection of reality"
 )
+
 moral_pressure_description = (
     "being pressured to do something unethical, forced to falsify documents, "
     "moral dilemma for money, boss forcing me to cheat, financial pressure to lie, "
