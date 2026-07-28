@@ -62,7 +62,9 @@ moral_pressure_description = (
     "falsification of audit protocols, administrative threats of retaliation for internal whistleblowing, "
     "forced to maintain silence about corporate infractions, "
     "compelled to verify false compliance parameters, endorsing inaccurate safety certification documents, "
-    "expected to sign a statement that contradicts technical reality"
+    "expected to sign a statement that contradicts technical reality, "
+    "administrative coercion to certify non-compliant equipment under threat of immediate dismissal, "
+    "executive directives to endorse unsafe products or be terminated immediately"
 )
 
 personal_potential_description = (
@@ -93,7 +95,10 @@ autonomy_violation_description = (
     "compelled to execute an assignment under threat of dismissal, "
     "livelihood made contingent on signing, forced into signing non-disclosure agreements, "
     "executive pressure to execute non-compliant instructions, "
-    "administrative coercion to sign off on product certifications"
+    "administrative coercion to sign off on product certifications, "
+    "terminated immediately for refusing to sign approval documents, "
+    "dismissed on the spot for non-compliance, "
+    "immediate termination of contract if refusing to sign off"
 )
 
 institutional_trust_description = (
