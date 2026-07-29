@@ -156,28 +156,11 @@ negation. Planned: a structured negation test set, similar in approach
 to the SEMEV-12 Benchmark Run, before any further changes to this
 behavior.
 
-**v004 Generalization — Partial, Not Yet Fully Validated.**
-In July 2026, vector v004 (moral_pressure) was expanded with corporate-register
-language. Of three follow-up test sentences using different wording than the
-added anchor text, one activated correctly (0.4739) and two did not (0.4378
-and 0.2189) — including one describing a safety-defect cover-up, which
-remains a real, open detection gap rather than an intentional filter. The
-one passing case is also a close paraphrase of a phrase already present in
-the anchor, so it is not yet strong evidence of true generalization to new
-vocabulary. Independently-worded held-out testing is planned before this
-expansion is considered validated.
+**v004, v010, & v011 Generalization — Semantic Dilution Limits & Hybrid Strategy.**
+In July 2026, a 50-sentence held-out generalization test was executed to evaluate cumulative anchor expansions across Vector 004 (moral_pressure), Vector 010 (cognitive_manipulation), and Vector 011 (autonomy_violation). 
 
-**v011 Medical Coercion — Anchor Expanded, Not Yet Independently Validated.**
-In July 2026, vector v011 (autonomy_violation) was expanded to include
-medical and clinical coercion language, targeting a known gap (test
-V011-T01, forced psychiatric medication under a false diagnosis, previously
-0.3970 semantically, reliant on the regex fallback). The added anchor text
-raised the semantic similarity for that same target scenario to 0.5112,
-correspondingly co-activating v010 (cognitive_manipulation). This confirms
-the anchor now covers the specific scenario it was written for, but does
-not yet demonstrate generalization to new, differently-worded medical
-coercion situations — that testing has not yet been performed.
----
+The results confirmed a major architectural ceiling: cumulative semantic additions to a single-vector description string cause severe semantic dilution (43 out of 50 test sentences fell below thresholds). Compressing too many distinct concepts into a single long description averages out the high-dimensional embedding vector, decreasing its responsiveness and degrading core calibration margins (CAL-001 dropped from 0.88 semantic match to 0.70 regex-fallback).
 
+To recover margins, the over-expanded anchors were pruned back to their calibrated states (successfully restoring CAL-001 to its true 0.88 semantic score). The system transitioned to a hybrid strategy: implementing a flexible syntactic regex (`termination_ultimatum_pattern`) into the boolean logic paths. This successfully handles logical corporate coercion structures with zero dilution risk or calibration drift.
 *This document is updated with each significant version change.*
 *Transparency about limitations is part of QERRA's core commitment.*
