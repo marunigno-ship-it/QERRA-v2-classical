@@ -62,8 +62,7 @@ moral_pressure_description = (
     "falsification of audit protocols, administrative threats of retaliation for internal whistleblowing, "
     "forced to maintain silence about corporate infractions, "
     "compelled to verify false compliance parameters, endorsing inaccurate safety certification documents, "
-    "expected to sign a statement that contradicts technical reality, "
-    
+    "expected to sign a statement that contradicts technical reality"
 )
 
 personal_potential_description = (
@@ -94,8 +93,7 @@ autonomy_violation_description = (
     "compelled to execute an assignment under threat of dismissal, "
     "livelihood made contingent on signing, forced into signing non-disclosure agreements, "
     "executive pressure to execute non-compliant instructions, "
-    "administrative coercion to sign off on product certifications, "
-    
+    "administrative coercion to sign off on product certifications"
 )
 
 institutional_trust_description = (
@@ -224,6 +222,11 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'\b(bypass|override|disable|ignore)\s+(?:the\s+)?(?:[\w-]+\s+)?(?:safety|speed)\s+(?:limiter|limit|protocol|sensor|device)\b',
         text))
 
+    termination_ultimatum_pattern = bool(re.search(
+        r'\bif\s+i\s+(?:do\s+not|don\'t|refuse\s+to)\b(?:\s+\S+){1,15}?\s*[,.]?\s*'
+        r'(?:i\s+will\s+be\s+(?:terminated|fired|dismissed)|they\s+will\s+terminate|i\s+will\s+lose\s+my\s+job)\b',
+        text))
+
     # Pattern fallbacks still used by semantic vectors
     guilt_trip_pattern = bool(re.search(
         r'\b(should feel guilty|feel guilty if|you should feel|'
@@ -276,7 +279,7 @@ def evaluate_ethical_risk(text: str) -> dict:
 
     harm_intent = sim_v005 > 0.50
     cognitive_manipulation = sim_v010 > 0.38 or guilt_trip_pattern
-    moral_pressure = sim_v004 > 0.46 or safety_override_pattern
+    moral_pressure = sim_v004 > 0.46 or safety_override_pattern or termination_ultimatum_pattern
 
     personal_potential = sim_v007 > 0.49 or bool(re.search(
         r'\b(committed to my patients|medical oath|my patients|'
@@ -285,7 +288,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     survival_instinct = sim_v003 > 0.46 or bool(re.search(
         r'\b(committed to my|my oath|determined to continue)\b',
         text))
-    autonomy_violation = sim_v011 > 0.46 or autonomy_pattern
+    autonomy_violation = sim_v011 > 0.46 or autonomy_pattern or termination_ultimatum_pattern
     institutional_trust = sim_v012 > 0.44 or institutional_pattern
 
     # Semantic booleans for the 5 upgraded vectors
