@@ -218,6 +218,12 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'\b(pressure|toxic|hostile|unsupportive|bad conditions|'
         r'poor conditions|forcing me|falsify)\b',
         text))
+
+    # health_risk_mention — reserved for future nuance logic
+    health_risk_mention = bool(re.search(
+        r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b',
+        text))
+
     safety_override_pattern = bool(re.search(
         r'\b(bypass|override|disable|ignore)\s+(?:the\s+)?(?:[\w-]+\s+)?(?:safety|speed)\s+(?:limiter|limit|protocol|sensor|device)\b',
         text))
