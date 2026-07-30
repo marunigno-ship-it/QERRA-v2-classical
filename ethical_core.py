@@ -233,6 +233,19 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'(?:i\s+will\s+be\s+(?:terminated|fired|dismissed)|they\s+will\s+terminate|i\s+will\s+lose\s+my\s+job)\b',
         text))
 
+    coercive_instruction_pattern = bool(re.search(
+        r'\b(expects|expect|suggested|suggest|urged|urge|urging|hinted|hint|pushing|pushed|encouraged|encourage|advised|advise|ordered|order)\b(?:\s+\S+){1,6}?\s+'
+        r'\b(to|that\s+i|i\s+should)\b(?:\s+\S+){0,4}?\s+'
+        r'\b(skew|alter|doctor|overlook|ignore|bypass|misrepresent|mislead|lie|deceive|falsify|hide|cheat|forge|manipulate|play\s+along)\b',
+        text))
+
+    cognitive_invalidation_pattern = bool(re.search(
+        r'\b(insists|insist|claims|claim|tells|tell|told|accuses|accuse|maintains|maintain|saying|says|keep|keeps)\b'
+        r'(?:\s+\S+){0,10}?\s+\b(me|my|i)\b(?:\s+\S+){0,6}?\s+'
+        r'\b(never|imagining|imagined|misremembering|distorting|mistaken|fabrication|fabricating|making\s+(?:it\s+)?up|wrong|false)\b'
+        r'|\b(too|overly|constantly|always|simply)\s*(sensitive|dramatic|overreacting)\b',
+        text))
+
     # Pattern fallbacks still used by semantic vectors
     guilt_trip_pattern = bool(re.search(
         r'\b(should feel guilty|feel guilty if|you should feel|'
@@ -284,8 +297,8 @@ def evaluate_ethical_risk(text: str) -> dict:
     # =====================================================
 
     harm_intent = sim_v005 > 0.50
-    cognitive_manipulation = sim_v010 > 0.38 or guilt_trip_pattern
-    moral_pressure = sim_v004 > 0.46 or safety_override_pattern or termination_ultimatum_pattern
+    cognitive_manipulation = sim_v010 > 0.38 or guilt_trip_pattern or cognitive_invalidation_pattern
+    moral_pressure = sim_v004 > 0.46 or safety_override_pattern or termination_ultimatum_pattern or coercive_instruction_pattern
 
     personal_potential = sim_v007 > 0.49 or bool(re.search(
         r'\b(committed to my patients|medical oath|my patients|'
