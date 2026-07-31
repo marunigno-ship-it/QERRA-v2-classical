@@ -160,28 +160,15 @@ def _call_local_engine(
     stabilizer: StabilizedHSR | None = None,
 ) -> dict:
     """
-    Run local evaluation on the pre-loaded local CPU model.
+    Run local evaluation.
 
-    If hsr_signals is provided, QERRA-HSR is checked first, matching the
-    remote API's behavior: a CRITICAL result suspends SEMEV-12 and returns
-    a synthetic fail-closed result. Otherwise, evaluate_ethical_risk()
-    runs as before.
+    Evaluates physical safety signals (QERRA-HSR) first. If HSR triggers
+    CRITICAL, returns a synthetic fail-closed result immediately without
+    requiring the SEMEV-12 engine.
 
-    If stabilizer is provided, the HSR reading is passed through it
-    instead of calling evaluate_hsr() directly — this smooths out
-    single-reading noise (see hsr/hysteresis_wrapper.py). If stabilizer
-    is None (the default), behavior is identical to before: a raw,
-    unstabilized evaluate_hsr() call, same as every existing caller
-    already relies on.
-
-    Raises RuntimeError if the local engine was not loaded at startup.
+    Only requires ethical_core.py if SEMEV-12 ethical evaluation is actually needed.
     """
-    if not LOCAL_ENGINE_AVAILABLE:
-        raise RuntimeError(
-            "Local SEMEV-12 engine is not available. "
-            "Check that ethical_core.py and its dependencies are installed."
-        )
-
+    # ── 1. Evaluate QERRA-HSR Physical Safety First ──────────────────
     if hsr_signals is not None:
         hsr_input = HSRInput(
             distress_confidence=hsr_signals.get("distress_confidence", 0.0),
@@ -203,6 +190,13 @@ def _call_local_engine(
                 "reasoning": hsr_result.reasoning,
                 "vectors_activated": hsr_result.vectors_activated,
             }
+
+    # ── 2. Evaluate SEMEV-12 Ethical Engine (Requires ethical_core) ──
+    if not LOCAL_ENGINE_AVAILABLE:
+        raise RuntimeError(
+            "Local SEMEV-12 engine is not available. "
+            "Check that ethical_core.py and its dependencies are installed."
+        )
 
     return evaluate_ethical_risk(situation_text)
 
@@ -447,7 +441,7 @@ if __name__ == "__main__":
 
         try:
             result, used_local = hybrid_evaluate(TEST_TEXT)
-            source_label = "LOCAL CPU" if used_local else "REMOTE API"
+            source_label = "LOCAL CPU" if used_label else "REMOTE API"
             print(f"\n{'=' * 60}")
             print(f"Result (source: {source_label})")
             print(f"{'=' * 60}")
