@@ -161,6 +161,7 @@ In July 2026, a 50-sentence held-out generalization test was executed to evaluat
 
 The results confirmed a major architectural ceiling: cumulative semantic additions to a single-vector description string cause severe semantic dilution (43 out of 50 test sentences fell below thresholds). Compressing too many distinct concepts into a single long description averages out the high-dimensional embedding vector, decreasing its responsiveness and degrading core calibration margins (CAL-001 dropped from 0.88 semantic match to 0.70 regex-fallback).
 
-To recover margins, the over-expanded anchors were pruned back to their calibrated states (successfully restoring CAL-001 to its true 0.88 semantic score). The system transitioned to a hybrid strategy: implementing a flexible syntactic regex (`termination_ultimatum_pattern`) into the boolean logic paths. This successfully handles logical corporate coercion structures with zero dilution risk or calibration drift.
+To recover margins, the over-expanded anchors were pruned back to their calibrated states (successfully restoring CAL-001 to its true 0.88 semantic score). The system transitioned to a hybrid strategy: implementing flexible syntactic regexes (`termination_ultimatum_pattern`, `coercive_instruction_pattern`, and the pronoun-guarded `cognitive_invalidation_pattern`). This successfully handles corporate coercion structures and eliminates third-person false positives (e.g. news reporting and reviews) with zero dilution risk or calibration drift.
+
 *This document is updated with each significant version change.*
 *Transparency about limitations is part of QERRA's core commitment.*
