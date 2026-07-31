@@ -1,0 +1,3 @@
+# QERRA-HSR v0.1 — Physical Safety Companion Layer
+# Pure Python threshold logic. Zero external dependencies required.
+# Requires: Python >= 3.10 (Standard Library only)
