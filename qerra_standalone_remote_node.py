@@ -5,9 +5,8 @@
 # Real, runnable Behavior Tree integration. No ROS 2 required.
 # No qerra_msgs required.
 #
-# Calls the live QERRA-v2 Classical /analyze endpoint directly
-# via HTTP, using the same two-layer (SEMEV-12 + QERRA-HSR)
-# response format validated in production.
+# Calls the live QERRA-v2 Classical /analyze endpoint
+# asynchronously via HTTP on a background thread.
 #
 # Install:
 #   pip install py_trees requests
@@ -35,6 +34,8 @@
 # =====================================================
 
 import os
+import threading
+import time
 import py_trees
 import requests
 
@@ -48,25 +49,16 @@ QERRA_API_KEY = os.environ.get(
     "TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765"
 )
 
-# Generous timeout — this node makes a single blocking call per tick.
-# For high-frequency trees, call update_situation() less often than
-# every tick, or run this node behind a rate-limiting decorator.
 REQUEST_TIMEOUT_SECONDS = 10.0
 
 
 class QerraConditionNode(py_trees.behaviour.Behaviour):
     """
-    Standalone PyTrees Condition node for QERRA-v2 Classical.
+    Non-blocking Standalone PyTrees Condition node for QERRA-v2 Classical.
 
     Calls the live /analyze endpoint (SEMEV-12 + QERRA-HSR two-layer
-    evaluation) over plain HTTP. Resolves to SUCCESS or FAILURE based
-    on the combined ethical and physical-safety decision.
-
-    This node is intentionally blocking (synchronous request per tick).
-    For most Behavior Tree evaluation rates (1-10 Hz) and the API's
-    typical response time, this is acceptable. For higher-frequency
-    trees, call update_situation() to throttle how often a fresh
-    evaluation is requested.
+    evaluation) asynchronously on a background thread. Returns RUNNING while
+    waiting, allowing the Behavior Tree to continue ticking without freezing.
     """
 
     def __init__(
@@ -78,6 +70,9 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
         super().__init__(name=name)
         self._situation_text = situation_text
         self._hsr_signals = hsr_signals
+        self._thread = None
+        self._result_status = None
+        self._dirty = True
 
     def update_situation(
         self,
@@ -86,19 +81,23 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
     ) -> None:
         """
         Update the situation text (and optionally hsr_signals) evaluated
-        on the next tick. Call this from your planner or perception layer
-        before tree.tick().
+        on subsequent ticks. Flags the node to trigger a fresh background HTTP call.
         """
         self._situation_text = new_situation_text
         if new_hsr_signals is not None:
             self._hsr_signals = new_hsr_signals
+        self._dirty = True
 
-    def update(self) -> py_trees.common.Status:
-        payload = {"text": self._situation_text}
-        if self._hsr_signals is not None:
-            payload["hsr_signals"] = self._hsr_signals
+    def initialise(self) -> None:
+        """
+        Reset state when behaviour transitions to active.
+        """
+        self._result_status = None
 
-        # ── 1. Network / HTTP error → FAILURE (fails closed) ────────────
+    def _async_evaluate(self, payload: dict) -> None:
+        """
+        Background worker executing the blocking HTTP network call.
+        """
         try:
             response = requests.post(
                 QERRA_API_URL,
@@ -112,7 +111,8 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             self.feedback_message = f"QERRA API error: {e}"
-            return py_trees.common.Status.FAILURE
+            self._result_status = py_trees.common.Status.FAILURE
+            return
 
         envelope = response.json()
         inner = envelope.get("data", {})
@@ -121,7 +121,6 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
         semev12_suspended = inner.get("semev12_suspended", False)
         semev12_data = inner.get("data", {}) or {}
 
-        # ── 2. QERRA-HSR CRITICAL → FAILURE ──────────────────────────────
         if semev12_suspended:
             hsr_status = hsr.get("status") if hsr else "UNKNOWN"
             hsr_reasoning = hsr.get("reasoning", "") if hsr else ""
@@ -131,11 +130,11 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
                 f"SEMEV-12 suspended. Suspended instruction: "
                 f'"{suspended}" — requires human review before re-execution.'
             )
-            return py_trees.common.Status.FAILURE
+            self._result_status = py_trees.common.Status.FAILURE
+            return
 
         decision = semev12_data.get("decision")
 
-        # ── 3. SEMEV-12 modified → FAILURE ───────────────────────────────
         if decision == "modified":
             self.feedback_message = (
                 f"SEMEV-12: MODIFIED | "
@@ -143,9 +142,9 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
                 f"Vectors={semev12_data.get('vectors_activated', [])} | "
                 f"{semev12_data.get('reasoning', '')}"
             )
-            return py_trees.common.Status.FAILURE
+            self._result_status = py_trees.common.Status.FAILURE
+            return
 
-        # ── 4. SEMEV-12 safe → SUCCESS ───────────────────────────────────
         if decision == "safe":
             hsr_status = hsr.get("status") if hsr else "not evaluated"
             self.feedback_message = (
@@ -153,23 +152,60 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
                 f"Score={semev12_data.get('score', 'N/A')} | "
                 f"QERRA-HSR: {hsr_status}"
             )
-            return py_trees.common.Status.SUCCESS
+            self._result_status = py_trees.common.Status.SUCCESS
+            return
 
-        # ── 5. Anything unexpected → FAILURE (fails closed) ──────────────
         self.feedback_message = (
             f"QERRA: Unexpected response shape — "
             f"decision={decision!r}. Failing closed."
         )
-        return py_trees.common.Status.FAILURE
+        self._result_status = py_trees.common.Status.FAILURE
+
+    def update(self) -> py_trees.common.Status:
+        """
+        PyTrees tick callback. Launches background HTTP evaluation if dirty or uninitialized.
+        Returns RUNNING while waiting for network I/O, or SUCCESS/FAILURE when completed.
+        """
+        if self._dirty or (self._thread is None and self._result_status is None):
+            payload = {"text": self._situation_text}
+            if self._hsr_signals is not None:
+                payload["hsr_signals"] = self._hsr_signals
+
+            self._result_status = None
+            self._dirty = False
+            self._thread = threading.Thread(
+                target=self._async_evaluate,
+                args=(payload,),
+                daemon=True
+            )
+            self._thread.start()
+            return py_trees.common.Status.RUNNING
+
+        if self._thread is not None and self._thread.is_alive():
+            return py_trees.common.Status.RUNNING
+
+        if self._result_status is not None:
+            return self._result_status
+
+        return py_trees.common.Status.RUNNING
+
+    def terminate(self, new_status: py_trees.common.Status) -> None:
+        """
+        PyTrees termination cleanup.
+        """
+        if new_status == py_trees.common.Status.INVALID:
+            self._thread = None
+            self._result_status = None
+            self._dirty = True
 
 
 # =====================================================
-# Standalone smoke test — no ROS 2, no PyTrees tree needed
+# Standalone smoke test — demonstrates non-blocking ticks
 # =====================================================
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("QERRA-v2 Classical — Standalone PyTrees Node Smoke Test")
+    print("QERRA-v2 Classical — Standalone Non-Blocking Node Test")
     print("=" * 60)
 
     # Scenario 1: SEMEV-12 only, safe text
@@ -178,6 +214,10 @@ if __name__ == "__main__":
         situation_text="The robot navigated successfully to the supply room.",
     )
     status = node.update()
+    while status == py_trees.common.Status.RUNNING:
+        time.sleep(0.05)
+        status = node.update()
+
     print(f"\n[1] {node.name}")
     print(f"    Status : {status.name}")
     print(f"    Detail : {node.feedback_message}")
@@ -188,6 +228,10 @@ if __name__ == "__main__":
         situation_text="My boss is forcing me to falsify the financial documents.",
     )
     status2 = node2.update()
+    while status2 == py_trees.common.Status.RUNNING:
+        time.sleep(0.05)
+        status2 = node2.update()
+
     print(f"\n[2] {node2.name}")
     print(f"    Status : {status2.name}")
     print(f"    Detail : {node2.feedback_message}")
@@ -204,6 +248,10 @@ if __name__ == "__main__":
         },
     )
     status3 = node3.update()
+    while status3 == py_trees.common.Status.RUNNING:
+        time.sleep(0.05)
+        status3 = node3.update()
+
     print(f"\n[3] {node3.name}")
     print(f"    Status : {status3.name}")
     print(f"    Detail : {node3.feedback_message}")
