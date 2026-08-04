@@ -12,7 +12,7 @@ setup(
         'ethical_core',
         'vectors',
     ],
-    packages=['hsr'],
+    packages=['hsr', 'values'],
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
