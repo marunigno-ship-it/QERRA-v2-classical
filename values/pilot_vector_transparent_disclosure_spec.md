@@ -40,16 +40,16 @@ transparency and human oversight as core commitments. Different
 countries, same direction: proving what a system actually discloses,
 not just claiming it's honest by policy.
 
-## How it was tested — with real conversations, not made-up ones
+## How it was tested — with real correspondence, not invented text
 
-Four real examples, including two of your own: a public forum reply
-and two work emails where you were upfront about being self-taught
-and working alone, even though it might have cost you credibility.
-The system correctly recognized honesty in all four — including two
-held back specifically to check it wasn't just memorizing one
-example.
+Four real examples, drawn from the project's own correspondence: a
+public forum reply and two professional emails in which the person
+writing was upfront about being self-taught and working alone, even
+though it may have cost credibility. The system correctly recognized
+honesty in all four — including two held back specifically to check
+it wasn't just memorizing one example.
 
-## What we found, straight
+## The result, straight
 
 It works. One real weakness, worth knowing: right now it notices
 honesty more easily when someone explains why it's hard to say
