@@ -94,7 +94,8 @@ isolated from SEMEV-12 core files.
 - Overhead: < 1ms per call. No impact on Hugging Face free tier.
 - Fully deterministic and explainable.
 - Does not touch or modify any SEMEV-12 core files.
-- Not yet integrated into the live API — planned next step.
+- Live in `app.py`: optional `hsr_signals` field on `/analyze`. Callers
+  who omit it see no change — full backward compatibility.
 
 ### `hsr/qerra_hsr.py`
 The QERRA-HSR evaluation module. Implements three vectors:
@@ -296,8 +297,6 @@ perception stack. This boundary is explicit and documented.
   hardware without model quantisation.
 - ROS 2 integration tested in WSL 2 / ROS 2 Humble only. Not validated
   on physical humanoid hardware.
-- QERRA-HSR not yet integrated into the live API (`app.py`). Planned
-  next step.
 - QERRA-HSR output quality entirely dependent on robot platform
   perception stack quality.
 - Single-author bus factor. ADR-001 and HSR-ADR-001 are complete.
@@ -318,8 +317,6 @@ perception stack. This boundary is explicit and documented.
 
 ## 10. Future Considerations
 
-- Unified API endpoint: extend `app.py` with optional `hsr_signals`
-  field for combined SEMEV-12 + QERRA-HSR evaluation in one call
 - Expanded evaluation dataset (50+ cases including adversarial inputs)
 - Native C++ ROS 2 port for real-time execution
 - Quantised edge model for resource-constrained hardware
