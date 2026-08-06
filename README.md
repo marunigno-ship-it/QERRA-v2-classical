@@ -431,3 +431,4 @@ AGPL-3.0 — see `LICENSE` for full terms.
 Commercial licensing available on request.
 
 *QERRA-v2 Classical — ethical conscience as the foundation of every decision.*
+
