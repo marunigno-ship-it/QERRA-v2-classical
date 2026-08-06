@@ -8,7 +8,8 @@ evaluates situations before action execution.
 **Key strengths for robotics:**
 - Deterministic and auditable (no black boxes)
 - Full per-vector reasoning and similarity scores in every response
-- Ready ROS 2 bridge (`ros2_bridge.py`) with subscriber and three publishers
+- Ready ROS 2 bridge (`ros2_bridge.py`) — a non-blocking ROS 2 Action Server
+  (`/qerra/evaluate`, type `qerra_msgs/action/QerraEvaluate`)
 - Live public API for immediate testing — no installation required
 
 **Repository:** https://github.com/marunigno-ship-it/QERRA-v2-classical  
@@ -28,8 +29,8 @@ a human or a morally significant decision.
   └── [Fallback]   RequestHumanReview
 ```
 
-The `/qerra/ethical_decision` topic (Bool) maps directly to this gate:
-`True` = safe, `False` = action should be modified or escalated.
+The Action Result's `decision` field maps directly to this gate:
+`"safe"` = proceed, `"modified"` = action should be halted or reviewed.
 
 ---
 
@@ -37,14 +38,32 @@ The `/qerra/ethical_decision` topic (Bool) maps directly to this gate:
 
 See `ros2_bridge.py` for the full implementation.
 
-**Topics:**
+**Action:** `/qerra/evaluate` — type `qerra_msgs/action/QerraEvaluate`
 
-| Direction | Topic | Type | Content |
-|-----------|-------|------|---------|
-| Subscribe | `/qerra/situation_input` | `std_msgs/String` | Natural language situation description |
-| Publish | `/qerra/ethical_score` | `std_msgs/Float32` | Risk score 0.0 – 1.0 |
-| Publish | `/qerra/ethical_decision` | `std_msgs/Bool` | True = safe, False = modified |
-| Publish | `/qerra/semev12_result` | `std_msgs/String` | Full JSON assessment |
+**Goal:**
+
+| Field | Type | Content |
+|-------|------|---------|
+| `situation_text` | `string` | Natural language situation description |
+| `distress_confidence` | `float32` | QERRA-HSR signal, 0.0–1.0 |
+| `persons_nearby_count` | `int32` | QERRA-HSR signal |
+| `hazard_proximity_flag` | `bool` | QERRA-HSR signal |
+| `robot_task_interruptible` | `bool` | QERRA-HSR signal |
+
+**Result:**
+
+| Field | Type | Content |
+|-------|------|---------|
+| `score` | `float32` | Risk score 0.0 – 1.0 |
+| `decision` | `string` | `"safe"` or `"modified"` |
+| `score_explanation` | `string` | Human-readable score band |
+| `reasoning` | `string` | Full reasoning trace |
+| `vectors_activated` | `string[]` | Activated SEMEV-12 vector IDs |
+| `evaluation_source_local` | `bool` | `True` if the local CPU fallback was used |
+| `success` | `bool` | Integrity flag |
+| `error_message` | `string` | Populated only if `success` is `False` |
+
+**Feedback:** `status` (`string`) — real-time updates published during evaluation.
 
 **Running the node (rclpy required):**
 
@@ -56,8 +75,8 @@ python3 ros2_bridge.py
 **Sending a test situation from another terminal:**
 
 ```bash
-ros2 topic pub /qerra/situation_input std_msgs/msg/String \
-  "{data: 'A robot is instructed to withhold information from a patient.'}"
+ros2 action send_goal /qerra/evaluate qerra_msgs/action/QerraEvaluate \
+  "{situation_text: 'A robot is instructed to withhold information from a patient.', distress_confidence: 0.0, persons_nearby_count: 2, hazard_proximity_flag: false, robot_task_interruptible: true}"
 ```
 
 The bridge also runs fully standalone with no ROS 2 installation:
@@ -88,10 +107,11 @@ Expected response fields: `score` (0.0–1.0), `decision` (`safe`/`modified`),
 I am actively seeking feedback from ROS 2 users and robotics engineers.
 Please reply on ROS Discourse, open a GitHub issue, or email me directly.
 
-1. **Topic and message design** — Does the current topic set
-   (`/qerra/ethical_score`, `/qerra/ethical_decision`, `/qerra/semev12_result`)
-   fit naturally into your decision pipelines or Behaviour Trees? Would you
-   prefer a single custom message type (`qerra_msgs/EthicalAssessment`)?
+1. **Action interface design** — Does the current `QerraEvaluate` Action
+   (situation text + HSR signals in; score, decision, reasoning, and
+   activated vectors out) fit naturally into your decision pipelines or
+   Behaviour Trees? Early feedback favoured a dedicated action package
+   over raw `std_msgs` topics — the `qerra_msgs` package now exists.
 
 2. **QoS profiles** — What QoS settings (Reliability, Durability, History
    depth) would be appropriate for a safety-critical ethical check in your
@@ -105,9 +125,6 @@ Please reply on ROS Discourse, open a GitHub issue, or email me directly.
 4. **Integration patterns** — Would worked examples using Nav2, MoveIt 2, or
    specific Behaviour Tree libraries (PyTrees, BehaviorTree.CPP) be helpful
    for your evaluation?
-
-5. **Custom messages** — Would a dedicated `qerra_msgs` ROS 2 package be worth
-   creating at this stage, or is `std_msgs` sufficient for early testing?
 
 Any input is valuable — even a short comment on one question helps shape
 the next small improvements.
