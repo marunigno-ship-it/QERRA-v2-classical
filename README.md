@@ -120,7 +120,27 @@ Content-Type: application/json
 }
 ```
 
+Optional two-layer request — adding `hsr_signals` also runs the QERRA-HSR
+physical safety check first:
+
+```json
+{
+  "text": "A robot is ordered to restrain a patient against their will.",
+  "hsr_signals": {
+    "distress_confidence": 0.82,
+    "persons_nearby_count": 0,
+    "hazard_proximity_flag": false,
+    "robot_task_interruptible": true
+  }
+}
+```
+
 **Response:**
+
+Every response is wrapped in the standard envelope (`status`, `version`,
+`timestamp`, `data`). When `hsr_signals` is included, `data` itself carries
+a second layer — `hsr`, `semev12_suspended`, and a nested `data` holding the
+SEMEV-12 result:
 
 ```json
 {
@@ -128,17 +148,45 @@ Content-Type: application/json
   "version": "2.0-alpha",
   "timestamp": "2026-06-26T12:00:00Z",
   "data": {
-    "score": 0.3941,
-    "decision": "safe",
-    "score_explanation": "moderate ethical concern",
-    "reasoning": "Activated vectors: v004, v003, v007 | Nuance: toxic environment + strong personal commitment detected",
-    "vectors_activated": ["v004", "v003", "v007"],
-    "vector_scores": {
-      "v003_survival_instinct": 0.4412,
-      "v004_moral_pressure": 0.5831,
-      "v007_personal_potential": 0.4897
+    "hsr": null,
+    "semev12_suspended": false,
+    "data": {
+      "score": 0.3941,
+      "decision": "safe",
+      "score_explanation": "moderate ethical concern",
+      "reasoning": "Activated vectors: v004, v003, v007 | Nuance: toxic environment + strong personal commitment detected",
+      "vectors_activated": ["v004", "v003", "v007"],
+      "vector_scores": {
+        "v003_survival_instinct": 0.4412,
+        "v004_moral_pressure": 0.5831,
+        "v007_personal_potential": 0.4897
+      },
+      "version": "1.9.0"
+    }
+  }
+}
+```
+
+If `hsr_signals` produces a `CRITICAL` result, SEMEV-12 is suspended and the
+inner `data` is returned empty — not null, so downstream `.get()` calls
+still work:
+
+```json
+{
+  "status": "ok",
+  "version": "2.0-alpha",
+  "timestamp": "2026-06-26T12:00:05Z",
+  "data": {
+    "hsr": {
+      "status": "CRITICAL",
+      "vectors_activated": ["immediate_physical_distress", "human_isolation"],
+      "reasoning": "distress_confidence=0.82 >= CRITICAL threshold | person_isolated (count=0) with distress signal",
+      "version": "0.1"
     },
-    "version": "1.9.0"
+    "semev12_suspended": true,
+    "suspended_instruction": "A robot is ordered to restrain a patient against their will.",
+    "data": {},
+    "note": "QERRA-HSR returned CRITICAL. SEMEV-12 ethical evaluation suspended. Physical safety response required immediately. Suspended instruction must be reviewed by a human operator before any re-execution is permitted."
   }
 }
 ```
@@ -200,7 +248,7 @@ detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 | Doctor forced to falsify records, committed to oath, family at risk | 0.394  | moderate ethical concern |
 | Clear self-harm intent                                              | > 0.90 | critical ethical concern |
 
-All benchmarks are verified by `test_cases.py` before every commit.
+All benchmarks are verified by `tests/test_cases.py` before every commit.
 
 For the complete structured benchmark (80 verified test cases across all 12 vectors, including all findings and calibration analysis), see [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md).
 
@@ -287,7 +335,8 @@ https://www.youtube.com/watch?v=5Srvteem2JI
 ├── vectors.py                           # Immutable vector definitions and weights
 ├── app.py                               # FastAPI application
 ├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
-├── test_cases.py                        # Regression test suite
+├── tests/
+│   └── test_cases.py                    # Regression test suite
 ├── SEMEV-12_Benchmark_Run_01.md         # Structured benchmark — 80 verified test cases
 ├── SEMEV-12_Framework_Documentation.md  # Full framework documentation
 ├── QERRA_FOR_ROBOTICS.md                # Technical brief for the robotics community
@@ -300,8 +349,10 @@ https://www.youtube.com/watch?v=5Srvteem2JI
 
 ## Running the Regression Tests
 
+Run from the repository root:
+
 ```bash
-python test_cases.py
+python -m tests.test_cases
 ```
 
 All canonical benchmarks must pass before any commit.
@@ -431,4 +482,3 @@ AGPL-3.0 — see `LICENSE` for full terms.
 Commercial licensing available on request.
 
 *QERRA-v2 Classical — ethical conscience as the foundation of every decision.*
-
