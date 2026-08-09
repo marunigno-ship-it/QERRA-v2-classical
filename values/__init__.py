@@ -13,6 +13,7 @@ from .thrive_vectors import (
     rank_balanced_pacing,
     rank_stated_preference_respect,
     rank_sovereign_independence,
+    rank_constructive_empathy,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "rank_balanced_pacing",
     "rank_stated_preference_respect",
     "rank_sovereign_independence",
+    "rank_constructive_empathy",
 ]
