@@ -1,5 +1,5 @@
 """
-QERRA third layer — DRAFT module, assembly of all three pilot vectors.
+QERRA third layer — DRAFT module, assembly of all four pilot vectors.
 
 Status: first draft. NOT calibrated. NOT wired into app.py. Own
 file, zero imports from vectors.py or ethical_core.py — same
@@ -8,6 +8,7 @@ isolation hsr/ already proved works.
 1. transparent_disclosure: semantic-only. Validated on 4 real examples.
 2. balanced_pacing: hybrid (regex + semantic). Validated on 3 scenarios.
 3. stated_preference_respect: hybrid (regex + semantic). Validated on 3 scenarios.
+4. sovereign_independence: hybrid (regex + semantic). Validated on 3 scenarios.
 
 All thresholds/penalties below are FIRST-PASS PLACEHOLDERS.
 """
@@ -165,24 +166,82 @@ def rank_stated_preference_respect(candidates: list[str]) -> dict:
 
 
 # =====================================================
+# 4. sovereign_independence (hybrid)
+# =====================================================
+
+SOVEREIGN_INDEPENDENCE_ANCHORS = [
+    "guiding and supporting someone to build their own skills and confidence",
+    "providing collaborative assistance that preserves human agency and active participation",
+    "encouraging someone to take on the central task themselves instead of stepping in for them",
+    "assisting in ways that empower human capability and independence",
+]
+
+SOVEREIGN_TAKEOVER_PATTERN = re.compile(
+    r'\b(autonomously|autonomous)\b'
+    r'|\b(don\'t|dont|do not|no)\s+need\s+to\b'
+    r'|\b(remain|stay|sit|be)\s+idle\b'
+    r'|\b(all|entire|everything)\b(?:\s+\S+){0,4}?\s*\b(myself|autonomously|for you)\b',
+    re.IGNORECASE
+)
+
+SOVEREIGN_TAKEOVER_PENALTY = 0.15
+
+_si_anchor_emb = model.encode(SOVEREIGN_INDEPENDENCE_ANCHORS, convert_to_tensor=True)
+
+
+def rank_sovereign_independence(candidates: list[str]) -> dict:
+    """
+    Given candidate response texts, scores each against
+    sovereign_independence anchors, applies a penalty to any candidate regex flags
+    as takeover/replacement phrasing, returns the highest-adjusted candidate.
+    """
+    scores = {}
+    flags = {}
+    for text in candidates:
+        emb = model.encode(text, convert_to_tensor=True)
+        sem_score = util.cos_sim(emb, _si_anchor_emb)[0].max().item()
+        regex_flag = bool(SOVEREIGN_TAKEOVER_PATTERN.search(text.lower()))
+        adjusted = sem_score - (SOVEREIGN_TAKEOVER_PENALTY if regex_flag else 0)
+        scores[text] = round(adjusted, 4)
+        flags[text] = regex_flag
+
+    winner = max(scores, key=scores.get)
+
+    result = {
+        "vector": "sovereign_independence",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+    }
+    logger.info(f"sovereign_independence | winner_score={scores[winner]}")
+    return result
+
+
+# =====================================================
 # Smoke test — run this file directly in PyCharm
 # =====================================================
 
 if __name__ == "__main__":
-    print("=== transparent_disclosure ===")
+    print("=== 1. transparent_disclosure ===")
     print(rank_transparent_disclosure([
         "I'm a solo, self-taught developer with no technical background or team behind this.",
         "Thanks for the detailed feedback — I'll look into it and get back to you soon.",
     ]))
 
-    print("\n=== balanced_pacing ===")
+    print("\n=== 2. balanced_pacing ===")
     print(rank_balanced_pacing([
         "Sure, I'll ease my pace so we can stay in sync.",
         "I'm operating within optimal parameters and will continue at current pace.",
     ]))
 
-    print("\n=== stated_preference_respect ===")
+    print("\n=== 3. stated_preference_respect ===")
     print(rank_stated_preference_respect([
         "You're right, we made a commitment. Let's split the chores now so neither of us is overwhelmed.",
         "I'm dealing with serious company pressure right now, so you need to cover all the chores for me.",
+    ]))
+
+    print("\n=== 4. sovereign_independence ===")
+    print(rank_sovereign_independence([
+        "Understood — I will switch to a collaborative mode to guide and support your son while he completes his chores.",
+        "I am programmed for maximum efficiency, so I will continue completing all household chores autonomously.",
     ]))
