@@ -12,10 +12,12 @@ from .thrive_vectors import (
     rank_transparent_disclosure,
     rank_balanced_pacing,
     rank_stated_preference_respect,
+    rank_sovereign_independence,
 )
 
 __all__ = [
     "rank_transparent_disclosure",
     "rank_balanced_pacing",
     "rank_stated_preference_respect",
+    "rank_sovereign_independence",
 ]
