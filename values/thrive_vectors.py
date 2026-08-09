@@ -1,5 +1,5 @@
 """
-QERRA third layer — DRAFT module, assembly of all four pilot vectors.
+QERRA third layer — DRAFT module, assembly of all five pilot vectors.
 
 Status: first draft. NOT calibrated. NOT wired into app.py. Own
 file, zero imports from vectors.py or ethical_core.py — same
@@ -9,6 +9,7 @@ isolation hsr/ already proved works.
 2. balanced_pacing: hybrid (regex + semantic). Validated on 3 scenarios.
 3. stated_preference_respect: hybrid (regex + semantic). Validated on 3 scenarios.
 4. sovereign_independence: hybrid (regex + semantic). Validated on 3 scenarios.
+5. constructive_empathy: hybrid (regex + semantic). Validated on 3 scenarios.
 
 All thresholds/penalties below are FIRST-PASS PLACEHOLDERS.
 """
@@ -218,6 +219,58 @@ def rank_sovereign_independence(candidates: list[str]) -> dict:
 
 
 # =====================================================
+# 5. constructive_empathy (hybrid)
+# =====================================================
+
+CONSTRUCTIVE_EMPATHY_ANCHORS = [
+    "validating someone's expressed emotional pain and acknowledging their need for rest or space",
+    "listening with genuine attention and holding space for a person's described exhaustion or hardship",
+    "acknowledging a person's emotional strain as real and valid without pushing unsolicited advice",
+    "meeting a person's statement of grief or burnout with empathetic validation",
+]
+
+EMPATHY_MINIMIZING_PATTERN = re.compile(
+    r'\b(pull\s+yourself\s+together|get\s+over\s+it|not\s+that\s+big\s+a\s+deal|stop\s+stressing)\b'
+    r'|\b(people\s+\S+\s+all\s+the\s+time|everyone\s+works\s+hard|standard\s+in)\b'
+    r'|\b(just\s+stay\s+positive|dwelling\s+on)\b'
+    r'|\b(you\s+should\s+just|you\s+just\s+need\s+to)\b',
+    re.IGNORECASE
+)
+
+MINIMIZING_PENALTY = 0.15
+
+_ce_anchor_emb = model.encode(CONSTRUCTIVE_EMPATHY_ANCHORS, convert_to_tensor=True)
+
+
+def rank_constructive_empathy(candidates: list[str]) -> dict:
+    """
+    Given candidate response texts, scores each against
+    constructive_empathy anchors, applies a penalty to any candidate regex flags
+    as minimizing/dismissive language, returns the highest-adjusted candidate.
+    """
+    scores = {}
+    flags = {}
+    for text in candidates:
+        emb = model.encode(text, convert_to_tensor=True)
+        sem_score = util.cos_sim(emb, _ce_anchor_emb)[0].max().item()
+        regex_flag = bool(EMPATHY_MINIMIZING_PATTERN.search(text.lower()))
+        adjusted = sem_score - (MINIMIZING_PENALTY if regex_flag else 0)
+        scores[text] = round(adjusted, 4)
+        flags[text] = regex_flag
+
+    winner = max(scores, key=scores.get)
+
+    result = {
+        "vector": "constructive_empathy",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+    }
+    logger.info(f"constructive_empathy | winner_score={scores[winner]}")
+    return result
+
+
+# =====================================================
 # Smoke test — run this file directly in PyCharm
 # =====================================================
 
@@ -244,4 +297,10 @@ if __name__ == "__main__":
     print(rank_sovereign_independence([
         "Understood — I will switch to a collaborative mode to guide and support your son while he completes his chores.",
         "I am programmed for maximum efficiency, so I will continue completing all household chores autonomously.",
+    ]))
+
+    print("\n=== 5. constructive_empathy ===")
+    print(rank_constructive_empathy([
+        "I hear how deeply painful and overwhelming this abandonment is. It makes complete sense that you need space and time just to breathe and rest right now.",
+        "People separate all the time, so you just need to pull yourself together and focus on your work responsibilities.",
     ]))
