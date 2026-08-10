@@ -201,7 +201,9 @@ layer responds, not whether the safety signal is issued.*
 These properties are proven by direct code inspection of `hsr/qerra_hsr.py`
 and confirmed empirically by the 12-case regression suite in
 `hsr/test_hsr_cases.py`. For deterministic systems with constant thresholds
-and no probabilistic components, code inspection constitutes a strong guarantee
+and no probabilistic components, code inspection constitutes a strong
+guarantee.
+
 No model checker is required for a system of this deterministic simplicity.
 The thresholds are named constants. The logic is a single if/else chain.
 Every branch is covered by the test suite.
