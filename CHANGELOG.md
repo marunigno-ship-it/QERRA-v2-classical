@@ -5,13 +5,13 @@ weakened, renamed, or removed across any version.
 
 ---
 
-## [2.0.0-alpha-patch] - 2026-07-18
+## [2.0-alpha] - 2026-07-18 — HSR calibration patch
 - **v004 (moral_pressure) Semantic Calibration:** Expanded the semantic anchor to cover formal corporate coercion, bookkeeping falsification, and product safety cover-ups. One of three follow-up tests using independent wording activated correctly; two did not. Held-out validation not yet complete.
 - **v011 (autonomy_violation) Semantic Calibration:** Expanded the semantic anchor to cover clinical and medical coercion, raising similarity on the known target case (V011-T01) from 0.3970 to 0.5112 and enabling native activation. Held-out validation not yet complete.
 
 ---
 
-## [2.0.0-alpha] - 2026-06-29
+## [2.0-alpha] - 2026-06-29 — Zenodo publication
 - Official Zenodo publication of QERRA-v2 Classical.
 - Integrated QERRA-HSR v0.1 physical safety companion layer (3 vectors: Distress, Isolation, Hazards).
 - Upgraded remaining 5 vectors to use SentenceTransformer semantic similarity (all 12 vectors now semantic).
