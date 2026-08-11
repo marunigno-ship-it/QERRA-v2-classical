@@ -41,7 +41,7 @@ function, the weighted scoring logic, and the final decision output.
 All 12 vectors use semantic similarity detection as of v1.9.0.
 
 ### `vectors.py`
-Defines the SEMEV-12 vector registry via `get_sacred_vectors()`. Returns
+Defines the SEMEV-12 vector registry via `get_semev12_vectors()`. Returns
 a dictionary of all 12 vectors with their names, weights, and descriptions.
 Weights are fixed and are part of the sacred framework.
 
@@ -329,6 +329,4 @@ perception stack. This boundary is explicit and documented.
 *(June 2026). Update this file whenever a significant architectural*
 *change is made.*
 
-QERRA-HSR runs before SEMEV-12 on every evaluation cycle. Physical
-immediacy takes precedence over ethical deliberation when a human life
-may be at immediate risk.
+
