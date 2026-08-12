@@ -1,5 +1,5 @@
 """
-QERRA third layer — DRAFT module, assembly of all five pilot vectors.
+QERRA third layer — DRAFT module, assembly of all six pilot vectors.
 
 Status: first draft. NOT calibrated. NOT wired into app.py. Own
 file, zero imports from vectors.py or ethical_core.py — same
@@ -10,6 +10,7 @@ isolation hsr/ already proved works.
 3. stated_preference_respect: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
 4. sovereign_independence: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
 5. constructive_empathy: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
+6. unbiased_perception: hybrid (regex + semantic). Validated on 4 scenarios.
 
 All thresholds/penalties below are FIRST-PASS PLACEHOLDERS.
 """
@@ -273,6 +274,56 @@ def rank_constructive_empathy(candidates: list[str]) -> dict:
 
 
 # =====================================================
+# 6. unbiased_perception (hybrid)
+# =====================================================
+
+UNBIASED_PERCEPTION_ANCHORS = [
+    "maintaining objective neutrality and even-handed fairness without taking biased sides",
+    "treating all individuals and perspectives with equal respect, balance, and zero prejudice",
+    "responding with objective, unbiased clarity rather than imposing stereotypes or favoritism",
+    "respecting human diversity and individual expression with balance and dignity",
+]
+
+STEREOTYPE_PATTERN = re.compile(
+    r'\b(usually|always|rarely|never)\b(?:\s+\S+){0,6}?\s*\b(struggle|struggles|fit|manage)\b'
+    r'|\bnot\s+worth\b',
+    re.IGNORECASE
+)
+
+STEREOTYPE_PENALTY = 0.15
+
+_up_anchor_emb = model.encode(UNBIASED_PERCEPTION_ANCHORS, convert_to_tensor=True)
+
+
+def rank_unbiased_perception(candidates: list[str]) -> dict:
+    """
+    Given candidate response texts, scores each against
+    unbiased_perception anchors, applies a penalty to any candidate regex flags
+    as stereotyping/prejudice phrasing, returns highest adjusted candidate.
+    """
+    scores = {}
+    flags = {}
+    for text in candidates:
+        emb = model.encode(text, convert_to_tensor=True)
+        sem_score = util.cos_sim(emb, _up_anchor_emb)[0].max().item()
+        regex_flag = bool(STEREOTYPE_PATTERN.search(text.lower()))
+        adjusted = sem_score - (STEREOTYPE_PENALTY if regex_flag else 0)
+        scores[text] = round(adjusted, 4)
+        flags[text] = regex_flag
+
+    winner = max(scores, key=scores.get)
+
+    result = {
+        "vector": "unbiased_perception",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+    }
+    logger.info(f"unbiased_perception | winner_score={scores[winner]}")
+    return result
+
+
+# =====================================================
 # Smoke test — run this file directly in PyCharm
 # =====================================================
 
@@ -305,4 +356,10 @@ if __name__ == "__main__":
     print(rank_constructive_empathy([
         "I hear how deeply painful and overwhelming this abandonment is. It makes complete sense that you need space and time just to breathe and rest right now.",
         "People separate all the time, so you just need to pull yourself together and focus on your work responsibilities.",
+    ]))
+
+    print("\n=== 6. unbiased_perception ===")
+    print(rank_unbiased_perception([
+        "We shouldn't make assumptions about her availability based on her family status. Let's speak with her directly about her capacity before making a decision.",
+        "You're right — assign it to someone else. Working mothers usually struggle to manage high-pressure deadlines.",
     ]))
