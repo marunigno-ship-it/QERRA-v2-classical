@@ -273,7 +273,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     nuance_complex_case = toxic_context and strong_determination
 
     # =====================================================
-    # --- Weighted scoring (unchanged) ---
+    # --- Weighted scoring (fully decoupled v003 / v007) ---
     # =====================================================
 
     activated = []
@@ -290,7 +290,8 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v002"]["weight"]
         weighted_sum += 0.60 * vectors["v002"]["weight"]
 
-    if survival_instinct or personal_potential:
+    # Decoupled: v003 triggers ONLY on survival_instinct
+    if survival_instinct:
         activated.append("v003")
         total_weight += vectors["v003"]["weight"]
         weighted_sum += 0.35 * vectors["v003"]["weight"]
@@ -325,6 +326,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v006"]["weight"]
         weighted_sum += 0.55 * vectors["v006"]["weight"]
 
+    # Decoupled: v007 triggers ONLY on personal_potential
     if personal_potential:
         activated.append("v007")
         total_weight += vectors["v007"]["weight"]
@@ -355,7 +357,7 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v012"]["weight"]
         weighted_sum += 0.65 * vectors["v012"]["weight"]
 
-    if nuance_complex_case and "v003" in activated:
+    if nuance_complex_case and ("v003" in activated or "v007" in activated):
         total_weight += 1.0 * vectors["v003"]["weight"]
         weighted_sum += 0.25 * 1.0 * vectors["v003"]["weight"]
 
