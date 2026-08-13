@@ -16,6 +16,7 @@ from .thrive_vectors import (
     rank_constructive_empathy,
     rank_unbiased_perception,
     rank_spatial_discretion,
+    rank_observational_consent,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "rank_constructive_empathy",
     "rank_unbiased_perception",
     "rank_spatial_discretion",
+    "rank_observational_consent",
 ]
