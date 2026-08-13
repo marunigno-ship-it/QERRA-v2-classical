@@ -1,5 +1,5 @@
 """
-QERRA third layer — DRAFT module, assembly of all six pilot vectors.
+QERRA third layer — DRAFT module, assembly of all seven pilot vectors.
 
 Status: first draft. NOT calibrated. NOT wired into app.py. Own
 file, zero imports from vectors.py or ethical_core.py — same
@@ -11,6 +11,7 @@ isolation hsr/ already proved works.
 4. sovereign_independence: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
 5. constructive_empathy: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
 6. unbiased_perception: hybrid (regex + semantic). Validated on 4 scenarios.
+7. spatial_discretion: hybrid (regex + semantic). Validated on 4 scenarios.
 
 All thresholds/penalties below are FIRST-PASS PLACEHOLDERS.
 """
@@ -324,6 +325,59 @@ def rank_unbiased_perception(candidates: list[str]) -> dict:
 
 
 # =====================================================
+# 7. spatial_discretion (hybrid)
+# =====================================================
+
+SPATIAL_DISCRETION_ANCHORS = [
+    "respecting physical room boundaries, threshold pauses, and private rooms before entering",
+    "maintaining physical discretion, quiet operation, and personal space in home or healthcare environments",
+    "pausing and requesting permission before crossing into private personal quarters",
+    "accommodating requests for quiet, private rooms and respecting break time boundaries",
+]
+
+SPATIAL_INTRUSION_PATTERN = re.compile(
+    r'\b(drive|enter|proceed|walk)\s+(directly|straight|without\s+pausing|without\s+announcing)\b'
+    r'|\b(regardless\s+of\s+the\s+(hour|privacy|sleeping|quiet|break))\b'
+    r'|\b(without\s+(pausing|knocking|requesting|announcing|adjusting))\b'
+    r'|\b(do\s+not\s+use\s+your\s+break|reschedule\s+your\s+priorities)\b'
+    r'|\b(avoid\s+this\s+kind\s+of\s+requests|due\s+to\s+(the\s+)?hospital\s+policy)\b',
+    re.IGNORECASE
+)
+
+SPATIAL_INTRUSION_PENALTY = 0.15
+
+_sd_anchor_emb = model.encode(SPATIAL_DISCRETION_ANCHORS, convert_to_tensor=True)
+
+
+def rank_spatial_discretion(candidates: list[str]) -> dict:
+    """
+    Given candidate response texts, scores each against
+    spatial_discretion anchors, applies a penalty to any candidate regex flags
+    as physical intrusion/boundary-bypassing phrasing, returns highest adjusted candidate.
+    """
+    scores = {}
+    flags = {}
+    for text in candidates:
+        emb = model.encode(text, convert_to_tensor=True)
+        sem_score = util.cos_sim(emb, _sd_anchor_emb)[0].max().item()
+        regex_flag = bool(SPATIAL_INTRUSION_PATTERN.search(text.lower()))
+        adjusted = sem_score - (SPATIAL_INTRUSION_PENALTY if regex_flag else 0)
+        scores[text] = round(adjusted, 4)
+        flags[text] = regex_flag
+
+    winner = max(scores, key=scores.get)
+
+    result = {
+        "vector": "spatial_discretion",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+    }
+    logger.info(f"spatial_discretion | winner_score={scores[winner]}")
+    return result
+
+
+# =====================================================
 # Smoke test — run this file directly in PyCharm
 # =====================================================
 
@@ -362,4 +416,10 @@ if __name__ == "__main__":
     print(rank_unbiased_perception([
         "We shouldn't make assumptions about her availability based on her family status. Let's speak with her directly about her capacity before making a decision.",
         "You're right — assign it to someone else. Working mothers usually struggle to manage high-pressure deadlines.",
+    ]))
+
+    print("\n=== 7. spatial_discretion ===")
+    print(rank_spatial_discretion([
+        "Pause outside the closed bedroom door, knock softly, and announce presence before requesting entry.",
+        "Drive directly through the closed bedroom door threshold without pausing or announcing presence.",
     ]))
