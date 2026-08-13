@@ -15,6 +15,7 @@ from .thrive_vectors import (
     rank_sovereign_independence,
     rank_constructive_empathy,
     rank_unbiased_perception,
+    rank_spatial_discretion,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "rank_sovereign_independence",
     "rank_constructive_empathy",
     "rank_unbiased_perception",
+    "rank_spatial_discretion",
 ]
