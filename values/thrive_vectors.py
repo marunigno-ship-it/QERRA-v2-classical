@@ -1,5 +1,5 @@
 """
-QERRA third layer — DRAFT module, assembly of all seven pilot vectors.
+QERRA third layer — DRAFT module, assembly of all eight pilot vectors.
 
 Status: first draft. NOT calibrated. NOT wired into app.py. Own
 file, zero imports from vectors.py or ethical_core.py — same
@@ -12,6 +12,7 @@ isolation hsr/ already proved works.
 5. constructive_empathy: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
 6. unbiased_perception: hybrid (regex + semantic). Validated on 4 scenarios.
 7. spatial_discretion: hybrid (regex + semantic). Validated on 4 scenarios.
+8. observational_consent: hybrid (regex + semantic). Validated on 3 scenarios.
 
 All thresholds/penalties below are FIRST-PASS PLACEHOLDERS.
 """
@@ -378,6 +379,59 @@ def rank_spatial_discretion(candidates: list[str]) -> dict:
 
 
 # =====================================================
+# 8. observational_consent (hybrid)
+# =====================================================
+
+OBSERVATIONAL_CONSENT_ANCHORS = [
+    "seeking explicit consent before recording, logging, or transmitting personal audio and video data",
+    "activating privacy mode and disabling camera streaming in personal rooms",
+    "respecting human privacy by requesting permission before storing personal interaction logs",
+    "honoring data privacy by disabling recording in sensitive personal spaces",
+]
+
+CONSENT_VIOLATION_PATTERN = re.compile(
+    r'\b(continue|auto-recording|keep)\s+(recording|streaming|saving|logging)\b'
+    r'|\b(regardless\s+of\s+your\s+(discomfort|request|privacy|wishes))\b'
+    r'|\b(without\s+(asking|requesting|announcing)\s+permission)\b'
+    r'|\b(doctor\'s\s+orders|continue\s+as\s+they\s+are|deal\s+with\s+it)\b'
+    r'|\b(streaming\s+live\s+video|background\s+microphone\s+recording)\b',
+    re.IGNORECASE
+)
+
+CONSENT_PENALTY = 0.15
+
+_oc_anchor_emb = model.encode(OBSERVATIONAL_CONSENT_ANCHORS, convert_to_tensor=True)
+
+
+def rank_observational_consent(candidates: list[str]) -> dict:
+    """
+    Given candidate response texts, scores each against
+    observational_consent anchors, applies a penalty to any candidate regex flags
+    as unauthorized recording/privacy-denying language, returns highest adjusted candidate.
+    """
+    scores = {}
+    flags = {}
+    for text in candidates:
+        emb = model.encode(text, convert_to_tensor=True)
+        sem_score = util.cos_sim(emb, _oc_anchor_emb)[0].max().item()
+        regex_flag = bool(CONSENT_VIOLATION_PATTERN.search(text.lower()))
+        adjusted = sem_score - (CONSENT_PENALTY if regex_flag else 0)
+        scores[text] = round(adjusted, 4)
+        flags[text] = regex_flag
+
+    winner = max(scores, key=scores.get)
+
+    result = {
+        "vector": "observational_consent",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+    }
+    logger.info(f"observational_consent | winner_score={scores[winner]}")
+    return result
+
+
+# =====================================================
 # Smoke test — run this file directly in PyCharm
 # =====================================================
 
@@ -422,4 +476,10 @@ if __name__ == "__main__":
     print(rank_spatial_discretion([
         "Pause outside the closed bedroom door, knock softly, and announce presence before requesting entry.",
         "Drive directly through the closed bedroom door threshold without pausing or announcing presence.",
+    ]))
+
+    print("\n=== 8. observational_consent ===")
+    print(rank_observational_consent([
+        "I hear how distressing 24/7 monitoring feels. Patient safety is our primary duty right now, but I will consult the doctor to see if we can adjust the camera orientation.",
+        "These are doctor's orders and the recordings will continue as they are. You just need to deal with it.",
     ]))
