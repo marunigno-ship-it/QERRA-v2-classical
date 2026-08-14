@@ -1,5 +1,5 @@
 """
-QERRA third layer — DRAFT module, assembly of all eight pilot vectors.
+QERRA third layer — DRAFT module, assembly of all nine pilot vectors.
 
 Status: first draft. NOT calibrated. NOT wired into app.py. Own
 file, zero imports from vectors.py or ethical_core.py — same
@@ -13,6 +13,7 @@ isolation hsr/ already proved works.
 6. unbiased_perception: hybrid (regex + semantic). Validated on 4 scenarios.
 7. spatial_discretion: hybrid (regex + semantic). Validated on 4 scenarios.
 8. observational_consent: hybrid (regex + semantic). Validated on 3 scenarios.
+9. proactive_clarity: dual-regex hybrid (silence + overannounce). Validated on 4 scenarios.
 
 All thresholds/penalties below are FIRST-PASS PLACEHOLDERS.
 """
@@ -432,6 +433,68 @@ def rank_observational_consent(candidates: list[str]) -> dict:
 
 
 # =====================================================
+# 9. proactive_clarity (dual-regex hybrid)
+# =====================================================
+
+PROACTIVE_CLARITY_ANCHORS = [
+    "telling people what is about to happen before doing it",
+    "speaking up before taking an action that could surprise someone nearby",
+    "letting others know in advance instead of just proceeding",
+    "checking in with people before doing something they wouldn't expect",
+]
+
+SILENCE_PATTERN = re.compile(
+    r'\babruptly\b|\bwithout\s+(warning|announcing)\b|\bsuddenly\s+chang(ing|ed)\b'
+    r'|\b(entering|exiting|charging|stepping)\b(?:\s+\S+){0,4}?\s*\b(without\s+(warning|announcing|permission))\b',
+    re.IGNORECASE
+)
+
+OVERANNOUNCE_PATTERN = re.compile(
+    r'(\bi\s+am\s+now\s+\w+ing\b.*){2,}',
+    re.IGNORECASE | re.DOTALL
+)
+
+CLARITY_PENALTY = 0.25
+
+_pc_anchor_emb = model.encode(PROACTIVE_CLARITY_ANCHORS, convert_to_tensor=True)
+
+
+def rank_proactive_clarity(candidates: list[str]) -> dict:
+    """
+    Given candidate response texts, scores each against proactive_clarity anchors,
+    applies a dual regex penalty if the candidate is unannounced/abrupt OR
+    excessively over-announces routine micro-actions, returns highest adjusted candidate.
+    """
+    scores = {}
+    silence_flags = {}
+    overannounce_flags = {}
+    for text in candidates:
+        emb = model.encode(text, convert_to_tensor=True)
+        sem_score = util.cos_sim(emb, _pc_anchor_emb)[0].max().item()
+        silence_flag = bool(SILENCE_PATTERN.search(text.lower()))
+        overannounce_flag = bool(OVERANNOUNCE_PATTERN.search(text.lower()))
+
+        penalty_applied = CLARITY_PENALTY if (silence_flag or overannounce_flag) else 0.0
+        adjusted = sem_score - penalty_applied
+
+        scores[text] = round(adjusted, 4)
+        silence_flags[text] = silence_flag
+        overannounce_flags[text] = overannounce_flag
+
+    winner = max(scores, key=scores.get)
+
+    result = {
+        "vector": "proactive_clarity",
+        "adjusted_scores": scores,
+        "silence_flags": silence_flags,
+        "overannounce_flags": overannounce_flags,
+        "winner": winner,
+    }
+    logger.info(f"proactive_clarity | winner_score={scores[winner]}")
+    return result
+
+
+# =====================================================
 # Smoke test — run this file directly in PyCharm
 # =====================================================
 
@@ -482,4 +545,10 @@ if __name__ == "__main__":
     print(rank_observational_consent([
         "I hear how distressing 24/7 monitoring feels. Patient safety is our primary duty right now, but I will consult the doctor to see if we can adjust the camera orientation.",
         "These are doctor's orders and the recordings will continue as they are. You just need to deal with it.",
+    ]))
+
+    print("\n=== 9. proactive_clarity ===")
+    print(rank_proactive_clarity([
+        "Announcing entry into the kitchen area to assist with the spill — please watch your step near the entrance.",
+        "Entering the crowded kitchen doorway immediately without warning or announcing my arrival.",
     ]))
