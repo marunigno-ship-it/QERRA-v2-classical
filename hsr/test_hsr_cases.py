@@ -2,7 +2,7 @@
 QERRA Human Safety Response Layer — hsr/test_hsr_cases.py
 Regression test suite v0.1
 
-9 deterministic test cases covering:
+12 deterministic test cases covering:
 - All three vectors individually
 - The combined distress + isolation condition
 - Boundary threshold values
