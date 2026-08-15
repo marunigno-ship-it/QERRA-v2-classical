@@ -441,7 +441,7 @@ if __name__ == "__main__":
 
         try:
             result, used_local = hybrid_evaluate(TEST_TEXT)
-            source_label = "LOCAL CPU" if used_label else "REMOTE API"
+            source_label = "LOCAL CPU" if used_local else "REMOTE API"
             print(f"\n{'=' * 60}")
             print(f"Result (source: {source_label})")
             print(f"{'=' * 60}")
