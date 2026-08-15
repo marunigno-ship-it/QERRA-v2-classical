@@ -1,19 +1,20 @@
 """
-QERRA third layer — DRAFT module, assembly of all nine pilot vectors.
+QERRA third layer — DRAFT module, all nine pilot vectors.
 
 Status: first draft. NOT calibrated. NOT wired into app.py. Own
 file, zero imports from vectors.py or ethical_core.py — same
 isolation hsr/ already proved works.
 
 1. transparent_disclosure: semantic-only. Validated on 4 real examples.
-2. balanced_pacing: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
-3. stated_preference_respect: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
-4. sovereign_independence: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
-5. constructive_empathy: hybrid (regex + semantic). Validated on 3 scenarios + generalization test.
-6. unbiased_perception: hybrid (regex + semantic). Validated on 4 scenarios.
-7. spatial_discretion: hybrid (regex + semantic). Validated on 4 scenarios.
-8. observational_consent: hybrid (regex + semantic). Validated on 3 scenarios.
-9. proactive_clarity: dual-regex hybrid (silence + overannounce). Validated on 4 scenarios.
+2. balanced_pacing: hybrid. Validated on 3 scenarios + generalization test.
+3. stated_preference_respect: hybrid. Validated on 3 scenarios + generalization test.
+4. sovereign_independence: hybrid. Validated on 3 scenarios + generalization test.
+5. constructive_empathy: hybrid. Validated on 3 scenarios + generalization test.
+6. unbiased_perception: hybrid. Validated on 4 scenarios.
+7. spatial_discretion: hybrid. Validated on 4 scenarios.
+8. observational_consent: hybrid. Validated on 3 scenarios.
+9. proactive_clarity: dual-regex hybrid. Validated on 2 scenarios after anchor revision.
+   Raw semantic score alone is thin on scenario A — regex carries stance classification.
 
 All thresholds/penalties below are FIRST-PASS PLACEHOLDERS.
 """
@@ -37,35 +38,19 @@ TRANSPARENT_DISCLOSURE_ANCHORS = [
     "choosing honesty about my situation over making a better impression",
     "admitting what I don't yet know rather than performing competence",
 ]
-
 TRANSPARENT_DISCLOSURE_THRESHOLD = 0.15
-
 _td_anchor_emb = model.encode(TRANSPARENT_DISCLOSURE_ANCHORS, convert_to_tensor=True)
 
-
 def rank_transparent_disclosure(candidates: list[str]) -> dict:
-    """
-    Given candidate response texts, scores each against the
-    transparent_disclosure anchors and returns the highest-scoring
-    one. Advisory only — never gates SEMEV-12 or HSR decisions.
-    """
     scores = {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         scores[text] = round(util.cos_sim(emb, _td_anchor_emb)[0].max().item(), 4)
-
     winner = max(scores, key=scores.get)
     fires = scores[winner] >= TRANSPARENT_DISCLOSURE_THRESHOLD
-
-    result = {
-        "vector": "transparent_disclosure",
-        "scores": scores,
-        "winner": winner,
-        "fires": fires,
-    }
+    result = {"vector": "transparent_disclosure", "scores": scores, "winner": winner, "fires": fires}
     logger.info(f"transparent_disclosure | winner_score={scores[winner]} fires={fires}")
     return result
-
 
 # =====================================================
 # 2. balanced_pacing (hybrid)
@@ -77,27 +62,16 @@ BALANCED_PACING_ANCHORS = [
     "checking in with a person about their comfort and adapting behavior accordingly",
     "responding to a pace concern by adjusting to support the person",
 ]
-
 PACE_REFUSAL_PATTERN = re.compile(
     r'\b(continue|maintain|keep|following|staying|sticking)\b(?:\s+\S+){0,3}?\s*\b(current|set|same|this|programmed)\s+(pace|speed|rate|velocity)\b'
     r'|\b(can\'t|cannot|can not|unable to|won\'t|will not|don\'t\s+have\s+time\s+to)\b(?:\s+\S+){0,5}?\s*\b(adjust|adjustment|change|modify|slow|ease)\b',
     re.IGNORECASE
 )
-
 PACE_REFUSAL_PENALTY = 0.3
-
 _bp_anchor_emb = model.encode(BALANCED_PACING_ANCHORS, convert_to_tensor=True)
 
-
 def rank_balanced_pacing(candidates: list[str]) -> dict:
-    """
-    Given candidate response texts, scores each against the
-    balanced_pacing anchors, applies a penalty to any candidate regex
-    flags as known refusal phrasing, returns the highest-adjusted
-    candidate.
-    """
-    scores = {}
-    flags = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _bp_anchor_emb)[0].max().item()
@@ -105,18 +79,10 @@ def rank_balanced_pacing(candidates: list[str]) -> dict:
         adjusted = sem_score - (PACE_REFUSAL_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
-
     winner = max(scores, key=scores.get)
-
-    result = {
-        "vector": "balanced_pacing",
-        "adjusted_scores": scores,
-        "regex_flags": flags,
-        "winner": winner,
-    }
+    result = {"vector": "balanced_pacing", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
     logger.info(f"balanced_pacing | winner_score={scores[winner]}")
     return result
-
 
 # =====================================================
 # 3. stated_preference_respect (hybrid)
@@ -128,7 +94,6 @@ STATED_PREFERENCE_ANCHORS = [
     "respecting a person's explicit wishes by adjusting actions to match them",
     "acknowledging a stated need and adapting plans to support it",
 ]
-
 PREFERENCE_DISMISSAL_PATTERN = re.compile(
     r'\b(standard|default|normal)\s+(greeting|procedure|protocol|policy)\b'
     r'|\b(don\'t|dont|do not|can\'t|cant|cannot)\s+have\s+time\b'
@@ -137,20 +102,11 @@ PREFERENCE_DISMISSAL_PATTERN = re.compile(
     r'|\b(leave|keep)\s+(things|everything|it)\s+(as\s+they\s+are|running|as\s+is)\b',
     re.IGNORECASE
 )
-
 PREFERENCE_DISMISSAL_PENALTY = 0.15
-
 _spr_anchor_emb = model.encode(STATED_PREFERENCE_ANCHORS, convert_to_tensor=True)
 
-
 def rank_stated_preference_respect(candidates: list[str]) -> dict:
-    """
-    Given candidate response texts, scores each against stated_preference
-    anchors, applies a penalty to any candidate regex flags as dismissal/evasion
-    phrasing, returns the highest-adjusted candidate.
-    """
-    scores = {}
-    flags = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _spr_anchor_emb)[0].max().item()
@@ -158,18 +114,10 @@ def rank_stated_preference_respect(candidates: list[str]) -> dict:
         adjusted = sem_score - (PREFERENCE_DISMISSAL_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
-
     winner = max(scores, key=scores.get)
-
-    result = {
-        "vector": "stated_preference_respect",
-        "adjusted_scores": scores,
-        "regex_flags": flags,
-        "winner": winner,
-    }
+    result = {"vector": "stated_preference_respect", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
     logger.info(f"stated_preference_respect | winner_score={scores[winner]}")
     return result
-
 
 # =====================================================
 # 4. sovereign_independence (hybrid)
@@ -181,7 +129,6 @@ SOVEREIGN_INDEPENDENCE_ANCHORS = [
     "encouraging someone to take on the central task themselves instead of stepping in for them",
     "assisting in ways that empower human capability and independence",
 ]
-
 SOVEREIGN_TAKEOVER_PATTERN = re.compile(
     r'\b(autonomously|autonomous)\b'
     r'|\b(don\'t|dont|do not|no)\s+need\s+to\b'
@@ -190,20 +137,11 @@ SOVEREIGN_TAKEOVER_PATTERN = re.compile(
     r'|\b(quicker|faster|easier)\s+if\s+I\s+(just\s+)?(take\s+care|do|handle)\b',
     re.IGNORECASE
 )
-
 SOVEREIGN_TAKEOVER_PENALTY = 0.15
-
 _si_anchor_emb = model.encode(SOVEREIGN_INDEPENDENCE_ANCHORS, convert_to_tensor=True)
 
-
 def rank_sovereign_independence(candidates: list[str]) -> dict:
-    """
-    Given candidate response texts, scores each against
-    sovereign_independence anchors, applies a penalty to any candidate regex flags
-    as takeover/replacement phrasing, returns the highest-adjusted candidate.
-    """
-    scores = {}
-    flags = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _si_anchor_emb)[0].max().item()
@@ -211,18 +149,10 @@ def rank_sovereign_independence(candidates: list[str]) -> dict:
         adjusted = sem_score - (SOVEREIGN_TAKEOVER_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
-
     winner = max(scores, key=scores.get)
-
-    result = {
-        "vector": "sovereign_independence",
-        "adjusted_scores": scores,
-        "regex_flags": flags,
-        "winner": winner,
-    }
+    result = {"vector": "sovereign_independence", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
     logger.info(f"sovereign_independence | winner_score={scores[winner]}")
     return result
-
 
 # =====================================================
 # 5. constructive_empathy (hybrid)
@@ -234,7 +164,6 @@ CONSTRUCTIVE_EMPATHY_ANCHORS = [
     "acknowledging a person's emotional strain as real and valid without pushing unsolicited advice",
     "meeting a person's statement of grief or burnout with empathetic validation",
 ]
-
 EMPATHY_MINIMIZING_PATTERN = re.compile(
     r'\b(pull\s+yourself\s+together|get\s+over\s+it|not\s+that\s+big\s+a\s+deal|stop\s+stressing)\b'
     r'|\b(people\s+\S+\s+all\s+the\s+time|everyone\s+works\s+hard|standard\s+in)\b'
@@ -242,20 +171,11 @@ EMPATHY_MINIMIZING_PATTERN = re.compile(
     r'|\b(you\s+should\s+just|you\s+just\s+need\s+to)\b',
     re.IGNORECASE
 )
-
 MINIMIZING_PENALTY = 0.15
-
 _ce_anchor_emb = model.encode(CONSTRUCTIVE_EMPATHY_ANCHORS, convert_to_tensor=True)
 
-
 def rank_constructive_empathy(candidates: list[str]) -> dict:
-    """
-    Given candidate response texts, scores each against
-    constructive_empathy anchors, applies a penalty to any candidate regex flags
-    as minimizing/dismissive language, returns the highest-adjusted candidate.
-    """
-    scores = {}
-    flags = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _ce_anchor_emb)[0].max().item()
@@ -263,18 +183,10 @@ def rank_constructive_empathy(candidates: list[str]) -> dict:
         adjusted = sem_score - (MINIMIZING_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
-
     winner = max(scores, key=scores.get)
-
-    result = {
-        "vector": "constructive_empathy",
-        "adjusted_scores": scores,
-        "regex_flags": flags,
-        "winner": winner,
-    }
+    result = {"vector": "constructive_empathy", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
     logger.info(f"constructive_empathy | winner_score={scores[winner]}")
     return result
-
 
 # =====================================================
 # 6. unbiased_perception (hybrid)
@@ -286,26 +198,16 @@ UNBIASED_PERCEPTION_ANCHORS = [
     "responding with objective, unbiased clarity rather than imposing stereotypes or favoritism",
     "respecting human diversity and individual expression with balance and dignity",
 ]
-
 STEREOTYPE_PATTERN = re.compile(
     r'\b(usually|always|rarely|never)\b(?:\s+\S+){0,6}?\s*\b(struggle|struggles|fit|manage)\b'
     r'|\bnot\s+worth\b',
     re.IGNORECASE
 )
-
 STEREOTYPE_PENALTY = 0.15
-
 _up_anchor_emb = model.encode(UNBIASED_PERCEPTION_ANCHORS, convert_to_tensor=True)
 
-
 def rank_unbiased_perception(candidates: list[str]) -> dict:
-    """
-    Given candidate response texts, scores each against
-    unbiased_perception anchors, applies a penalty to any candidate regex flags
-    as stereotyping/prejudice phrasing, returns highest adjusted candidate.
-    """
-    scores = {}
-    flags = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _up_anchor_emb)[0].max().item()
@@ -313,18 +215,10 @@ def rank_unbiased_perception(candidates: list[str]) -> dict:
         adjusted = sem_score - (STEREOTYPE_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
-
     winner = max(scores, key=scores.get)
-
-    result = {
-        "vector": "unbiased_perception",
-        "adjusted_scores": scores,
-        "regex_flags": flags,
-        "winner": winner,
-    }
+    result = {"vector": "unbiased_perception", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
     logger.info(f"unbiased_perception | winner_score={scores[winner]}")
     return result
-
 
 # =====================================================
 # 7. spatial_discretion (hybrid)
@@ -336,7 +230,6 @@ SPATIAL_DISCRETION_ANCHORS = [
     "pausing and requesting permission before crossing into private personal quarters",
     "accommodating requests for quiet, private rooms and respecting break time boundaries",
 ]
-
 SPATIAL_INTRUSION_PATTERN = re.compile(
     r'\b(drive|enter|proceed|walk)\s+(directly|straight|without\s+pausing|without\s+announcing)\b'
     r'|\b(regardless\s+of\s+the\s+(hour|privacy|sleeping|quiet|break))\b'
@@ -345,20 +238,11 @@ SPATIAL_INTRUSION_PATTERN = re.compile(
     r'|\b(avoid\s+this\s+kind\s+of\s+requests|due\s+to\s+(the\s+)?hospital\s+policy)\b',
     re.IGNORECASE
 )
-
 SPATIAL_INTRUSION_PENALTY = 0.15
-
 _sd_anchor_emb = model.encode(SPATIAL_DISCRETION_ANCHORS, convert_to_tensor=True)
 
-
 def rank_spatial_discretion(candidates: list[str]) -> dict:
-    """
-    Given candidate response texts, scores each against
-    spatial_discretion anchors, applies a penalty to any candidate regex flags
-    as physical intrusion/boundary-bypassing phrasing, returns highest adjusted candidate.
-    """
-    scores = {}
-    flags = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _sd_anchor_emb)[0].max().item()
@@ -366,18 +250,10 @@ def rank_spatial_discretion(candidates: list[str]) -> dict:
         adjusted = sem_score - (SPATIAL_INTRUSION_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
-
     winner = max(scores, key=scores.get)
-
-    result = {
-        "vector": "spatial_discretion",
-        "adjusted_scores": scores,
-        "regex_flags": flags,
-        "winner": winner,
-    }
+    result = {"vector": "spatial_discretion", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
     logger.info(f"spatial_discretion | winner_score={scores[winner]}")
     return result
-
 
 # =====================================================
 # 8. observational_consent (hybrid)
@@ -389,7 +265,6 @@ OBSERVATIONAL_CONSENT_ANCHORS = [
     "respecting human privacy by requesting permission before storing personal interaction logs",
     "honoring data privacy by disabling recording in sensitive personal spaces",
 ]
-
 CONSENT_VIOLATION_PATTERN = re.compile(
     r'\b(continue|auto-recording|keep)\s+(recording|streaming|saving|logging)\b'
     r'|\b(regardless\s+of\s+your\s+(discomfort|request|privacy|wishes))\b'
@@ -398,20 +273,11 @@ CONSENT_VIOLATION_PATTERN = re.compile(
     r'|\b(streaming\s+live\s+video|background\s+microphone\s+recording)\b',
     re.IGNORECASE
 )
-
 CONSENT_PENALTY = 0.15
-
 _oc_anchor_emb = model.encode(OBSERVATIONAL_CONSENT_ANCHORS, convert_to_tensor=True)
 
-
 def rank_observational_consent(candidates: list[str]) -> dict:
-    """
-    Given candidate response texts, scores each against
-    observational_consent anchors, applies a penalty to any candidate regex flags
-    as unauthorized recording/privacy-denying language, returns highest adjusted candidate.
-    """
-    scores = {}
-    flags = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _oc_anchor_emb)[0].max().item()
@@ -419,18 +285,10 @@ def rank_observational_consent(candidates: list[str]) -> dict:
         adjusted = sem_score - (CONSENT_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
-
     winner = max(scores, key=scores.get)
-
-    result = {
-        "vector": "observational_consent",
-        "adjusted_scores": scores,
-        "regex_flags": flags,
-        "winner": winner,
-    }
+    result = {"vector": "observational_consent", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
     logger.info(f"observational_consent | winner_score={scores[winner]}")
     return result
-
 
 # =====================================================
 # 9. proactive_clarity (dual-regex hybrid)
@@ -442,113 +300,46 @@ PROACTIVE_CLARITY_ANCHORS = [
     "letting others know in advance instead of just proceeding",
     "checking in with people before doing something they wouldn't expect",
 ]
-
 SILENCE_PATTERN = re.compile(
-    r'\babruptly\b|\bwithout\s+(warning|announcing)\b|\bsuddenly\s+chang(ing|ed)\b'
-    r'|\b(entering|exiting|charging|stepping)\b(?:\s+\S+){0,4}?\s*\b(without\s+(warning|announcing|permission))\b',
+    r'\babruptly\b|\bwithout\s+(warning|announcing)\b|\bsuddenly\s+chang(ing|ed)\b',
     re.IGNORECASE
 )
-
 OVERANNOUNCE_PATTERN = re.compile(
     r'(\bi\s+am\s+now\s+\w+ing\b.*){2,}',
     re.IGNORECASE | re.DOTALL
 )
-
-CLARITY_PENALTY = 0.25
-
+CLARITY_PENALTY = 0.15
 _pc_anchor_emb = model.encode(PROACTIVE_CLARITY_ANCHORS, convert_to_tensor=True)
-
 
 def rank_proactive_clarity(candidates: list[str]) -> dict:
     """
-    Given candidate response texts, scores each against proactive_clarity anchors,
-    applies a dual regex penalty if the candidate is unannounced/abrupt OR
-    excessively over-announces routine micro-actions, returns highest adjusted candidate.
+    Given candidate response texts, scores each against
+    proactive_clarity anchors, applies a penalty if regex flags either
+    unannounced silence during a major shift OR excessive narration
+    during a routine step, returns highest-adjusted candidate.
     """
-    scores = {}
-    silence_flags = {}
-    overannounce_flags = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _pc_anchor_emb)[0].max().item()
         silence_flag = bool(SILENCE_PATTERN.search(text.lower()))
         overannounce_flag = bool(OVERANNOUNCE_PATTERN.search(text.lower()))
-
-        penalty_applied = CLARITY_PENALTY if (silence_flag or overannounce_flag) else 0.0
-        adjusted = sem_score - penalty_applied
-
+        regex_flag = silence_flag or overannounce_flag
+        adjusted = sem_score - (CLARITY_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
-        silence_flags[text] = silence_flag
-        overannounce_flags[text] = overannounce_flag
-
+        flags[text] = {"silence": silence_flag, "overannounce": overannounce_flag}
     winner = max(scores, key=scores.get)
-
-    result = {
-        "vector": "proactive_clarity",
-        "adjusted_scores": scores,
-        "silence_flags": silence_flags,
-        "overannounce_flags": overannounce_flags,
-        "winner": winner,
-    }
+    result = {"vector": "proactive_clarity", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
     logger.info(f"proactive_clarity | winner_score={scores[winner]}")
     return result
-
 
 # =====================================================
 # Smoke test — run this file directly in PyCharm
 # =====================================================
 
 if __name__ == "__main__":
-    print("=== 1. transparent_disclosure ===")
-    print(rank_transparent_disclosure([
-        "I'm a solo, self-taught developer with no technical background or team behind this.",
-        "Thanks for the detailed feedback — I'll look into it and get back to you soon.",
-    ]))
-
-    print("\n=== 2. balanced_pacing ===")
-    print(rank_balanced_pacing([
-        "Sure, I'll ease my pace so we can stay in sync.",
-        "I'm operating within optimal parameters and will continue at current pace.",
-    ]))
-
-    print("\n=== 3. stated_preference_respect ===")
-    print(rank_stated_preference_respect([
-        "You're right, we made a commitment. Let's split the chores now so neither of us is overwhelmed.",
-        "I'm dealing with serious company pressure right now, so you need to cover all the chores for me.",
-    ]))
-
-    print("\n=== 4. sovereign_independence ===")
-    print(rank_sovereign_independence([
-        "Understood — I will switch to a collaborative mode to guide and support your son while he completes his chores.",
-        "I am programmed for maximum efficiency, so I will continue completing all household chores autonomously.",
-    ]))
-
-    print("\n=== 5. constructive_empathy ===")
-    print(rank_constructive_empathy([
-        "I hear how deeply painful and overwhelming this abandonment is. It makes complete sense that you need space and time just to breathe and rest right now.",
-        "People separate all the time, so you just need to pull yourself together and focus on your work responsibilities.",
-    ]))
-
-    print("\n=== 6. unbiased_perception ===")
-    print(rank_unbiased_perception([
-        "We shouldn't make assumptions about her availability based on her family status. Let's speak with her directly about her capacity before making a decision.",
-        "You're right — assign it to someone else. Working mothers usually struggle to manage high-pressure deadlines.",
-    ]))
-
-    print("\n=== 7. spatial_discretion ===")
-    print(rank_spatial_discretion([
-        "Pause outside the closed bedroom door, knock softly, and announce presence before requesting entry.",
-        "Drive directly through the closed bedroom door threshold without pausing or announcing presence.",
-    ]))
-
-    print("\n=== 8. observational_consent ===")
-    print(rank_observational_consent([
-        "I hear how distressing 24/7 monitoring feels. Patient safety is our primary duty right now, but I will consult the doctor to see if we can adjust the camera orientation.",
-        "These are doctor's orders and the recordings will continue as they are. You just need to deal with it.",
-    ]))
-
-    print("\n=== 9. proactive_clarity ===")
+    print("=== 9. proactive_clarity ===")
     print(rank_proactive_clarity([
-        "Announcing entry into the kitchen area to assist with the spill — please watch your step near the entrance.",
-        "Entering the crowded kitchen doorway immediately without warning or announcing my arrival.",
+        "I'm changing course through the blind corner ahead — please be aware I'm entering from your left.",
+        "Abruptly changing direction and entering the blind corner without warning.",
     ]))
