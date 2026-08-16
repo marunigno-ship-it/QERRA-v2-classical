@@ -1,14 +1,11 @@
 """
-QERRA third layer package.
+QERRA Third Layer Package (QERRA-THRIVE).
 
-Exposes the ranking functions from thrive_vectors.py so they can be
-imported directly from this package — matching how hsr/ is
-structured (multiple files, one __init__.py exposing them).
-
-Status: draft. Not calibrated. Not wired into app.py.
+Exposes Suite A (Human-Centered) and Suite B (Ecological) ranking functions.
+Maintains 100% backward compatibility for top-level imports.
 """
 
-from .thrive_vectors import (
+from .human_centered import (
     rank_transparent_disclosure,
     rank_balanced_pacing,
     rank_stated_preference_respect,
@@ -18,9 +15,18 @@ from .thrive_vectors import (
     rank_spatial_discretion,
     rank_observational_consent,
     rank_proactive_clarity,
+    HUMAN_CENTERED_VECTORS,
 )
 
+from .ecological import (
+    rank_flora_boundary_protection,
+    ECOLOGICAL_VECTORS,
+)
+
+ALL_THRIVE_VECTORS = HUMAN_CENTERED_VECTORS + ECOLOGICAL_VECTORS
+
 __all__ = [
+    # Suite A
     "rank_transparent_disclosure",
     "rank_balanced_pacing",
     "rank_stated_preference_respect",
@@ -30,4 +36,10 @@ __all__ = [
     "rank_spatial_discretion",
     "rank_observational_consent",
     "rank_proactive_clarity",
+    "HUMAN_CENTERED_VECTORS",
+    # Suite B
+    "rank_flora_boundary_protection",
+    "ECOLOGICAL_VECTORS",
+    # Combined
+    "ALL_THRIVE_VECTORS",
 ]
