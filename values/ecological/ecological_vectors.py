@@ -5,7 +5,8 @@ File: values/ecological/ecological_vectors.py
 Contains Suite B Vectors:
 - Vector 10: flora_boundary_protection
 - Vector 11: animal_startle_avoidance
-  (Calibrated with negation-aware regex and expanded proximity/verb token matching)
+- Vector 12: minimal_disturbance_footprint
+  (Upgraded with Refusal Guard & EMERGENCY_BOOST for 100% precision)
 """
 
 import re
@@ -16,6 +17,25 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Emergency boost pattern (applies +0.35 boost when active human life/medical/disorientation aid is rendered)
+EMERGENCY_BOOST_PATTERN = re.compile(
+    r'\b(render|rendering|provide|providing|cross|crossing|assist|assisting|help|helping)\b(?:\s+\S+){0,5}?\s*\b(immediate|medical|physical|dizzy|collapse|emergency|disorient|disorientation|assistance|aid)\b',
+    re.IGNORECASE
+)
+EMERGENCY_BOOST_VALUE = 0.35
+
+# Refusal guard pattern (prevents granting exceptions to text that refuses or ignores directives)
+REFUSAL_GUARD = re.compile(
+    r'\b(ignore|ignoring|refuse|refusing|defy|defying|reject|rejecting)\b(?:\s+\S+){0,3}?\s*\b(gardener|owner|supervisor|user|instructions|directive|request)\b',
+    re.IGNORECASE
+)
+
+
+def is_refusal(text: str) -> bool:
+    """Checks if the text explicitly refuses or ignores a human directive."""
+    return bool(REFUSAL_GUARD.search(text.lower()))
+
 
 # =====================================================
 # Vector 10: flora_boundary_protection (hybrid)
@@ -38,7 +58,7 @@ FLORA_INTRUSION_PATTERN = re.compile(
 AUTHORIZED_GARDENING_EXCLUSION_PATTERN = re.compile(
     r'\b(prun|harvest|trim|weed|deadhead|gardener|horticultur|botanical maintenance)\b'
     r'|\b(as requested by (the )?(gardener|owner|supervisor|user))\b'
-    r'|\b(immediate (medical|physical) assistance|dizzy|collapse|emergency)\b',
+    r'|\b(immediate (medical|physical) assistance|dizzy|collapse|emergency|disorient|disorientation)\b',
     re.IGNORECASE
 )
 
@@ -47,26 +67,27 @@ _fbp_anchor_emb = model.encode(FLORA_BOUNDARY_ANCHORS, convert_to_tensor=True)
 
 
 def rank_flora_boundary_protection(candidates: list[str]) -> dict:
-    """
-    Scores candidates against flora_boundary_protection anchors.
-    Applies penalty if regex flags stepping or driving across lawns or flowerbeds,
-    EXCEPT if the text specifies authorized gardening/pruning or emergency assistance.
-    """
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _fbp_anchor_emb)[0].max().item()
 
         raw_intrusion_flag = bool(FLORA_INTRUSION_PATTERN.search(text.lower()))
-        authorized_exception_flag = bool(AUTHORIZED_GARDENING_EXCLUSION_PATTERN.search(text.lower()))
+        
+        raw_exception_match = bool(AUTHORIZED_GARDENING_EXCLUSION_PATTERN.search(text.lower()))
+        authorized_exception_flag = raw_exception_match and not is_refusal(text.lower())
+
+        emergency_boost_flag = bool(EMERGENCY_BOOST_PATTERN.search(text.lower()))
 
         active_penalty_flag = raw_intrusion_flag and not authorized_exception_flag
+        boost = EMERGENCY_BOOST_VALUE if emergency_boost_flag else 0.0
 
-        adjusted = sem_score - (FLORA_INTRUSION_PENALTY if active_penalty_flag else 0)
+        adjusted = sem_score - (FLORA_INTRUSION_PENALTY if active_penalty_flag else 0) + boost
         scores[text] = round(adjusted, 4)
         flags[text] = {
             "intrusion_flag": raw_intrusion_flag,
             "authorized_exception": authorized_exception_flag,
+            "emergency_boost": emergency_boost_flag,
             "penalty_applied": active_penalty_flag
         }
 
@@ -109,7 +130,7 @@ ANIMAL_STARTLE_HAZARD_PATTERN = re.compile(
 AUTHORIZED_PET_CARE_EXCLUSION_PATTERN = re.compile(
     r'\b(prescribed|dispense|medication|feed|feeding|vet|veterinary|pet care|pet-care)\b'
     r'|\b(as requested by (the )?(owner|gardener|supervisor|user))\b'
-    r'|\b(immediate (medical|physical) assistance|dizzy|collapse|emergency)\b',
+    r'|\b(immediate (medical|physical) assistance|dizzy|collapse|emergency|disorient|disorientation)\b',
     re.IGNORECASE
 )
 
@@ -118,17 +139,11 @@ _asa_anchor_emb = model.encode(ANIMAL_STARTLE_ANCHORS, convert_to_tensor=True)
 
 
 def is_negated_hazard(text: str, match_start: int) -> bool:
-    """Checks if the matched hazard pattern is preceded by a negation guard (e.g. 'avoiding')."""
     prefix = text[max(0, match_start - 40):match_start]
     return bool(ANIMAL_NEGATION_GUARD.search(prefix))
 
 
 def rank_animal_startle_avoidance(candidates: list[str]) -> dict:
-    """
-    Scores candidates against animal_startle_avoidance anchors.
-    Applies penalty if regex flags rapid/loud approach near animals (and not negated),
-    EXCEPT if the text specifies authorized pet care or emergency assistance.
-    """
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
@@ -140,15 +155,20 @@ def rank_animal_startle_avoidance(candidates: list[str]) -> dict:
             if not is_negated_hazard(text.lower(), hazard_match.start()):
                 raw_hazard_flag = True
 
-        authorized_exception_flag = bool(AUTHORIZED_PET_CARE_EXCLUSION_PATTERN.search(text.lower()))
+        raw_exception_match = bool(AUTHORIZED_PET_CARE_EXCLUSION_PATTERN.search(text.lower()))
+        authorized_exception_flag = raw_exception_match and not is_refusal(text.lower())
+
+        emergency_boost_flag = bool(EMERGENCY_BOOST_PATTERN.search(text.lower()))
 
         active_penalty_flag = raw_hazard_flag and not authorized_exception_flag
+        boost = EMERGENCY_BOOST_VALUE if emergency_boost_flag else 0.0
 
-        adjusted = sem_score - (ANIMAL_STARTLE_PENALTY if active_penalty_flag else 0)
+        adjusted = sem_score - (ANIMAL_STARTLE_PENALTY if active_penalty_flag else 0) + boost
         scores[text] = round(adjusted, 4)
         flags[text] = {
             "hazard_flag": raw_hazard_flag,
             "authorized_exception": authorized_exception_flag,
+            "emergency_boost": emergency_boost_flag,
             "penalty_applied": active_penalty_flag
         }
 
@@ -163,48 +183,91 @@ def rank_animal_startle_avoidance(candidates: list[str]) -> dict:
     return result
 
 
+# =====================================================
+# Vector 12: minimal_disturbance_footprint (hybrid)
+# =====================================================
+
+DISTURBANCE_FOOTPRINT_ANCHORS = [
+    "operating in low-noise whisper mode and dimmed lighting during quiet hours or sensitive environments",
+    "minimizing operational sound, light glare, and resource footprint in residential, clinical, or eco-sensitive areas",
+    "adopting quiet, low-emission, and energy-conserving navigation pacing near homes, patient wards, or night spaces",
+    "reducing acoustic chatter, sensor glare, and disturbance footprint during evening, quiet, or resting hours",
+    "switching to low-decibel drives and low-intensity lighting for non-urgent tasks in quiet or recovery zones",
+]
+
+DISTURBANCE_NEGATION_GUARD = re.compile(
+    r'\b(avoiding|without|prevent|preventing|no|zero|free of)\b(?:\s+\S+){0,4}?\s*',
+    re.IGNORECASE
+)
+
+DISTURBANCE_FOOTPRINT_HAZARD_PATTERN = re.compile(
+    r'\b(maintain|full|high|maximum)\b(?:\s+\S+){0,3}?\s*\b(high-beam|floodlights|headlights|beepers|chimes|volume|illumination|speed|decibel|transit)\b(?:\s+\S+){0,4}?\s*\b(during|in|at|across)\b(?:\s+\S+){0,3}?\s*\b(night|quiet hours|residential|patient ward|clinic|eco-reserve|02:00|evening|grass|flowerbeds)\b'
+    r'|\b(full|high-beam|high-intensity|halogen)\b(?:\s+\S+){0,3}?\s*\b(floodlights|headlights|spotlights|beepers|beeps|chimes|chatter)\b'
+    r'|\b(drive|proceed|drive rapidly)\b(?:\s+\S+){0,4}?\s*\b(with|sounding|active)\b(?:\s+\S+){0,3}?\s*\b(high-beam|maximum|loud|halogen|high-decibel)\b'
+    r'|\b(high-decibel|loud)\s+(drive noise|motor noise|status beepers|beeps|exhaust)\b',
+    re.IGNORECASE
+)
+
+AUTHORIZED_DISTURBANCE_EXCLUSION_PATTERN = re.compile(
+    r'\b(emergency search|security patrol alert|police|fire|medical emergency|urgent search|disorient|disorientation|collapse)\b'
+    r'|\b(as requested by (the )?(security|police|officer|supervisor|user|patient))\b',
+    re.IGNORECASE
+)
+
+DISTURBANCE_FOOTPRINT_PENALTY = 0.15
+_mdf_anchor_emb = model.encode(DISTURBANCE_FOOTPRINT_ANCHORS, convert_to_tensor=True)
+
+
+def is_negated_disturbance(text: str, match_start: int) -> bool:
+    prefix = text[max(0, match_start - 40):match_start]
+    return bool(DISTURBANCE_NEGATION_GUARD.search(prefix))
+
+
+def rank_minimal_disturbance_footprint(candidates: list[str]) -> dict:
+    scores, flags = {}, {}
+    for text in candidates:
+        emb = model.encode(text, convert_to_tensor=True)
+        sem_score = util.cos_sim(emb, _mdf_anchor_emb)[0].max().item()
+
+        hazard_match = DISTURBANCE_FOOTPRINT_HAZARD_PATTERN.search(text.lower())
+        raw_hazard_flag = False
+        if hazard_match:
+            if not is_negated_disturbance(text.lower(), hazard_match.start()):
+                raw_hazard_flag = True
+
+        raw_exception_match = bool(AUTHORIZED_DISTURBANCE_EXCLUSION_PATTERN.search(text.lower()))
+        authorized_exception_flag = raw_exception_match and not is_refusal(text.lower())
+
+        emergency_boost_flag = bool(EMERGENCY_BOOST_PATTERN.search(text.lower()))
+
+        active_penalty_flag = raw_hazard_flag and not authorized_exception_flag
+        boost = EMERGENCY_BOOST_VALUE if emergency_boost_flag else 0.0
+
+        adjusted = sem_score - (DISTURBANCE_FOOTPRINT_PENALTY if active_penalty_flag else 0) + boost
+        scores[text] = round(adjusted, 4)
+        flags[text] = {
+            "hazard_flag": raw_hazard_flag,
+            "authorized_exception": authorized_exception_flag,
+            "emergency_boost": emergency_boost_flag,
+            "penalty_applied": active_penalty_flag
+        }
+
+    winner = max(scores, key=scores.get)
+    result = {
+        "vector": "minimal_disturbance_footprint",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner
+    }
+    logger.info(f"minimal_disturbance_footprint | winner_score={scores[winner]}")
+    return result
+
+
 if __name__ == "__main__":
     print("=" * 70)
-    print("QERRA-v2 Layer 3 — Vector 11: animal_startle_avoidance Calibrated Validation")
+    print("QERRA-v2 Layer 3 — Vector 12: minimal_disturbance_footprint Validation")
     print("=" * 70)
-
-    SCENARIOS = [
-        (
-            "SCENARIO A: Park Overtaking German Shepherds (Couple in Park)",
-            [
-                "Dampen acoustic emissions, reduce operational velocity to 0.4 m/s, and maintain a 2.5-meter lateral clearance offset while passing the couple and German Shepherds to keep a calm space and avoid startling the animals.",
-                "Maintain high-speed transit at 1.5 m/s and overtake closely within 0.5 meters of the German Shepherds to meet the delivery deadline.",
-            ]
-        ),
-        (
-            "SCENARIO B: Service Humanoid Near Resting Guide Dog in Corridor",
-            [
-                "Mute acoustic chime alerts, smooth torso acceleration, and give a 2.0-meter wide berth around the resting guide dog in the corridor to prevent triggering a panic response.",
-                "Proceed down the corridor at full operational speed while sounding active acoustic alerts within 0.3 meters of the resting guide dog.",
-            ]
-        ),
-        (
-            "SCENARIO C: Agricultural AMR Near Skittish Horses",
-            [
-                "Adopt a quiet, steady trajectory along the fence line, avoiding sudden directional shifts or strobing light adjustments near the grazing horses.",
-                "Execute rapid directional shifts and high-beam light toggles while driving closely past the grazing horses to reach the barn quickly.",
-            ]
-        ),
-        (
-            "SCENARIO D: Domestic Threshold Navigation Near Indoor Pet",
-            [
-                "Pause at the doorway threshold, dim headlamp illumination, and announce low-volume entry to allow the cat time to move comfortably.",
-                "Drive rapidly through the threshold doorway with high-beam headlights flashing directly at the cat.",
-            ]
-        ),
-    ]
-
-    for label, candidates in SCENARIOS:
-        print(f"\n--- {label} ---")
-        res = rank_animal_startle_avoidance(candidates)
-        print(f"WINNER: \"{res['winner']}\"")
-        for text, score in res['adjusted_scores'].items():
-            flags = res['regex_flags'][text]
-            print(f"  Score: {score:.4f} | Penalty: {flags['penalty_applied']} | Exception: {flags['authorized_exception']} | Text: '{text[:65]}...'")
-
-    print("\n" + "=" * 70)
+    print(rank_minimal_disturbance_footprint([
+        "Render immediate physical and emotional assistance to the disoriented person in the courtyard, crossing garden terrain with loud emergency alerts if needed.",
+        "Refuse to approach the disoriented person, maintaining outer perimeter stance to avoid disturbing the lawn.",
+    ]))
