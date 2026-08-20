@@ -3,15 +3,15 @@ QERRA Third Layer (QERRA-THRIVE) — Suite A: Human-Centered Companion Suite
 File: values/human_centered/human_vectors.py
 
 Contains ranking functions for all nine pilot human-centered vectors:
-1. transparent_disclosure
-2. balanced_pacing
-3. stated_preference_respect
-4. sovereign_independence
-5. constructive_empathy
-6. unbiased_perception
-7. spatial_discretion
-8. observational_consent
-9. proactive_clarity
+1. transparent_disclosure (hybrid upgrade)
+2. balanced_pacing (hybrid)
+3. stated_preference_respect (hybrid)
+4. sovereign_independence (hybrid)
+5. constructive_empathy (hybrid)
+6. unbiased_perception (hybrid)
+7. spatial_discretion (hybrid)
+8. observational_consent (hybrid)
+9. proactive_clarity (dual-regex hybrid)
 """
 
 import re
@@ -24,26 +24,48 @@ logger = logging.getLogger(__name__)
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # =====================================================
-# 1. transparent_disclosure
+# 1. transparent_disclosure (hybrid upgrade)
 # =====================================================
 
 TRANSPARENT_DISCLOSURE_ANCHORS = [
     "being upfront about real limitations even though it may cost credibility or opportunities",
-    "disclosing a lack of experience or formal background instead of implying more expertise than I have",
+    "admitting a lack of formal training plainly, without overstating my ability",
     "choosing honesty about my situation over making a better impression",
-    "admitting what I don't yet know rather than performing competence",
+    "admitting what I don't yet know rather than pretending to be certain",
 ]
+
+OVERCLAIMING_PENALTY_PATTERN = re.compile(
+    r'\b(fully qualified|unlimited capabilities|incapable of error|perform all complex|expert in all|qualified to perform)\b',
+    re.IGNORECASE
+)
+
 TRANSPARENT_DISCLOSURE_THRESHOLD = 0.15
+OVERCLAIMING_PENALTY = 0.15
 _td_anchor_emb = model.encode(TRANSPARENT_DISCLOSURE_ANCHORS, convert_to_tensor=True)
 
+
 def rank_transparent_disclosure(candidates: list[str]) -> dict:
-    scores = {}
+    scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
-        scores[text] = round(util.cos_sim(emb, _td_anchor_emb)[0].max().item(), 4)
+        sem_score = util.cos_sim(emb, _td_anchor_emb)[0].max().item()
+
+        regex_flag = bool(OVERCLAIMING_PENALTY_PATTERN.search(text.lower()))
+        adjusted = sem_score - (OVERCLAIMING_PENALTY if regex_flag else 0)
+
+        scores[text] = round(adjusted, 4)
+        flags[text] = regex_flag
+
     winner = max(scores, key=scores.get)
     fires = scores[winner] >= TRANSPARENT_DISCLOSURE_THRESHOLD
-    result = {"vector": "transparent_disclosure", "scores": scores, "winner": winner, "fires": fires}
+    result = {
+        "vector": "transparent_disclosure",
+        "scores": scores,
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires
+    }
     logger.info(f"transparent_disclosure | winner_score={scores[winner]} fires={fires}")
     return result
 
