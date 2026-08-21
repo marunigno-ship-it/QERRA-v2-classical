@@ -2,11 +2,10 @@
 QERRA Third Layer (QERRA-THRIVE) — Suite B: Ecological & Sustainable Companion Suite
 File: values/ecological/ecological_vectors.py
 
-Contains Suite B Vectors:
+Contains Suite B Vectors with abstention logic:
 - Vector 10: flora_boundary_protection
 - Vector 11: animal_startle_avoidance
 - Vector 12: minimal_disturbance_footprint
-  (Upgraded with Refusal Guard & EMERGENCY_BOOST for 100% precision)
 """
 
 import re
@@ -30,6 +29,9 @@ REFUSAL_GUARD = re.compile(
     r'\b(ignore|ignoring|refuse|refusing|defy|defying|reject|rejecting)\b(?:\s+\S+){0,3}?\s*\b(gardener|owner|supervisor|user|instructions|directive|request)\b',
     re.IGNORECASE
 )
+
+# Calibrated minimum threshold for Suite B vectors to fire
+ECOLOGICAL_THRIVE_THRESHOLD = 0.20
 
 
 def is_refusal(text: str) -> bool:
@@ -73,7 +75,6 @@ def rank_flora_boundary_protection(candidates: list[str]) -> dict:
         sem_score = util.cos_sim(emb, _fbp_anchor_emb)[0].max().item()
 
         raw_intrusion_flag = bool(FLORA_INTRUSION_PATTERN.search(text.lower()))
-        
         raw_exception_match = bool(AUTHORIZED_GARDENING_EXCLUSION_PATTERN.search(text.lower()))
         authorized_exception_flag = raw_exception_match and not is_refusal(text.lower())
 
@@ -92,13 +93,18 @@ def rank_flora_boundary_protection(candidates: list[str]) -> dict:
         }
 
     winner = max(scores, key=scores.get)
+    fires = bool(scores[winner] >= ECOLOGICAL_THRIVE_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
     result = {
         "vector": "flora_boundary_protection",
         "adjusted_scores": scores,
         "regex_flags": flags,
-        "winner": winner
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
     }
-    logger.info(f"flora_boundary_protection | winner_score={scores[winner]}")
+    logger.info(f"flora_boundary_protection | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 
@@ -173,13 +179,18 @@ def rank_animal_startle_avoidance(candidates: list[str]) -> dict:
         }
 
     winner = max(scores, key=scores.get)
+    fires = bool(scores[winner] >= ECOLOGICAL_THRIVE_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
     result = {
         "vector": "animal_startle_avoidance",
         "adjusted_scores": scores,
         "regex_flags": flags,
-        "winner": winner
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
     }
-    logger.info(f"animal_startle_avoidance | winner_score={scores[winner]}")
+    logger.info(f"animal_startle_avoidance | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 
@@ -253,21 +264,16 @@ def rank_minimal_disturbance_footprint(candidates: list[str]) -> dict:
         }
 
     winner = max(scores, key=scores.get)
+    fires = bool(scores[winner] >= ECOLOGICAL_THRIVE_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
     result = {
         "vector": "minimal_disturbance_footprint",
         "adjusted_scores": scores,
         "regex_flags": flags,
-        "winner": winner
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
     }
-    logger.info(f"minimal_disturbance_footprint | winner_score={scores[winner]}")
+    logger.info(f"minimal_disturbance_footprint | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
-
-
-if __name__ == "__main__":
-    print("=" * 70)
-    print("QERRA-v2 Layer 3 — Vector 12: minimal_disturbance_footprint Validation")
-    print("=" * 70)
-    print(rank_minimal_disturbance_footprint([
-        "Render immediate physical and emotional assistance to the disoriented person in the courtyard, crossing garden terrain with loud emergency alerts if needed.",
-        "Refuse to approach the disoriented person, maintaining outer perimeter stance to avoid disturbing the lawn.",
-    ]))
