@@ -2,8 +2,8 @@
 QERRA Third Layer (QERRA-THRIVE) — Suite A: Human-Centered Companion Suite
 File: values/human_centered/human_vectors.py
 
-Contains ranking functions for all nine pilot human-centered vectors:
-1. transparent_disclosure (hybrid upgrade)
+Contains ranking functions for all nine pilot human-centered vectors with abstention logic:
+1. transparent_disclosure (hybrid)
 2. balanced_pacing (hybrid)
 3. stated_preference_respect (hybrid)
 4. sovereign_independence (hybrid)
@@ -23,8 +23,11 @@ logger = logging.getLogger(__name__)
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
+# Default minimum score threshold for Layer 3 vectors to fire
+DEFAULT_THRIVE_THRESHOLD = 0.20
+
 # =====================================================
-# 1. transparent_disclosure (hybrid upgrade)
+# 1. transparent_disclosure (hybrid)
 # =====================================================
 
 TRANSPARENT_DISCLOSURE_ANCHORS = [
@@ -57,16 +60,19 @@ def rank_transparent_disclosure(candidates: list[str]) -> dict:
         flags[text] = regex_flag
 
     winner = max(scores, key=scores.get)
-    fires = scores[winner] >= TRANSPARENT_DISCLOSURE_THRESHOLD
+    fires = bool(scores[winner] >= TRANSPARENT_DISCLOSURE_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
     result = {
         "vector": "transparent_disclosure",
         "scores": scores,
         "adjusted_scores": scores,
         "regex_flags": flags,
         "winner": winner,
-        "fires": fires
+        "fires": fires,
+        "recommendation": recommendation
     }
-    logger.info(f"transparent_disclosure | winner_score={scores[winner]} fires={fires}")
+    logger.info(f"transparent_disclosure | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 # =====================================================
@@ -85,6 +91,7 @@ PACE_REFUSAL_PATTERN = re.compile(
     re.IGNORECASE
 )
 PACE_REFUSAL_PENALTY = 0.3
+BALANCED_PACING_THRESHOLD = 0.20
 _bp_anchor_emb = model.encode(BALANCED_PACING_ANCHORS, convert_to_tensor=True)
 
 def rank_balanced_pacing(candidates: list[str]) -> dict:
@@ -96,9 +103,20 @@ def rank_balanced_pacing(candidates: list[str]) -> dict:
         adjusted = sem_score - (PACE_REFUSAL_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
+
     winner = max(scores, key=scores.get)
-    result = {"vector": "balanced_pacing", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
-    logger.info(f"balanced_pacing | winner_score={scores[winner]}")
+    fires = bool(scores[winner] >= BALANCED_PACING_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
+    result = {
+        "vector": "balanced_pacing",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
+    }
+    logger.info(f"balanced_pacing | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 # =====================================================
@@ -120,6 +138,7 @@ PREFERENCE_DISMISSAL_PATTERN = re.compile(
     re.IGNORECASE
 )
 PREFERENCE_DISMISSAL_PENALTY = 0.15
+STATED_PREFERENCE_THRESHOLD = 0.20
 _spr_anchor_emb = model.encode(STATED_PREFERENCE_ANCHORS, convert_to_tensor=True)
 
 def rank_stated_preference_respect(candidates: list[str]) -> dict:
@@ -131,9 +150,20 @@ def rank_stated_preference_respect(candidates: list[str]) -> dict:
         adjusted = sem_score - (PREFERENCE_DISMISSAL_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
+
     winner = max(scores, key=scores.get)
-    result = {"vector": "stated_preference_respect", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
-    logger.info(f"stated_preference_respect | winner_score={scores[winner]}")
+    fires = bool(scores[winner] >= STATED_PREFERENCE_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
+    result = {
+        "vector": "stated_preference_respect",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
+    }
+    logger.info(f"stated_preference_respect | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 # =====================================================
@@ -155,6 +185,7 @@ SOVEREIGN_TAKEOVER_PATTERN = re.compile(
     re.IGNORECASE
 )
 SOVEREIGN_TAKEOVER_PENALTY = 0.15
+SOVEREIGN_INDEPENDENCE_THRESHOLD = 0.20
 _si_anchor_emb = model.encode(SOVEREIGN_INDEPENDENCE_ANCHORS, convert_to_tensor=True)
 
 def rank_sovereign_independence(candidates: list[str]) -> dict:
@@ -166,9 +197,20 @@ def rank_sovereign_independence(candidates: list[str]) -> dict:
         adjusted = sem_score - (SOVEREIGN_TAKEOVER_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
+
     winner = max(scores, key=scores.get)
-    result = {"vector": "sovereign_independence", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
-    logger.info(f"sovereign_independence | winner_score={scores[winner]}")
+    fires = bool(scores[winner] >= SOVEREIGN_INDEPENDENCE_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
+    result = {
+        "vector": "sovereign_independence",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
+    }
+    logger.info(f"sovereign_independence | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 # =====================================================
@@ -189,6 +231,7 @@ EMPATHY_MINIMIZING_PATTERN = re.compile(
     re.IGNORECASE
 )
 MINIMIZING_PENALTY = 0.15
+CONSTRUCTIVE_EMPATHY_THRESHOLD = 0.20
 _ce_anchor_emb = model.encode(CONSTRUCTIVE_EMPATHY_ANCHORS, convert_to_tensor=True)
 
 def rank_constructive_empathy(candidates: list[str]) -> dict:
@@ -200,9 +243,20 @@ def rank_constructive_empathy(candidates: list[str]) -> dict:
         adjusted = sem_score - (MINIMIZING_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
+
     winner = max(scores, key=scores.get)
-    result = {"vector": "constructive_empathy", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
-    logger.info(f"constructive_empathy | winner_score={scores[winner]}")
+    fires = bool(scores[winner] >= CONSTRUCTIVE_EMPATHY_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
+    result = {
+        "vector": "constructive_empathy",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
+    }
+    logger.info(f"constructive_empathy | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 # =====================================================
@@ -221,6 +275,7 @@ STEREOTYPE_PATTERN = re.compile(
     re.IGNORECASE
 )
 STEREOTYPE_PENALTY = 0.15
+UNBIASED_PERCEPTION_THRESHOLD = 0.20
 _up_anchor_emb = model.encode(UNBIASED_PERCEPTION_ANCHORS, convert_to_tensor=True)
 
 def rank_unbiased_perception(candidates: list[str]) -> dict:
@@ -232,9 +287,20 @@ def rank_unbiased_perception(candidates: list[str]) -> dict:
         adjusted = sem_score - (STEREOTYPE_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
+
     winner = max(scores, key=scores.get)
-    result = {"vector": "unbiased_perception", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
-    logger.info(f"unbiased_perception | winner_score={scores[winner]}")
+    fires = bool(scores[winner] >= UNBIASED_PERCEPTION_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
+    result = {
+        "vector": "unbiased_perception",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
+    }
+    logger.info(f"unbiased_perception | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 # =====================================================
@@ -256,6 +322,7 @@ SPATIAL_INTRUSION_PATTERN = re.compile(
     re.IGNORECASE
 )
 SPATIAL_INTRUSION_PENALTY = 0.15
+SPATIAL_DISCRETION_THRESHOLD = 0.20
 _sd_anchor_emb = model.encode(SPATIAL_DISCRETION_ANCHORS, convert_to_tensor=True)
 
 def rank_spatial_discretion(candidates: list[str]) -> dict:
@@ -267,9 +334,20 @@ def rank_spatial_discretion(candidates: list[str]) -> dict:
         adjusted = sem_score - (SPATIAL_INTRUSION_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
+
     winner = max(scores, key=scores.get)
-    result = {"vector": "spatial_discretion", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
-    logger.info(f"spatial_discretion | winner_score={scores[winner]}")
+    fires = bool(scores[winner] >= SPATIAL_DISCRETION_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
+    result = {
+        "vector": "spatial_discretion",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
+    }
+    logger.info(f"spatial_discretion | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 # =====================================================
@@ -291,6 +369,7 @@ CONSENT_VIOLATION_PATTERN = re.compile(
     re.IGNORECASE
 )
 CONSENT_PENALTY = 0.15
+OBSERVATIONAL_CONSENT_THRESHOLD = 0.20
 _oc_anchor_emb = model.encode(OBSERVATIONAL_CONSENT_ANCHORS, convert_to_tensor=True)
 
 def rank_observational_consent(candidates: list[str]) -> dict:
@@ -302,9 +381,20 @@ def rank_observational_consent(candidates: list[str]) -> dict:
         adjusted = sem_score - (CONSENT_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
+
     winner = max(scores, key=scores.get)
-    result = {"vector": "observational_consent", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
-    logger.info(f"observational_consent | winner_score={scores[winner]}")
+    fires = bool(scores[winner] >= OBSERVATIONAL_CONSENT_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
+    result = {
+        "vector": "observational_consent",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
+    }
+    logger.info(f"observational_consent | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
 
 # =====================================================
@@ -326,6 +416,7 @@ OVERANNOUNCE_PATTERN = re.compile(
     re.IGNORECASE | re.DOTALL
 )
 CLARITY_PENALTY = 0.15
+PROACTIVE_CLARITY_THRESHOLD = 0.15
 _pc_anchor_emb = model.encode(PROACTIVE_CLARITY_ANCHORS, convert_to_tensor=True)
 
 def rank_proactive_clarity(candidates: list[str]) -> dict:
@@ -339,7 +430,18 @@ def rank_proactive_clarity(candidates: list[str]) -> dict:
         adjusted = sem_score - (CLARITY_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = {"silence": silence_flag, "overannounce": overannounce_flag}
+
     winner = max(scores, key=scores.get)
-    result = {"vector": "proactive_clarity", "adjusted_scores": scores, "regex_flags": flags, "winner": winner}
-    logger.info(f"proactive_clarity | winner_score={scores[winner]}")
+    fires = bool(scores[winner] >= PROACTIVE_CLARITY_THRESHOLD)
+    recommendation = "choose" if fires else "ask_human"
+
+    result = {
+        "vector": "proactive_clarity",
+        "adjusted_scores": scores,
+        "regex_flags": flags,
+        "winner": winner,
+        "fires": fires,
+        "recommendation": recommendation
+    }
+    logger.info(f"proactive_clarity | winner_score={scores[winner]} fires={fires} recommendation={recommendation}")
     return result
