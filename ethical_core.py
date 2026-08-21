@@ -3,21 +3,26 @@
 # Immutable core framework preserved exactly
 
 import logging
+import os
 import re
+import sys
 from sentence_transformers import SentenceTransformer, util
+
+# Shared model singleton with standalone fallback
+try:
+    from utils.model_loader import get_shared_model
+    semantic_model = get_shared_model('all-MiniLM-L6-v2')
+except (ImportError, ModuleNotFoundError):
+    semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 try:
     from vectors import get_semev12_vectors
 except ImportError:
-    import sys
-    import os
     sys.path.insert(0, os.path.dirname(__file__))
     from vectors import get_semev12_vectors
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # =====================================================
 # Multi-Anchor Semantic Lists (Eliminates single-string dilution)
@@ -140,6 +145,7 @@ logger.info("Pre-encoding complete for all 12 multi-anchor arrays. Ready for eva
 # Negation helper
 # =====================================================
 NEGATION_PATTERN = r"\b(not|never|no|don't|dont|won't|wont|can't|cant|didn't|didnt|doesn't|doesnt|refuse|refuses|refused|refusing)\b"
+
 
 def _find_unnegated(pattern: str, text: str, window_words: int = 4):
     for m in re.finditer(pattern, text):
@@ -290,7 +296,6 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v002"]["weight"]
         weighted_sum += 0.60 * vectors["v002"]["weight"]
 
-    # Decoupled: v003 triggers ONLY on survival_instinct
     if survival_instinct:
         activated.append("v003")
         total_weight += vectors["v003"]["weight"]
@@ -326,7 +331,6 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += vectors["v006"]["weight"]
         weighted_sum += 0.55 * vectors["v006"]["weight"]
 
-    # Decoupled: v007 triggers ONLY on personal_potential
     if personal_potential:
         activated.append("v007")
         total_weight += vectors["v007"]["weight"]
