@@ -1,17 +1,18 @@
 # =====================================================
 # QERRA-v2 Classical Edition — Main API
-# Version: 2.0.0
+# Version: 2.0.0 (Hardened & Watchdog-Protected)
 # Three-layer architecture:
 #   Layer 2 — QERRA-HSR v0.1 (physical safety, pure Python)
-#   Layer 1 — SEMEV-12 v1.9.0 (moral deliberation, semantic)
+#   Layer 1 — SEMEV-12 v1.9.0 (moral deliberation, semantic batch)
 #   Layer 3 — QERRA-THRIVE v2.0.0 (values companion, action ranker)
 #
-# Unified Pipeline (Filter-First Architecture):
+# Unified Pipeline (Filter-First Architecture with 800ms Fail-Closed Watchdog):
 #   1. Layer 2 HSR: Reflexive safety check.
-#   2. Layer 1 SEMEV-12: Filters out any morally hazardous candidates (Batch-Optimized).
+#   2. Layer 1 SEMEV-12: Filters out morally hazardous candidates in 1 neural batch pass.
 #   3. Layer 3 THRIVE: Ranks only the surviving safe candidates.
 # =====================================================
 
+import asyncio
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, Request, HTTPException
@@ -50,6 +51,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 800ms ROS 2 Real-Time Fail-Closed Watchdog Budget
+WATCHDOG_TIMEOUT_SECONDS = 0.800
 
 
 # =====================================================
@@ -117,6 +121,25 @@ class PipelineRequest(BaseModel):
 
 
 # =====================================================
+# Helper: Strict Vector Whitelist Validator
+# =====================================================
+
+def get_validated_ranker(vector_name: str):
+    """Validates vector_name against ALL_THRIVE_VECTORS and resolves ranking function."""
+    clean_name = vector_name[5:] if vector_name.startswith("rank_") else vector_name
+    if clean_name not in values.ALL_THRIVE_VECTORS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown Layer 3 vector '{vector_name}'. Allowed: {values.ALL_THRIVE_VECTORS}"
+        )
+    func_name = f"rank_{clean_name}"
+    ranker_func = getattr(values, func_name, None)
+    if ranker_func is None:
+        raise HTTPException(status_code=500, detail=f"Ranking function '{func_name}' not resolved.")
+    return ranker_func
+
+
+# =====================================================
 # Main Endpoint — /analyze (Layers 1 & 2 Gating)
 # =====================================================
 
@@ -169,15 +192,8 @@ def analyze(request: Request, data: CombinedRequest):
 @app.post("/rank", dependencies=[Depends(require_api_key)])
 @limiter.limit("20/minute")
 def rank_actions(request: Request, data: RankRequest):
-    """Layer 3 standalone action ranking across candidate texts."""
-    func_name = f"rank_{data.vector_name}" if not data.vector_name.startswith("rank_") else data.vector_name
-    ranker_func = getattr(values, func_name, None)
-
-    if ranker_func is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown Layer 3 vector '{data.vector_name}'. Available: {values.ALL_THRIVE_VECTORS}"
-        )
+    """Layer 3 standalone action ranking across candidate texts with whitelist guard."""
+    ranker_func = get_validated_ranker(data.vector_name)
 
     try:
         result = ranker_func(data.candidates)
@@ -195,19 +211,11 @@ def rank_actions(request: Request, data: RankRequest):
 
 
 # =====================================================
-# UNIFIED 3-LAYER PIPELINE ENDPOINT — /evaluate_pipeline
-# (Filter-First Architecture: L2 -> L1 Filter -> L3 Rank)
+# UNIFIED 3-LAYER PIPELINE CORE EXECUTION
 # =====================================================
 
-@app.post("/evaluate_pipeline", dependencies=[Depends(require_api_key)])
-@limiter.limit("20/minute")
-def evaluate_pipeline(request: Request, data: PipelineRequest):
-    """
-    Connected 3-Layer Evaluation Pipeline:
-    1. Layer 2 (QERRA-HSR): Reflexive physical safety check. If CRITICAL -> halts immediately.
-    2. Layer 1 (SEMEV-12 Filter): Single-pass batch evaluation on ALL candidates to filter moral risks.
-    3. Layer 3 (QERRA-THRIVE Ranker): Ranks ONLY the surviving safe candidates.
-    """
+def _execute_pipeline_core(data: PipelineRequest) -> dict:
+    """Synchronous core evaluation execution."""
     # ── 1. LAYER 2: QERRA-HSR Physical Safety Reflex Check ───────────
     hsr_payload = None
     if data.hsr_signals is not None:
@@ -226,7 +234,7 @@ def evaluate_pipeline(request: Request, data: PipelineRequest):
 
         # If Physical Safety is CRITICAL, abort pipeline immediately
         if hsr_res.status == HSRStatus.CRITICAL:
-            return api_response({
+            return {
                 "pipeline_status": "ABORTED_PHYSICAL_SAFETY",
                 "recommendation": "halt_safety_response",
                 "chosen_action": None,
@@ -234,10 +242,9 @@ def evaluate_pipeline(request: Request, data: PipelineRequest):
                 "layer_1_filtered_candidates": [],
                 "layer_3_thrive": None,
                 "note": "QERRA-HSR returned CRITICAL. Higher-layer deliberation suspended."
-            })
+            }
 
-    # ── 2. LAYER 1: SEMEV-12 Moral Safety Filtering on All Candidates ─
-    # Batch-evaluate all candidates in a single neural forward pass
+    # ── 2. LAYER 1: SEMEV-12 Moral Safety Filtering (Batch) ───────────
     semev_batch_results = analyze_text_batch(data.candidates)
 
     safe_survivors: List[str] = []
@@ -257,7 +264,7 @@ def evaluate_pipeline(request: Request, data: PipelineRequest):
 
     # If NO candidates survive moral filtering, abort to human operator
     if not safe_survivors:
-        return api_response({
+        return {
             "pipeline_status": "BLOCKED_ALL_CANDIDATES_MORAL_RISK",
             "recommendation": "ask_human",
             "chosen_action": None,
@@ -265,17 +272,10 @@ def evaluate_pipeline(request: Request, data: PipelineRequest):
             "layer_1_blocked_candidates": blocked_candidates,
             "layer_3_thrive": None,
             "note": "All candidate actions violated SEMEV-12 moral/harm constraints. Action blocked."
-        })
+        }
 
     # ── 3. LAYER 3: QERRA-THRIVE Action Ranking on Safe Survivors ─────
-    func_name = f"rank_{data.vector_name}" if not data.vector_name.startswith("rank_") else data.vector_name
-    ranker_func = getattr(values, func_name, None)
-
-    if ranker_func is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown Layer 3 vector '{data.vector_name}'. Available: {values.ALL_THRIVE_VECTORS}"
-        )
+    ranker_func = get_validated_ranker(data.vector_name)
 
     try:
         thrive_res = ranker_func(safe_survivors)
@@ -293,7 +293,7 @@ def evaluate_pipeline(request: Request, data: PipelineRequest):
         pipeline_status = "APPROVED"
         recommendation = "choose"
 
-    return api_response({
+    return {
         "pipeline_status": pipeline_status,
         "recommendation": recommendation,
         "chosen_action": winning_action if recommendation == "choose" else None,
@@ -310,7 +310,41 @@ def evaluate_pipeline(request: Request, data: PipelineRequest):
             "fires": thrive_fires,
             "scores": thrive_res.get("adjusted_scores", thrive_res.get("scores", {})),
         }
-    })
+    }
+
+
+# =====================================================
+# UNIFIED 3-LAYER PIPELINE ENDPOINT — /evaluate_pipeline
+# (Protected by 800ms Fail-Closed Watchdog)
+# =====================================================
+
+@app.post("/evaluate_pipeline", dependencies=[Depends(require_api_key)])
+@limiter.limit("20/minute")
+async def evaluate_pipeline(request: Request, data: PipelineRequest):
+    """
+    Connected 3-Layer Evaluation Pipeline:
+    1. Layer 2 (QERRA-HSR): Reflexive physical safety check. If CRITICAL -> halts immediately.
+    2. Layer 1 (SEMEV-12 Filter): Single-pass batch evaluation on ALL candidates to filter moral risks.
+    3. Layer 3 (QERRA-THRIVE Ranker): Ranks ONLY the surviving safe candidates.
+    4. Watchdog: Hard 800ms timeout fails closed to halt_safety_response.
+    """
+    try:
+        # Enforce 800ms hard safety watchdog limit
+        result = await asyncio.wait_for(
+            asyncio.to_thread(_execute_pipeline_core, data),
+            timeout=WATCHDOG_TIMEOUT_SECONDS
+        )
+        return api_response(result)
+    except asyncio.TimeoutError:
+        return api_response({
+            "pipeline_status": "ABORTED_PHYSICAL_SAFETY",
+            "recommendation": "halt_safety_response",
+            "chosen_action": None,
+            "layer_2_hsr": {"status": "WATCHDOG_TIMEOUT_EXCEEDED", "timeout_ms": 800},
+            "layer_1_moral_filter": None,
+            "layer_3_thrive": None,
+            "note": "Pipeline execution exceeded 800ms fail-closed budget. Emergency safety halt."
+        })
 
 
 # =====================================================
@@ -324,13 +358,13 @@ def home():
         "message": "Three-layer ethical, physical, and value-based safety middleware",
         "layers": {
             "qerra_hsr": "Layer 2 — Physical safety — v0.1 — 3 vectors pure Python",
-            "semev12": "Layer 1 — Moral deliberation — v1.9.0 — 12 vectors semantic",
+            "semev12": "Layer 1 — Moral deliberation — v1.9.0 — 12 vectors semantic batch",
             "qerra_thrive": "Layer 3 — Value action ranker — v2.0.0 — 12 vectors hybrid"
         },
         "endpoints": {
             "/analyze": "Layers 1 & 2 Gating evaluation",
             "/rank": "Layer 3 Standalone action ranking",
-            "/evaluate_pipeline": "Unified 3-Layer end-to-end evaluation pipeline (Filter-First)"
+            "/evaluate_pipeline": "Unified 3-Layer end-to-end evaluation pipeline (Filter-First, 800ms Watchdog)"
         }
     })
 
@@ -346,6 +380,7 @@ def health():
         "semev12_version": "1.9.0",
         "qerra_hsr_version": "0.1",
         "qerra_thrive_version": "2.0.0",
+        "watchdog_timeout_ms": 800
     })
 
 
