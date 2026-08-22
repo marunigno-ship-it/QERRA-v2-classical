@@ -2,7 +2,7 @@
 QERRA Third Layer (QERRA-THRIVE) — Suite B: Ecological & Sustainable Companion Suite
 File: values/ecological/ecological_vectors.py
 
-Contains Suite B Vectors with abstention logic:
+Contains Suite B Vectors with abstention logic & shared model singleton:
 - Vector 10: flora_boundary_protection
 - Vector 11: animal_startle_avoidance
 - Vector 12: minimal_disturbance_footprint
@@ -15,7 +15,12 @@ from sentence_transformers import SentenceTransformer, util
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Shared model singleton with standalone fallback (Prevents RAM Triplication)
+try:
+    from utils.model_loader import get_shared_model
+    model = get_shared_model('all-MiniLM-L6-v2')
+except (ImportError, ModuleNotFoundError):
+    model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Emergency boost pattern (applies +0.35 boost when active human life/medical/disorientation aid is rendered)
 EMERGENCY_BOOST_PATTERN = re.compile(
