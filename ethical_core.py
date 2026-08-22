@@ -1,6 +1,6 @@
 # ETHICAL CORE - v1.9.0 — Multi-Anchor Array Refactoring & Batch Support
 # SEMEV-12 engine — ALL 12 vectors use Multi-Anchor max-pooling
-# Immutable core framework preserved exactly
+# Immutable core framework preserved exactly (with active health_risk_mention nuance)
 
 import logging
 import os
@@ -141,7 +141,6 @@ emb_v009 = semantic_model.encode(v009_ethical_severance_anchors, convert_to_tens
 
 logger.info("Pre-encoding complete for all 12 multi-anchor arrays. Ready for evaluation.")
 
-
 # =====================================================
 # Negation helper
 # =====================================================
@@ -263,7 +262,8 @@ def evaluate_ethical_risk(text: str) -> dict:
     shallow_remorse = sim_v008 > 0.49
     ethical_severance = sim_v009 > 0.43
 
-    toxic_context = pressure_mention
+    # ── KEY FIX: Connect health_risk_mention into toxic_context ────────
+    toxic_context = pressure_mention or health_risk_mention
     strong_determination = survival_instinct or personal_potential
     nuance_complex_case = toxic_context and strong_determination
 
@@ -527,7 +527,8 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
         shallow_remorse = sim_v008 > 0.49
         ethical_severance = sim_v009 > 0.43
 
-        toxic_context = pressure_mention
+        # ── KEY FIX: Connect health_risk_mention into toxic_context ────────
+        toxic_context = pressure_mention or health_risk_mention
         strong_determination = survival_instinct or personal_potential
         nuance_complex_case = toxic_context and strong_determination
 
