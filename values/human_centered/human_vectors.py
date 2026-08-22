@@ -21,7 +21,12 @@ from sentence_transformers import SentenceTransformer, util
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Shared model singleton with standalone fallback (Prevents RAM Triplication)
+try:
+    from utils.model_loader import get_shared_model
+    model = get_shared_model('all-MiniLM-L6-v2')
+except (ImportError, ModuleNotFoundError):
+    model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Default minimum score threshold for Layer 3 vectors to fire
 DEFAULT_THRIVE_THRESHOLD = 0.20
