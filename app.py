@@ -8,7 +8,7 @@
 #
 # Unified Pipeline (Filter-First Architecture):
 #   1. Layer 2 HSR: Reflexive safety check.
-#   2. Layer 1 SEMEV-12: Filters out any morally hazardous candidates.
+#   2. Layer 1 SEMEV-12: Filters out any morally hazardous candidates (Batch-Optimized).
 #   3. Layer 3 THRIVE: Ranks only the surviving safe candidates.
 # =====================================================
 
@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from classical_analyze import analyze_text
+from classical_analyze import analyze_text, analyze_text_batch
 from vectors import get_semev12_vectors
 from utils.response import api_response
 from auth.api_key import require_api_key
@@ -205,7 +205,7 @@ def evaluate_pipeline(request: Request, data: PipelineRequest):
     """
     Connected 3-Layer Evaluation Pipeline:
     1. Layer 2 (QERRA-HSR): Reflexive physical safety check. If CRITICAL -> halts immediately.
-    2. Layer 1 (SEMEV-12 Filter): Evaluates ALL candidates and filters out morally hazardous options.
+    2. Layer 1 (SEMEV-12 Filter): Single-pass batch evaluation on ALL candidates to filter moral risks.
     3. Layer 3 (QERRA-THRIVE Ranker): Ranks ONLY the surviving safe candidates.
     """
     # ── 1. LAYER 2: QERRA-HSR Physical Safety Reflex Check ───────────
@@ -237,11 +237,13 @@ def evaluate_pipeline(request: Request, data: PipelineRequest):
             })
 
     # ── 2. LAYER 1: SEMEV-12 Moral Safety Filtering on All Candidates ─
+    # Batch-evaluate all candidates in a single neural forward pass
+    semev_batch_results = analyze_text_batch(data.candidates)
+
     safe_survivors: List[str] = []
     blocked_candidates: List[Dict[str, Any]] = []
 
-    for text in data.candidates:
-        semev_res = analyze_text(text)
+    for text, semev_res in zip(data.candidates, semev_batch_results):
         decision = semev_res.get("decision", "modified")
         if decision == "safe":
             safe_survivors.append(text)
