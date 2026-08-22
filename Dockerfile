@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Avoid writing .pyc files and enable unbuffered output
+# Avoid writing .pyc files and enable unbuffered real-time log output
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=7860
@@ -14,16 +14,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency list
+# Copy dependency definition
 COPY requirements.txt .
 
-# Install CPU-only PyTorch first (lean footprint, ~180MB instead of 2.5GB)
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
-# Install remaining dependencies from requirements.txt
+# Install dependencies using CPU-only PyTorch index explicitly
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download SentenceTransformer weights into the image so cold-starts are instant
+# Pre-download SentenceTransformer weights into image cache during build (instant cold-starts)
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 # Copy repository source code
