@@ -6,15 +6,16 @@ Non-blocking, fail-closed PyTrees Behaviour node that evaluates candidate action
 text choices against Layer 3 THRIVE values (Suite A or Suite B) at decision points.
 
 Decision Priority & Fail-Closed Rules:
-1. Empty candidate list                  → FAILURE (log error, no crash)
-2. Invalid/unknown vector name           → FAILURE (log error, no crash)
-3. Exception during ranking execution    → FAILURE (log error, no crash)
-4. Score separation < 0.03 (thin margin) → SUCCESS (log low-confidence warning)
-5. Valid winning candidate selected       → SUCCESS (set winning text in feedback)
+1. Empty candidate list                  → FAILURE (log error, fail-closed)
+2. Invalid/unknown vector name           → FAILURE (strict whitelist check)
+3. Exception during ranking execution    → FAILURE (log error, fail-closed)
+4. THRIVE Abstention (fires == False)     → FAILURE (defer to human operator)
+5. Score separation < 0.03 (thin margin) → SUCCESS (log low-confidence warning)
+6. Valid winning candidate selected       → SUCCESS (set winning text in feedback)
 
 Performance Guardrail:
-Decision-point caching ensures sentence-transformers (~25ms CPU) only encode
-text when candidates change, preserving sub-millisecond tick speeds during routine ticks.
+Decision-point caching ensures sentence-transformers only encode text when
+candidate actions change, preserving sub-millisecond tick times during routine ticks.
 """
 
 import logging
@@ -48,7 +49,8 @@ class QerraActionRankerNode(py_trees.behaviour.Behaviour):
         confidence_delta_threshold: float = 0.03,
     ):
         super().__init__(name=name)
-        self.vector_name = vector_name
+        # Normalize vector name (strip 'rank_' prefix if provided)
+        self.vector_name = vector_name[5:] if vector_name.startswith("rank_") else vector_name
         self._candidate_actions = list(candidate_actions)
         self.confidence_delta_threshold = confidence_delta_threshold
 
@@ -74,7 +76,7 @@ class QerraActionRankerNode(py_trees.behaviour.Behaviour):
         """
         PyTrees tick callback.
         Executes Layer 3 Action Ranking if dirty. Returns SUCCESS with winning action
-        or FAILURE on error/empty candidates (fails closed).
+        or FAILURE on error/abstention/empty candidates (fails closed).
         """
         # Guard 1: Empty candidate list
         if not self._candidate_actions:
@@ -82,13 +84,19 @@ class QerraActionRankerNode(py_trees.behaviour.Behaviour):
             logger.error(self.feedback_message)
             return py_trees.common.Status.FAILURE
 
+        # Guard 2: Strict Vector Whitelist Check
+        if self.vector_name not in values.ALL_THRIVE_VECTORS:
+            self.feedback_message = f"QERRA-THRIVE Error: Unknown vector '{self.vector_name}'. Allowed: {values.ALL_THRIVE_VECTORS}"
+            logger.error(self.feedback_message)
+            return py_trees.common.Status.FAILURE
+
         # Decision-point caching: re-score only if candidates changed or uninitialized
         if self._dirty or self._last_result is None:
-            func_name = f"rank_{self.vector_name}" if not self.vector_name.startswith("rank_") else self.vector_name
+            func_name = f"rank_{self.vector_name}"
             ranker_func = getattr(values, func_name, None)
 
             if ranker_func is None:
-                self.feedback_message = f"QERRA-THRIVE Error: Unknown vector '{self.vector_name}'."
+                self.feedback_message = f"QERRA-THRIVE Error: Function '{func_name}' not resolved."
                 logger.error(self.feedback_message)
                 return py_trees.common.Status.FAILURE
 
@@ -96,10 +104,24 @@ class QerraActionRankerNode(py_trees.behaviour.Behaviour):
                 # Execute Layer 3 THRIVE Action Ranking
                 result = ranker_func(self._candidate_actions)
                 self._last_result = result
-                self._winning_action = result.get("winner")
                 self._dirty = False
 
-                # Confidence margin evaluation
+                # ── Guard 3: Respect Abstention Logic (fires == False) ──
+                fires = result.get("fires", True)
+                recommendation = result.get("recommendation", "choose")
+
+                if not fires or recommendation == "ask_human":
+                    self._winning_action = None
+                    self.feedback_message = (
+                        f"QERRA-THRIVE Abstention: fires=False for '{self.vector_name}' "
+                        f"(recommendation='ask_human', deferring to human operator)."
+                    )
+                    logger.warning(f"[{self.name}] {self.feedback_message}")
+                    return py_trees.common.Status.FAILURE
+
+                self._winning_action = result.get("winner")
+
+                # Confidence margin evaluation (advisory log only)
                 scores_dict = result.get("scores", result.get("adjusted_scores", {}))
                 scores = list(scores_dict.values())
                 if len(scores) >= 2:
@@ -138,7 +160,6 @@ class QerraActionRankerNode(py_trees.behaviour.Behaviour):
 # =====================================================
 # Standalone Smoke Test
 # =====================================================
-
 if __name__ == "__main__":
     print("=" * 60)
     print("QERRA-v2 Layer 3 — Standalone Action Ranker Node Test")
