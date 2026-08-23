@@ -269,6 +269,7 @@ Suite B includes three additional safeguards that are not present in Suite A:
 - `GET /thrive/vectors` — public, keyless listing of all 12 THRIVE vectors and suites
 
 ### Package structure
+```txt
 values/
 ├── __init__.py                  # Top-level imports and ALL_THRIVE_VECTORS
 ├── thrive_vectors.py            # Backward-compatibility bridge
@@ -278,6 +279,7 @@ values/
 └── ecological/
     ├── __init__.py
     └── ecological_vectors.py
+```
 ---
 
 ## Features
