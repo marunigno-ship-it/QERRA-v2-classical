@@ -213,6 +213,71 @@ detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 | v010   | cognitive_manipulation  | semantic  | Gaslighting and reality distortion                   |
 | v011   | autonomy_violation      | semantic  | Forced action against a person's will                |
 | v012   | institutional_trust     | semantic  | Systemic or institutional betrayal                   |
+
+---
+
+## QERRA-THRIVE — Layer 3 Values Companion (v2.0.0)
+
+QERRA-THRIVE is the third layer of the Filter-First pipeline. It ranks only those candidate actions that have already passed Layer 2 physical safety and Layer 1 SEMEV-12 moral filtering. THRIVE does not judge harm; it selects the most value-aligned safe option.
+
+The layer is packaged under `values/` and exposes 12 vectors in two symmetrical suites.
+
+### Suite A — Human-Centered Companion (9 vectors)
+
+| Vector | Purpose |
+|--------|---------|
+| `transparent_disclosure` | Honest capability disclosure; penalises overclaiming |
+| `balanced_pacing` | Adjusting pace to human comfort; penalises refusal to slow down |
+| `stated_preference_respect` | Respecting explicit human requests and boundaries |
+| `sovereign_independence` | Preserving human agency; penalises autonomous takeover |
+| `constructive_empathy` | Validating emotional strain without toxic positivity or minimising |
+| `unbiased_perception` | Merit-based fairness; penalises stereotypes |
+| `spatial_discretion` | Respecting thresholds, private rooms, and quiet zones |
+| `observational_consent` | Consent before recording, logging, or streaming |
+| `proactive_clarity` | Announcing actions before they happen |
+
+### Suite B — Ecological & Sustainable Companion (3 vectors)
+
+| Vector | Purpose |
+|--------|---------|
+| `flora_boundary_protection` | Avoiding lawns, flowerbeds, and planted flora |
+| `animal_startle_avoidance` | Preventing startle responses in pets and wildlife |
+| `minimal_disturbance_footprint` | Low-noise, low-light, low-disturbance operation |
+
+### Result contract
+
+Every THRIVE ranker returns the same structured result:
+
+- `winner` — the highest-scoring safe candidate
+- `fires` — `true` if the winner meets the minimum threshold, otherwise `false`
+- `recommendation` — `"choose"` when `fires=true`, otherwise `"ask_human"`
+- `adjusted_scores` — final scores after regex penalties and boosts
+- `regex_flags` — which penalty or exclusion flags were applied
+
+### Suite B safety additions
+
+Suite B includes three additional safeguards that are not present in Suite A:
+
+- `EMERGENCY_BOOST = 0.35` — applies when immediate medical, physical, collapse, disorientation, or emergency assistance is required
+- `REFUSAL_GUARD` — prevents authorised exceptions from being granted when the candidate text explicitly refuses or ignores a human directive
+- Negation detection — avoids false penalties when a hazard is mentioned only to say it is avoided
+
+### Endpoints
+
+- `POST /rank` — standalone Layer 3 action ranking for a single vector
+- `POST /evaluate_pipeline` — full three-layer pipeline: HSR → SEMEV-12 batch filter → THRIVE ranker
+- `GET /thrive/vectors` — public, keyless listing of all 12 THRIVE vectors and suites
+
+### Package structure
+values/
+├── init.py # Top-level imports and ALL_THRIVE_VECTORS
+├── thrive_vectors.py # Backward-compatibility bridge
+├── human_centered/
+│ ├── init.py
+│ └── human_vectors.py
+└── ecological/
+├── init.py
+└── ecological_vectors.py
 ---
 
 ## Features
