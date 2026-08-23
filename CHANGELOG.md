@@ -4,6 +4,11 @@ All changes are additive. SEMEV-12 vectors are immutable and are never
 weakened, renamed, or removed across any version.
 
 ---
+Confirm the three-layer Filter-First diagram includes Layer 3 QERRA-THRIVE.
+
+Add values/ package structure with human_centered/ and ecological/.
+
+Mention the new /evaluate_pipeline endpoint and its response contract.
 
 ## [2.0-alpha] - 2026-07-18 — HSR calibration patch
 - **v004 (moral_pressure) Semantic Calibration:** Expanded the semantic anchor to cover formal corporate coercion, bookkeeping falsification, and product safety cover-ups. One of three follow-up tests using independent wording activated correctly; two did not. Held-out validation not yet complete.
