@@ -270,14 +270,14 @@ Suite B includes three additional safeguards that are not present in Suite A:
 
 ### Package structure
 values/
-├── init.py # Top-level imports and ALL_THRIVE_VECTORS
-├── thrive_vectors.py # Backward-compatibility bridge
+├── __init__.py                  # Top-level imports and ALL_THRIVE_VECTORS
+├── thrive_vectors.py            # Backward-compatibility bridge
 ├── human_centered/
-│ ├── init.py
-│ └── human_vectors.py
+│   ├── __init__.py
+│   └── human_vectors.py
 └── ecological/
-├── init.py
-└── ecological_vectors.py
+    ├── __init__.py
+    └── ecological_vectors.py
 ---
 
 ## Features
