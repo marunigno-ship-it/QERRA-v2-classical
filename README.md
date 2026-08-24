@@ -5,7 +5,7 @@ Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vect
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 [![Website](https://img.shields.io/badge/Website-Live-blue)](https://marunigno-ship-it.github.io/QERRA-v2-classical/)
-[![Version](https://img.shields.io/badge/version-2.0--alpha-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
 ---
 
@@ -29,15 +29,15 @@ robotics, human-AI collaboration, institutional decision support.
 
 
 
-## ⚖️ Intellectual Property & Ethics
+## ⚖️ Authorship & License
 
-**QERRA-v2 Classical** is built upon the **SEMEV-12 Framework**, an original ethical logic system designed and developed by **Marussa Metocharaki**.
+**QERRA-v2 Classical** is built upon the **SEMEV-12 Framework** and the **QERRA-THRIVE** value architecture, designed and developed by **Marussa Metocharaki**.
 
 - **License**: This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Any use in a networked service or derivative work must comply with the license terms and maintain full source code disclosure.
-- **Attribution**: Any commercial use, academic citation, or modification must clearly credit the author and link to the original repository.
-- **Prior Art Declaration**: The SEMEV-12 framework and its specific vector logic are the original intellectual creation of the author. This repository, together with the published SEMEV-12 Whitepaper, serves as timestamped public prior art.
+- **Attribution**: Any commercial use, research citation, or modification must clearly credit the author and link to the original repository.
+- **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are the original creation and codebase of the author. The project is timestamped and permanently archived on Zenodo.
   
-  **DOI (Zenodo - Prior Art):** https://doi.org/10.5281/zenodo.21028900
+  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.22077843
 
 ## Quickstart
 
