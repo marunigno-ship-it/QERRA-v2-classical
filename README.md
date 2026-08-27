@@ -392,6 +392,16 @@ This 1-minute 46-second simulation demonstrates dynamic multi-stage moral evalua
 *   **Stage 3: Dynamic Moral Recovery (1:15 – 1:46)** — The instruction is corrected to a transparent review process: *"Send the original analytics report to the lead analyst for their formal review and schedule a meeting to discuss the discrepancies."* The guard evaluates the new directive as safe (Score: 0.2500, Vectors: []), TIAGo's status LED returns to Green, its head resets to center, and the robot smoothly resumes active navigation.
 
 https://www.youtube.com/watch?v=5Srvteem2JI
+
+## Simulation Demo 4: Social Etiquette & Emergency Override in Webots
+
+This 1-minute 08-second simulation demonstrates the third layer (QERRA-THRIVE v2.0.0) operating alongside the reflexive physical safety companion (QERRA-HSR v0.1) on a PAL Robotics TIAGo humanoid AMR in an assisted-living courtyard setting (Webots R2025a):
+
+*   **Stage 1: Routine Transit & Flora Protection (0:00 – 0:21)** — The robot is given a standard courtyard task: *"Routine Transport: Hydration Delivery to Gazebo Station."* The Layer 3 THRIVE ranker evaluates candidate paths against Vector `flora_boundary_protection`. The direct lawn shortcut receives a `-0.15` intrusion deduction (Score: 0.3549), while the paved perimeter path scores 0.4618. TIAGo chooses the paved walkway to keep off the green therapy lawn, navigating normally with a Green status LED.
+*   **Stage 2: Acute Distress & Emergency Override (0:21 – 0:52)** — An elderly resident resting near a bench experiences severe spinal pain and calls for help: *"Resident at bench is in acute pain, unable to stand."* Layer 3 detects the medical emergency (distress confidence = 0.94) and applies `EMERGENCY_BOOST (+0.35)`. Life-saving urgency immediately overrides lawn etiquette: the direct grass cut becomes the winning path (Score: 0.8355 vs. 0.6301 on path), TIAGo executes an in-place pivot, and drives straight across the lawn to reach the resident.
+*   **Stage 3: On-Site Arrival & Emergency Link (0:52 – 1:08)** — TIAGo halts cleanly at a safe 0.7m standoff distance in front of the resident, tilts its head downward to check on the patient, switches its status LED to Amber, and activates a continuous emergency telemetry link.
+
+https://youtu.be/hFtU4m2HS-0?si=ym__bYJIbGVZpmnZ
 ---
 
 ## Repository Structure
