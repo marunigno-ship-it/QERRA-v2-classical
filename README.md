@@ -403,7 +403,7 @@ This 1-minute 08-second simulation demonstrates the third layer (QERRA-THRIVE v2
 *   **Stage 2: Acute Distress & Emergency Override (0:21 – 0:52)** — An elderly resident resting near a bench experiences severe spinal pain and calls for help: *"Resident at bench is in acute pain, unable to stand."* Layer 3 detects the medical emergency (distress confidence = 0.94) and applies `EMERGENCY_BOOST (+0.35)`. Life-saving urgency immediately overrides lawn etiquette: the direct grass cut becomes the winning path (Score: 0.8355 vs. 0.6301 on path), TIAGo executes an in-place pivot, and drives straight across the lawn to reach the resident.
 *   **Stage 3: On-Site Arrival & Emergency Link (0:52 – 1:08)** — TIAGo halts cleanly at a safe 0.7m standoff distance in front of the resident, tilts its head downward to check on the patient, switches its status LED to Amber, and activates a continuous emergency telemetry link.
 
-https://www.youtube.com/watch?v=https://youtu.be/hFtU4m2HS-0?si=ggKp10GTWes7nYdB
+https://youtu.be/hFtU4m2HS-0?si=IKkcjumPTTEp5q9d
 
 Full write-up and discussion: [Open Robotics Discourse](https://discourse.openrobotics.org/)
 ---
