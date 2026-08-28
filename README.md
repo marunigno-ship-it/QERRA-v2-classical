@@ -212,7 +212,7 @@ detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 
 ## QERRA-THRIVE — Layer 3 Values Companion (v2.0.0)
 
-QERRA-THRIVE is the third layer of the Filter-First pipeline. It ranks only those candidate actions that have already passed Layer 2 physical safety and Layer 1 SEMEV-12 moral filtering. THRIVE does not judge harm; it selects the most value-aligned safe option.
+QERRA-THRIVE is the third layer of the Filter-First pipeline. It ranks only those candidate actions that have already passed physical safety (QERRA-HSR) and moral filtering (SEMEV-12) — the two layers that run before it. THRIVE does not judge harm; it selects the most value-aligned safe option.
 
 The layer is packaged under `values/` and exposes 12 vectors in two symmetrical suites.
 
