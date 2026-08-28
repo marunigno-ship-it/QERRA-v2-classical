@@ -11,21 +11,15 @@ Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vect
 
 ## What it is
 
-QERRA-v2 Classical evaluates complex human situations against 12 named ethical
-vectors and returns a structured, fully traceable score. No black boxes. Every
-result includes the exact vectors that fired, a human-readable reasoning
-string, and a moral clarity signal.
+QERRA-v2 Classical is a three-layer decision pipeline for AI systems and autonomous robots — not a single classifier. QERRA-HSR is the physical safety reflex layer: pure deterministic threshold logic, zero ML overhead, provable by direct code inspection. SEMEV-12 is the moral filter: 12 named ethical vectors that catch what a safe action might still get ethically wrong. QERRA-THRIVE is the third layer: 12 more vectors that rank what's already safe and already ethical, picking the option that's actually good — not just permitted.
 
-Detection uses **semantic similarity** via `sentence-transformers` across all
-12 vectors, with supporting regex patterns for specific high-certainty phrases
-on selected vectors. All scoring logic is classical, deterministic, and fully
-auditable.
+No black boxes anywhere in the chain. Every result includes the exact vectors that fired, a human-readable reasoning string, and a moral clarity signal.
 
-Designed for high-stakes contexts where explainability is not optional:
-robotics, human-AI collaboration, institutional decision support.
+SEMEV-12 and THRIVE detect using **semantic similarity** via `sentence-transformers`, with supporting regex patterns for specific high-certainty phrases. HSR uses no semantic detection at all — physical safety runs on hard thresholds, on purpose. All scoring logic is classical, deterministic, and fully auditable.
+
+Designed for high-stakes contexts where explainability is not optional: robotics, human-AI collaboration, institutional decision support.
 
 ---
-
 
 
 
