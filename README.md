@@ -1,7 +1,7 @@
 # QERRA-v2 Classical
 
-**A fully explainable, classical ethical evaluation engine.**
-Based on the **SEMEV-12** framework — 12 immutable, human-centred ethical vectors.
+**A fully explainable, classical three-layer pipeline for AI systems and autonomous robots.**
+Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranked choice (QERRA-THRIVE) — 24 named, auditable vectors, zero black boxes.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 [![Website](https://img.shields.io/badge/Website-Live-blue)](https://marunigno-ship-it.github.io/QERRA-v2-classical/)
