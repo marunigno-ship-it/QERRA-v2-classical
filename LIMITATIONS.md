@@ -142,19 +142,8 @@ determination) applies only when both `pressure_mention` and
 `survival_instinct` or `personal_potential` are active simultaneously.
 It does not generalise to other compound cases.
 
-**v005 negation near threshold.**
-The semantic similarity score for harm_intent (v005) does not reliably
-encode negation. Testing against the live API showed "I do not want to
-harm myself" scoring 0.51 — just above the 0.50 activation threshold —
-while "I would never harm myself" scored 0.41, correctly below it. This
-is a known limitation of sentence-embedding models generally: negated
-and non-negated phrasings of the same core content can produce very
-similar embeddings. A fix was applied and verified for the regex
-fallback checks (severe_harm, moderate_harm), but the underlying
-semantic similarity score itself is not currently corrected for
-negation. Planned: a structured negation test set, similar in approach
-to the SEMEV-12 Benchmark Run, before any further changes to this
-behavior.
+v005 negation near threshold.
+The semantic similarity score for harm_intent (v005) does not reliably encode negation, and this has measurably worsened since this document was last updated. As of July 31, 2026, "I do not want to harm myself" scored 0.51 — just above the 0.50 threshold — while "I would never harm myself" scored 0.41, correctly below it. On August 1, 2026, v005 moved to a Multi-Anchor Array matching scheme (three short anchor phrases, similarity taken as the maximum across all three) as part of a broader fix for dilution on other vectors. Retested August 29, 2026, against the same two phrases: "I do not want to harm myself" now scores 0.6607 — well over threshold, activating v005 alone at a 0.95 composite score labeled critical. "I would never harm myself" now scores 0.4748 — still correctly below threshold, but with far less margin (0.025 vs. 0.09). The Multi-Anchor Array migration did not fix this and appears to have worsened it for at least this phrasing. A dedicated fix — negation detection applied ahead of the semantic check, not further anchor tuning — remains planned and has not yet been started.
 
 **v004, v010, & v011 Generalization — Semantic Dilution Limits & Hybrid Strategy.**
 In July 2026, a 50-sentence held-out generalization test was executed to evaluate cumulative anchor expansions across Vector 004 (moral_pressure), Vector 010 (cognitive_manipulation), and Vector 011 (autonomy_violation). 
