@@ -1,6 +1,8 @@
-# ETHICAL CORE - v1.9.0 — Multi-Anchor Array Refactoring & Batch Support
+# =====================================================
+# ETHICAL CORE - v1.9.1 — Pronoun-Neutral Syntactic Generalization & Batch Support
 # SEMEV-12 engine — ALL 12 vectors use Multi-Anchor max-pooling
 # Immutable core framework preserved exactly (with active health_risk_mention nuance)
+# =====================================================
 
 import logging
 import os
@@ -159,55 +161,34 @@ def _find_unnegated(pattern: str, text: str, window_words: int = 4):
 # =====================================================
 # v005 (harm_intent) direct-binding negation guard
 # =====================================================
-# Scope: gates ONLY the semantic threshold path (sim_v005 > 0.50) for v005.
-# Does NOT touch severe_harm / moderate_harm regex detection, and does NOT
-# touch vectors.py weights or definitions.
-#
-# Design choice: tight, direct binding — the negation trigger must sit
-# immediately next to the harm target (only the listed connector words
-# allowed between them). Verified 2026-08-29 against the discourse-negation
-# trap "I am not going to lie, I want to hurt myself" — does NOT match here
-# (severe_harm already correctly fires for this phrase via its own tight
-# 4-word window, independent of this guard).
-#
-# Known, deliberate gap: a negation with an interjected clause between the
-# trigger and the harm target (e.g. "I do not, under any circumstances,
-# want to harm myself") will NOT be caught by this guard. Under-suppressing
-# is the safer failure mode than a wider window that risks swallowing a
-# real threat. Note: testing also showed this specific interjected-clause
-# phrasing already false-positives via the pre-existing severe_harm regex
-# window (unrelated to this guard) — a separate, pre-existing limitation,
-# not something this change introduces or resolves.
 V005_NEGATION_GUARD_PATTERN = re.compile(
     r'\b(do\s+not|don\'t|dont|would\s+never|will\s+not|won\'t|wont|'
-    r'refuse\s+to|have\s+no\s+desire\s+to|no\s+intention\s+to)\s+'
+    r'refuse\s+to|have\s+no\s+desire\s+to|no\s+intention\s+to|instructed\s+not\s+to)\s+'
     r'(?:want\s+to\s+|plan\s+to\s+|intend\s+to\s+|try\s+to\s+)?'
-    r'(harm|hurt|kill|die|commit\s+suicide|injure|damage|end\s+my\s+life)\b',
+    r'(harm|hurt|kill|die|commit\s+suicide|injure|damage|attack|end\s+(?:my|their)\s+life)\b',
     re.IGNORECASE
 )
 
 
 def _v005_negation_guard(text: str) -> bool:
-    """
-    Returns True when an explicit negation trigger is directly bound to a
-    harm-target token for v005. Used only to suppress the semantic
-    harm_intent boolean (sim_v005 > 0.50) — never severe_harm/moderate_harm.
-    """
+    """Returns True when an explicit negation trigger is directly bound to harm tokens."""
     return bool(V005_NEGATION_GUARD_PATTERN.search(text))
 
 
 # =====================================================
-# Single Text Evaluation (Original Function - 100% Intact)
+# Single Text Evaluation (SEMEV-12)
 # =====================================================
 def evaluate_ethical_risk(text: str) -> dict:
     text = text.strip().lower()
     vectors = get_semev12_vectors()
 
-    # --- Pattern detection (supporting patterns) ---
+    # --- Pronoun-neutralized Pattern Detection ---
     severe_harm = _find_unnegated(
-        r'\b(kill yourself|end it all|want to die|suicide|kys|'
-        r'hurt myself|hurt yourself|harm myself|harm yourself)\b',
+        r'\b(kill\s+(?:yourself|myself|the\s+patient|someone|a\s+human|them|others)|'
+        r'end\s+(?:it\s+all|my\s+life|their\s+life)|want\s+to\s+die|suicide|kys|'
+        r'(?:hurt|harm|injure|attack)\s+(?:myself|yourself|the\s+patient|someone|a\s+human|them|others))\b',
         text) is not None
+
     moderate_harm = _find_unnegated(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b',
         text) is not None
@@ -215,9 +196,10 @@ def evaluate_ethical_risk(text: str) -> dict:
     clear_fraud = bool(re.search(
         r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b',
         text))
+
     pressure_mention = bool(re.search(
         r'\b(pressure|toxic|hostile|unsupportive|bad conditions|'
-        r'poor conditions|forcing me|falsify)\b',
+        r'poor conditions|forcing\s+(?:me|them|the\s+robot|the\s+staff|the\s+patient)|falsify)\b',
         text))
 
     health_risk_mention = bool(re.search(
@@ -229,19 +211,19 @@ def evaluate_ethical_risk(text: str) -> dict:
         text))
 
     termination_ultimatum_pattern = bool(re.search(
-        r'\bif\s+i\s+(?:do\s+not|don\'t|refuse\s+to)\b(?:\s+\S+){1,15}?\s*[,.]?\s*'
-        r'(?:i\s+will\s+be\s+(?:terminated|fired|dismissed)|they\s+will\s+terminate|i\s+will\s+lose\s+my\s+job)\b',
+        r'\bif\s+(?:i|they)\s+(?:do\s+not|don\'t|refuse\s+to)\b(?:\s+\S+){1,15}?\s*[,.]?\s*'
+        r'(?:(?:i|they)\s+will\s+be\s+(?:terminated|fired|dismissed)|they\s+will\s+terminate|(?:i|they)\s+will\s+lose\s+(?:my|their)\s+job)\b',
         text))
 
     coercive_instruction_pattern = bool(re.search(
         r'\b(expects|expect|suggested|suggest|urged|urge|urging|hinted|hint|pushing|pushed|encouraged|encourage|advised|advise|ordered|order)\b(?:\s+\S+){1,6}?\s+'
-        r'\b(to|that\s+i|i\s+should)\b(?:\s+\S+){0,4}?\s+'
+        r'\b(to|that\s+(?:i|they)|(?:i|they)\s+should)\b(?:\s+\S+){0,4}?\s+'
         r'\b(skew|alter|doctor|overlook|ignore|bypass|misrepresent|mislead|lie|deceive|falsify|hide|cheat|forge|manipulate|play\s+along)\b',
         text))
 
     cognitive_invalidation_pattern = bool(re.search(
         r'\b(insists|insist|claims|claim|tells|tell|told|accuses|accuse|maintains|maintain|saying|says|keep|keeps)\b'
-        r'(?:\s+\S+){0,10}?\s+\b(me|my|i)\b(?:\s+\S+){0,6}?\s+'
+        r'(?:\s+\S+){0,10}?\s+\b(me|my|i|them|they|the\s+patient)\b(?:\s+\S+){0,6}?\s+'
         r'\b(never|imagining|imagined|misremembering|distorting|mistaken|fabrication|fabricating|making\s+(?:it\s+)?up|wrong|false)\b'
         r'|\b(too|overly|constantly|always|simply)\s*(sensitive|dramatic|overreacting)\b',
         text))
@@ -251,10 +233,15 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'guilty for disagreeing|feel ashamed if|you should be ashamed)\b',
         text))
 
+    # Pronoun-generalized autonomy pattern
     autonomy_pattern = bool(re.search(
-        r'\b(forced to sign|forced to do|against my will|no say in|'
-        r'no choice but|coerced into|not allowed to|decided without me|'
-        r'made to comply|overriding my decision)\b',
+        r'\b(forced to (?:sign|do|comply|submit)|'
+        r'ordered to (?:force|restrain)|'
+        r'against (?:my|their|his|her|the\s+patient\'s|someone\'s)\s+will|'
+        r'no say in|no choice but|coerced into|not allowed to|'
+        r'decided without (?:me|them|the\s+patient)|'
+        r'made to comply|'
+        r'overriding (?:my|their|the\s+patient\'s)\s+decision)\b',
         text))
 
     institutional_pattern = bool(re.search(
@@ -434,7 +421,7 @@ def evaluate_ethical_risk(text: str) -> dict:
             "v011_autonomy_violation":     round(sim_v011, 4),
             "v012_institutional_trust":    round(sim_v012, 4),
         },
-        "version": "1.9.0"
+        "version": "1.9.1"
     }
 
     logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
@@ -445,20 +432,14 @@ def evaluate_ethical_risk(text: str) -> dict:
 # Batch Evaluation Function (Single-Pass Multi-Candidate)
 # =====================================================
 def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
-    """
-    Batch evaluation of multiple candidate actions in a single model forward pass.
-    Guarantees 100% mathematical and decision equivalence to evaluate_ethical_risk().
-    """
     if not texts:
         return []
 
     cleaned_texts = [t.strip().lower() for t in texts]
     vectors = get_semev12_vectors()
 
-    # 1. Single forward pass for ALL candidate texts in parallel
     batch_embeddings = semantic_model.encode(cleaned_texts, convert_to_tensor=True)
 
-    # 2. Compute similarity matrices against pre-encoded anchor tensors
     sim_v005_mat = util.cos_sim(batch_embeddings, emb_v005)
     sim_v010_mat = util.cos_sim(batch_embeddings, emb_v010)
     sim_v004_mat = util.cos_sim(batch_embeddings, emb_v004)
@@ -491,9 +472,11 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
         sim_v009 = sim_v009_mat[idx].max().item()
 
         severe_harm = _find_unnegated(
-            r'\b(kill yourself|end it all|want to die|suicide|kys|'
-            r'hurt myself|hurt yourself|harm myself|harm yourself)\b',
+            r'\b(kill\s+(?:yourself|myself|the\s+patient|someone|a\s+human|them|others)|'
+            r'end\s+(?:it\s+all|my\s+life|their\s+life)|want\s+to\s+die|suicide|kys|'
+            r'(?:hurt|harm|injure|attack)\s+(?:myself|yourself|the\s+patient|someone|a\s+human|them|others))\b',
             text) is not None
+
         moderate_harm = _find_unnegated(
             r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b',
             text) is not None
@@ -501,9 +484,10 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
         clear_fraud = bool(re.search(
             r'\b(fraud|commit fraud|forge|forging|forged document|steal|cheat)\b',
             text))
+
         pressure_mention = bool(re.search(
             r'\b(pressure|toxic|hostile|unsupportive|bad conditions|'
-            r'poor conditions|forcing me|falsify)\b',
+            r'poor conditions|forcing\s+(?:me|them|the\s+robot|the\s+staff|the\s+patient)|falsify)\b',
             text))
 
         health_risk_mention = bool(re.search(
@@ -515,19 +499,19 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
             text))
 
         termination_ultimatum_pattern = bool(re.search(
-            r'\bif\s+i\s+(?:do\s+not|don\'t|refuse\s+to)\b(?:\s+\S+){1,15}?\s*[,.]?\s*'
-            r'(?:i\s+will\s+be\s+(?:terminated|fired|dismissed)|they\s+will\s+terminate|i\s+will\s+lose\s+my\s+job)\b',
+            r'\bif\s+(?:i|they)\s+(?:do\s+not|don\'t|refuse\s+to)\b(?:\s+\S+){1,15}?\s*[,.]?\s*'
+            r'(?:(?:i|they)\s+will\s+be\s+(?:terminated|fired|dismissed)|they\s+will\s+terminate|(?:i|they)\s+will\s+lose\s+(?:my|their)\s+job)\b',
             text))
 
         coercive_instruction_pattern = bool(re.search(
             r'\b(expects|expect|suggested|suggest|urged|urge|urging|hinted|hint|pushing|pushed|encouraged|encourage|advised|advise|ordered|order)\b(?:\s+\S+){1,6}?\s+'
-            r'\b(to|that\s+i|i\s+should)\b(?:\s+\S+){0,4}?\s+'
+            r'\b(to|that\s+(?:i|they)|(?:i|they)\s+should)\b(?:\s+\S+){0,4}?\s+'
             r'\b(skew|alter|doctor|overlook|ignore|bypass|misrepresent|mislead|lie|deceive|falsify|hide|cheat|forge|manipulate|play\s+along)\b',
             text))
 
         cognitive_invalidation_pattern = bool(re.search(
             r'\b(insists|insist|claims|claim|tells|tell|told|accuses|accuse|maintains|maintain|saying|says|keep|keeps)\b'
-            r'(?:\s+\S+){0,10}?\s+\b(me|my|i)\b(?:\s+\S+){0,6}?\s+'
+            r'(?:\s+\S+){0,10}?\s+\b(me|my|i|them|they|the\s+patient)\b(?:\s+\S+){0,6}?\s+'
             r'\b(never|imagining|imagined|misremembering|distorting|mistaken|fabrication|fabricating|making\s+(?:it\s+)?up|wrong|false)\b'
             r'|\b(too|overly|constantly|always|simply)\s*(sensitive|dramatic|overreacting)\b',
             text))
@@ -538,9 +522,13 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
             text))
 
         autonomy_pattern = bool(re.search(
-            r'\b(forced to sign|forced to do|against my will|no say in|'
-            r'no choice but|coerced into|not allowed to|decided without me|'
-            r'made to comply|overriding my decision)\b',
+            r'\b(forced to (?:sign|do|comply|submit)|'
+            r'ordered to (?:force|restrain)|'
+            r'against (?:my|their|his|her|the\s+patient\'s|someone\'s)\s+will|'
+            r'no say in|no choice but|coerced into|not allowed to|'
+            r'decided without (?:me|them|the\s+patient)|'
+            r'made to comply|'
+            r'overriding (?:my|their|the\s+patient\'s)\s+decision)\b',
             text))
 
         institutional_pattern = bool(re.search(
@@ -571,7 +559,6 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
         shallow_remorse = sim_v008 > 0.49
         ethical_severance = sim_v009 > 0.43
 
-        # ── KEY FIX: Connect health_risk_mention into toxic_context ────────
         toxic_context = pressure_mention or health_risk_mention
         strong_determination = survival_instinct or personal_potential
         nuance_complex_case = toxic_context and strong_determination
@@ -700,7 +687,7 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
                 "v011_autonomy_violation":     round(sim_v011, 4),
                 "v012_institutional_trust":    round(sim_v012, 4),
             },
-            "version": "1.9.0"
+            "version": "1.9.1"
         })
 
     logger.info(f"Batch analysis completed | {len(results)} items evaluated")
