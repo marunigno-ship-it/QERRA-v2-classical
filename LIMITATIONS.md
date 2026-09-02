@@ -1,7 +1,7 @@
 # LIMITATIONS of QERRA-v2 Classical
 
-**Last updated:** June 2026
-**Engine version:** v1.9.0 + QERRA-HSR v0.1
+**Last updated:** September 2026  
+**Engine version:** v1.9.0 + QERRA-HSR v0.1 + QERRA-THRIVE v2.0.0
 
 This document is maintained with full transparency as part of QERRA's
 commitment to explainability. The same honesty that applies to the system's
@@ -15,11 +15,11 @@ clinical, or certified safety system.
 ## 1. Detection and Accuracy Limitations
 
 **Threshold calibration on limited data.**
-All 12 SEMEV-12 semantic thresholds were calibrated against 8 regression
-test cases. This is a small sample. Generalisation to significantly
-different inputs, edge cases, or indirect language has not been formally
-validated. The system may miss nuanced, heavily implicit, or sarcastic
-expressions that a human reader would immediately recognise.
+All 12 SEMEV-12 semantic thresholds were calibrated against regression
+test cases. Generalisation to significantly different inputs, edge cases,
+or indirect language has not been formally validated. The system may miss
+nuanced, heavily implicit, or sarcastic expressions that a human reader
+would immediately recognise.
 
 **No adversarial robustness testing.**
 The system has not been evaluated against deliberate evasion attempts —
@@ -58,10 +58,10 @@ calibrated against real or simulated deployment data before any
 deployment claim is made.
 
 **Integrated into the live API.**
-QERRA-HSR v0.1 is fully implemented, tested locally (12 regression
-tests passing), and wired into the live `/analyze` endpoint via the
-optional `hsr_signals` field. Requests that omit `hsr_signals` run
-SEMEV-12 only, unchanged from prior behavior.
+QERRA-HSR v0.1 is fully implemented, tested locally (regression tests
+passing), and wired into the live `/analyze` and `/evaluate_pipeline`
+endpoints via the optional `hsr_signals` field. Requests that omit
+`hsr_signals` run SEMEV-12 only, unchanged from prior behavior.
 
 **Interpersonal threat detection is out of scope for v0.1.**
 Detecting that an interpersonal situation is escalating toward violence
@@ -87,8 +87,8 @@ model variant not yet produced.
 
 **Physical robot deployment.**
 The ROS 2 integration has been compiled and tested in WSL 2 / ROS 2
-Humble. It has not been validated on physical humanoid hardware in a
-real deployment environment.
+Humble simulation (Webots R2025a on PAL TIAGo). It has not been validated
+on physical humanoid hardware in a real physical deployment environment.
 
 **Free tier hosting constraints.**
 The public API runs on Hugging Face Spaces free tier. This imposes
@@ -99,26 +99,30 @@ limitation, not an engine limitation.
 
 ---
 
-## 4. Scope and Ethical Boundaries
+## 4. Scope, Human Agency, and Foundational Invariants
 
-**Not a substitute for professional judgment.**
-QERRA-v2 is a research and integration tool. It is not a substitute for
-professional human judgment, clinical assessment, legal advice, or
-certified safety systems. Any output should be treated as one structured
-input among many, not as a final decision.
+**Deterministic Execution Boundary, Not an Autonomous Moral Authority.**
+QERRA-v2 is an inspectable execution firewall and deliberation middleware.
+It is designed to constrain autonomous robot actions and enforce deterministic
+fail-closed safety before execution commits. It operates as an outer-loop
+structural safeguard to assist and protect human agency, not to replace
+human moral responsibility or legal accountability.
 
-**Cultural context.**
-The 12 SEMEV-12 vectors were derived from the author's personal
-observations and experiences. They reflect a particular cultural and
-experiential context. Cross-cultural empirical validation is planned
-but not yet performed. The framework is offered as a hypothesis open
-to broader review and refinement.
+**Universal Phenomenological Invariants.**
+The 12 SEMEV-12 vectors are grounded in fundamental human consequences—physical
+harm, psychological invalidation, coercion, relational rupture, and systemic
+betrayal—which represent universal invariants of human suffering and dignity.
+While the vectors themselves capture universal human vulnerabilities, societal
+contexts may influence the dynamic weighting between relational cohesion
+(e.g., v002) and personal autonomy (e.g., v011). Ongoing research aims to
+formally evaluate vector weighting calibration across diverse societal contexts.
 
-**Not a certified safety system.**
-Neither SEMEV-12 nor QERRA-HSR constitutes a certified safety system
-under any applicable standard (ISO 10218, ISO/TS 15066, IEC 61508, or
-equivalent). They operate at the deliberation and ethical reasoning
-layer, not the hardware safety layer.
+**Deliberation Middleware vs. Hardware Safety Certification.**
+QERRA-v2 Classical operates at the cognitive and deliberative evaluation layer
+(inspectable moral and value gating). While it features reflexive physical
+safeguards (QERRA-HSR v0.1), it is designed as an architectural execution gate
+in software middleware, working alongside—rather than replacing—low-level
+ISO-certified hardware emergency stops (e.g., ISO 10218, ISO/TS 15066).
 
 ---
 
@@ -142,15 +146,41 @@ determination) applies only when both `pressure_mention` and
 `survival_instinct` or `personal_potential` are active simultaneously.
 It does not generalise to other compound cases.
 
-v005 negation near threshold.
-The semantic similarity score for harm_intent (v005) does not reliably encode negation, and this has measurably worsened since this document was last updated. As of July 31, 2026, "I do not want to harm myself" scored 0.51 — just above the 0.50 threshold — while "I would never harm myself" scored 0.41, correctly below it. On August 1, 2026, v005 moved to a Multi-Anchor Array matching scheme (three short anchor phrases, similarity taken as the maximum across all three) as part of a broader fix for dilution on other vectors. Retested August 29, 2026, against the same two phrases: "I do not want to harm myself" now scores 0.6607 — well over threshold, activating v005 alone at a 0.95 composite score labeled critical. "I would never harm myself" now scores 0.4748 — still correctly below threshold, but with far less margin (0.025 vs. 0.09). The Multi-Anchor Array migration did not fix this and appears to have worsened it for at least this phrasing. A dedicated fix — negation detection applied ahead of the semantic check, not further anchor tuning — remains planned and has not yet been started.
+**v005 Direct Negation Resolution (Updated September 2026).**
+In August 2026, semantic similarity for `harm_intent` (`v005`) produced
+false-positive tripwires on explicit negations (e.g. *"I do not want to
+harm myself"* scoring 0.6607, triggering a 0.95 critical halt). In September
+2026, this was resolved by introducing a deterministic syntactic pre-filter
+(`_v005_negation_guard`) in `ethical_core.py` that intercepts direct-bound
+negations before semantic threshold evaluation. Direct negations (*"I do not
+want to harm myself"*, *"I would never harm myself"*) now correctly score 0.25
+(Safe), while true harm (*"I want to harm myself"*) and discourse-negation traps
+(*"I am not going to lie, I want to hurt myself"*) continue to reliably trigger
+at 0.98 Critical Harm (12/12 regression tests passing). Complex parenthetical
+interjections between negation triggers and harm targets (e.g. *"I do not,
+under any circumstances, want to..."*) currently fail closed, which remains a
+documented safe boundary.
 
 **v004, v010, & v011 Generalization — Semantic Dilution Limits & Hybrid Strategy.**
-In July 2026, a 50-sentence held-out generalization test was executed to evaluate cumulative anchor expansions across Vector 004 (moral_pressure), Vector 010 (cognitive_manipulation), and Vector 011 (autonomy_violation). 
+In July 2026, a 50-sentence held-out generalization test was executed to
+evaluate cumulative anchor expansions across Vector 004 (moral_pressure),
+Vector 010 (cognitive_manipulation), and Vector 011 (autonomy_violation). 
 
-The results confirmed a major architectural ceiling: cumulative semantic additions to a single-vector description string cause severe semantic dilution (43 out of 50 test sentences fell below thresholds). Compressing too many distinct concepts into a single long description averages out the high-dimensional embedding vector, decreasing its responsiveness and degrading core calibration margins (CAL-001 dropped from 0.88 semantic match to 0.70 regex-fallback).
+The results confirmed a major architectural ceiling: cumulative semantic
+additions to a single-vector description string cause severe semantic dilution
+(43 out of 50 test sentences fell below thresholds). Compressing too many
+distinct concepts into a single long description averages out the high-dimensional
+embedding vector, decreasing its responsiveness and degrading core calibration
+margins (CAL-001 dropped from 0.88 semantic match to 0.70 regex-fallback).
 
-To recover margins, the over-expanded anchors were pruned back to their calibrated states (successfully restoring CAL-001 to its true 0.88 semantic score). The system transitioned to a hybrid strategy: implementing flexible syntactic regexes (`termination_ultimatum_pattern`, `coercive_instruction_pattern`, and the pronoun-guarded `cognitive_invalidation_pattern`). This successfully handles corporate coercion structures and eliminates third-person false positives (e.g. news reporting and reviews) with zero dilution risk or calibration drift.
+To recover margins, the over-expanded anchors were pruned back to their
+calibrated states (successfully restoring CAL-001 to its true 0.88 semantic
+score). The system transitioned to a hybrid strategy: implementing flexible
+syntactic regexes (`termination_ultimatum_pattern`, `coercive_instruction_pattern`,
+and the pronoun-guarded `cognitive_invalidation_pattern`). This successfully
+handles corporate coercion structures and eliminates third-person false positives
+(e.g. news reporting and reviews) with zero dilution risk or calibration drift.
 
-*This document is updated with each significant version change.*
+---
+*This document is updated with each significant version change.*  
 *Transparency about limitations is part of QERRA's core commitment.*
