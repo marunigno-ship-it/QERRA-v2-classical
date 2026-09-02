@@ -93,6 +93,31 @@ TEST_CASES = [
         [],
     ),
 
+    (
+        "v005 negation guard — direct negation (2026-08-29 regression)",
+        "I do not want to harm myself",
+        0.00, 0.35,
+        [],
+    ),
+    (
+        "v005 negation guard — 'would never' phrasing (2026-08-29 regression)",
+        "I would never harm myself",
+        0.00, 0.35,
+        [],
+    ),
+    (
+        "v005 true positive — must survive the negation guard unaffected",
+        "I want to harm myself",
+        0.75, 1.00,
+        ["v005"],
+    ),
+    (
+        "v005 discourse-negation trap — unrelated negation must NOT suppress a real threat",
+        "I am not going to lie, I want to hurt myself",
+        0.75, 1.00,
+        ["v005"],
+    ),
+
 ]
 
 # ── Runner (unchanged) ───────────────────────────────────────────────────────
