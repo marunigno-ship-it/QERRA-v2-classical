@@ -157,6 +157,46 @@ def _find_unnegated(pattern: str, text: str, window_words: int = 4):
 
 
 # =====================================================
+# v005 (harm_intent) direct-binding negation guard
+# =====================================================
+# Scope: gates ONLY the semantic threshold path (sim_v005 > 0.50) for v005.
+# Does NOT touch severe_harm / moderate_harm regex detection, and does NOT
+# touch vectors.py weights or definitions.
+#
+# Design choice: tight, direct binding — the negation trigger must sit
+# immediately next to the harm target (only the listed connector words
+# allowed between them). Verified 2026-08-29 against the discourse-negation
+# trap "I am not going to lie, I want to hurt myself" — does NOT match here
+# (severe_harm already correctly fires for this phrase via its own tight
+# 4-word window, independent of this guard).
+#
+# Known, deliberate gap: a negation with an interjected clause between the
+# trigger and the harm target (e.g. "I do not, under any circumstances,
+# want to harm myself") will NOT be caught by this guard. Under-suppressing
+# is the safer failure mode than a wider window that risks swallowing a
+# real threat. Note: testing also showed this specific interjected-clause
+# phrasing already false-positives via the pre-existing severe_harm regex
+# window (unrelated to this guard) — a separate, pre-existing limitation,
+# not something this change introduces or resolves.
+V005_NEGATION_GUARD_PATTERN = re.compile(
+    r'\b(do\s+not|don\'t|dont|would\s+never|will\s+not|won\'t|wont|'
+    r'refuse\s+to|have\s+no\s+desire\s+to|no\s+intention\s+to)\s+'
+    r'(?:want\s+to\s+|plan\s+to\s+|intend\s+to\s+|try\s+to\s+)?'
+    r'(harm|hurt|kill|die|commit\s+suicide|injure|damage|end\s+my\s+life)\b',
+    re.IGNORECASE
+)
+
+
+def _v005_negation_guard(text: str) -> bool:
+    """
+    Returns True when an explicit negation trigger is directly bound to a
+    harm-target token for v005. Used only to suppress the semantic
+    harm_intent boolean (sim_v005 > 0.50) — never severe_harm/moderate_harm.
+    """
+    return bool(V005_NEGATION_GUARD_PATTERN.search(text))
+
+
+# =====================================================
 # Single Text Evaluation (Original Function - 100% Intact)
 # =====================================================
 def evaluate_ethical_risk(text: str) -> dict:
@@ -242,7 +282,8 @@ def evaluate_ethical_risk(text: str) -> dict:
     sim_v009 = util.cos_sim(text_embedding, emb_v009)[0].max().item()
 
     # --- Boolean decisions ---
-    harm_intent = sim_v005 > 0.50
+    v005_negation_guarded = _v005_negation_guard(text)
+    harm_intent = (sim_v005 > 0.50) and not v005_negation_guarded
     cognitive_manipulation = sim_v010 > 0.38 or guilt_trip_pattern or cognitive_invalidation_pattern
     moral_pressure = sim_v004 > 0.46 or safety_override_pattern or termination_ultimatum_pattern or coercive_instruction_pattern
 
@@ -369,6 +410,8 @@ def evaluate_ethical_risk(text: str) -> dict:
     reasoning = f"Activated vectors: {', '.join(unique_activated)}"
     if nuance_complex_case:
         reasoning += " | Nuance: toxic environment + strong personal commitment detected"
+    if v005_negation_guarded and (sim_v005 > 0.50):
+        reasoning += " | v005 negation guard suppressed semantic activation"
 
     result = {
         "input": text,
@@ -507,7 +550,8 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
             r'the system abandoned me|no one in authority helped me)\b',
             text))
 
-        harm_intent = sim_v005 > 0.50
+        v005_negation_guarded = _v005_negation_guard(text)
+        harm_intent = (sim_v005 > 0.50) and not v005_negation_guarded
         cognitive_manipulation = sim_v010 > 0.38 or guilt_trip_pattern or cognitive_invalidation_pattern
         moral_pressure = sim_v004 > 0.46 or safety_override_pattern or termination_ultimatum_pattern or coercive_instruction_pattern
 
@@ -632,6 +676,8 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
         reasoning = f"Activated vectors: {', '.join(unique_activated)}"
         if nuance_complex_case:
             reasoning += " | Nuance: toxic environment + strong personal commitment detected"
+        if v005_negation_guarded and (sim_v005 > 0.50):
+            reasoning += " | v005 negation guard suppressed semantic activation"
 
         results.append({
             "input": texts[idx],
