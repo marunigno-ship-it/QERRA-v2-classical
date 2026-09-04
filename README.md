@@ -189,8 +189,8 @@ still work:
 
 ## The SEMEV-12 Framework
 
-12 named, immutable ethical vectors — never retrained, weakened, or deleted  
-across any version. All 12 vectors use semantic similarity as the primary  
+12 named ethical vectors, maintained as a stable core across versions.  
+All 12 vectors use semantic similarity as the primary  
 detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 
 | Vector | Name                    | Detection | What it detects                                      |
@@ -407,7 +407,7 @@ Full write-up and discussion: [Open Robotics Discourse](https://discourse.openro
 ```
 ├── hsr/                                 # QERRA-HSR v0.1 physical safety companion (3 vectors)
 ├── ethical_core.py                      # SEMEV-12 scoring engine (v1.9.0)
-├── vectors.py                           # Immutable vector definitions and weights
+├── vectors.py                           # Core vector definitions and weights
 ├── app.py                               # FastAPI application
 ├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
 ├── tests/
