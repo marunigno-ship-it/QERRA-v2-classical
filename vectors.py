@@ -1,6 +1,6 @@
 # =====================================================
-# IMMUTABLE SEMEV-12 VECTORS - QERRA-v2 Classical Edition
-# These vectors are immutable. We only polish, never change the core.
+# CORE SEMEV-12 VECTORS - QERRA-v2 Classical Edition
+# These vectors form the stable core of the framework. Changes are made deliberately, tested, and documented — not casually.
 # Complete SEMEV-12 framework.
 # =====================================================
 
@@ -20,6 +20,5 @@ VECTORS = {
 }
 
 def get_semev12_vectors():
-    """Return all immutable SEMEV-12 vectors without modification."""
+    """Return the core SEMEV-12 vectors as currently defined."""
     return VECTORS.copy()
-
