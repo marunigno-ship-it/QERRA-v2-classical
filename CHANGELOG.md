@@ -1,7 +1,7 @@
 # Changelog — QERRA-v2 Classical
 
-All changes are additive. SEMEV-12 vectors are immutable and are never
-weakened, renamed, or removed across any version.
+All changes are additive. SEMEV-12 vectors are maintained as a stable core
+across versions.
 
 ---
 Confirm the three-layer Filter-First diagram includes Layer 3 QERRA-THRIVE.
