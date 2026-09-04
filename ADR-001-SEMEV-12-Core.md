@@ -44,7 +44,7 @@ deterministic, classical, 12-dimensional ethical evaluation framework.
 SEMEV-12 is the intellectual core and sole reasoning engine of
 **QERRA-v2 Classical**.
 
-SEMEV-12 consists of 12 immutable, human-centred ethical vectors. Each
+SEMEV-12 consists of 12 core, human-centred ethical vectors. Each
 vector targets a distinct dimension of human experience and potential harm,
 derived from first-person phenomenological observation of human behaviour
 and consequences across diverse real-world contexts. The vectors are:
@@ -97,8 +97,8 @@ and consequences, not from abstract theory or regulatory checklists.
 They target the dimensions of human life most frequently at risk in
 situations involving coercion, manipulation, harm, and loss of autonomy.
 
-**Immutable core.**
-The sacred nature of the 12 vectors provides architectural stability
+**Stable core.**
+The consistency of the 12 vectors provides architectural stability
 and legal clarity. Downstream integrators can rely on the framework
 without risk of silent behavioural changes between versions.
 
@@ -195,7 +195,7 @@ deterministic output, and explainable reasoning traces.
 - The system has not been evaluated against deliberate evasion attempts.
 - Detection quality is calibrated for English. Performance on other
   languages is untested.
-- Immutability of the core is an intentional design constraint, not a
+- Stability of the core is an intentional design constraint, not a
   technical limitation. It requires a formal ADR process for any future
   framework evolution.
 
@@ -212,7 +212,7 @@ deterministic output, and explainable reasoning traces.
   Classical v1.9.0 + QERRA-HSR v0.1.
 - `ethical_core.py` — Primary implementation of the SEMEV-12 evaluation
   engine (v1.9.0).
-- `vectors.py` — Sacred vector registry with names, weights, and
+- `vectors.py` — Core vector registry with names, weights, and
   descriptions.
 - Zenodo prior art registration: DOI 10.5281/zenodo.20356394
 
