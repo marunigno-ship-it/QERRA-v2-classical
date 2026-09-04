@@ -1,7 +1,7 @@
 # QERRA-v2 Classical for Robotics Integration
 
 QERRA-v2 Classical is a fully explainable, 100% classical ethical evaluation
-engine based on 12 immutable human-centred vectors (SEMEV-12). It is designed
+engine based on 12 core human-centred vectors (SEMEV-12). It is designed
 as a **Condition node** in robot Behaviour Trees — an ethical safety layer that
 evaluates situations before action execution.
 
