@@ -1,7 +1,7 @@
 # =====================================================
 # ETHICAL CORE - v1.9.1 — Pronoun-Neutral Syntactic Generalization & Batch Support
 # SEMEV-12 engine — ALL 12 vectors use Multi-Anchor max-pooling
-# Immutable core framework preserved exactly (with active health_risk_mention nuance)
+# Core SEMEV-12 framework maintained (with active health_risk_mention nuance)
 # =====================================================
 
 import logging
