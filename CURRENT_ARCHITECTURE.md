@@ -93,7 +93,7 @@ The execution sequence before a robot commits to an action:
 Sub-1ms physical check                         Selects winning candidate action        Evaluates winning text for harm/coercion      Task executes if SAFE
 ```
 
-**Four Immutable Interaction Rules:**
+**Four Core Interaction Rules:**
 * QERRA-HSR CRITICAL suspends SEMEV-12 deliberation and Layer 3 action ranking immediately.
 * A SEMEV-12 BLOCK (`modified`) is never overridden by Layer 3 advisory rankings.
 * All three layers apply simultaneously and work in the same direction (safety and values first).
