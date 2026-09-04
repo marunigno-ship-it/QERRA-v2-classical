@@ -39,7 +39,7 @@ SEMEV-12 was created to address this gap directly.
 
 ## 2. Decision
 
-We created **SEMEV-12** (Stellar Energy Mastery Ethical Vectors) — a
+We created **SEMEV-12**  — a
 deterministic, classical, 12-dimensional ethical evaluation framework.
 SEMEV-12 is the intellectual core and sole reasoning engine of
 **QERRA-v2 Classical**.
