@@ -13,7 +13,7 @@
 ## 1. Abstract
 
 The SEMEV-12 framework is a hybrid deterministic, fully explainable ethical
-evaluation system. It consists of 12 immutable, human-centred vectors
+evaluation system. It consists of 12 core, human-centred vectors
 designed to serve as a transparent safety layer for robotics, autonomous
 systems, and high-stakes AI decision-making.
 
@@ -43,7 +43,7 @@ record.
 
 ---
 
-## 3. The 12 Immutable Vectors
+## 3. The 12 Core Vectors
 
 All 12 vectors are fully active and use semantic similarity detection
 as of v1.9.0. Pattern matching is retained as a supporting OR condition
