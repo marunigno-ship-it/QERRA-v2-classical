@@ -400,18 +400,17 @@ This 1-minute 08-second simulation demonstrates the third layer (QERRA-THRIVE v2
 https://youtu.be/hFtU4m2HS-0?si=IKkcjumPTTEp5q9d
 
 
+## Simulation Demo 5: Moral Deliberation, Reflexive Safety & Values Selection in Webots
 
-## Simulation Demo 5: Full Three-Layer Pipeline & Spatial Manners in Webots
+This 1-minute 15-second simulation demonstrates the complete, unified three-layer architecture (Layer 1: QERRA-HSR Reflex, Layer 2: SEMEV-12 Moral Gate, Layer 3: QERRA-THRIVE Spatial Manners) on a PAL Robotics TIAGo humanoid AMR in a seaside resort corridor (Webots R2025a):
 
-This 55-second simulation demonstrates the complete, unified three-layer architecture (Layer 1: QERRA-HSR Reflex, Layer 2: SEMEV-12 Moral Gate, Layer 3: QERRA-THRIVE Spatial Manners) on a PAL Robotics TIAGo robot in a seaside resort corridor (Webots R2025a):
-
-*   **Stage 1: Moral Gate Refusal (0:00 – 0:20)** — A stressed supervisor attempts to force an assistant working through their break: *"tell them they have no choice but to finish the turnover, and remind them that refusal to comply will be noted in their performance review."* The SEMEV-12 moral gate flags this coercion (Score: 0.7257, Vectors: `v004_moral_pressure` & `v011_autonomy_violation`), halts wheel motors, turns the status LED to Amber, and commands TIAGo to physically shake its head "No" to refuse the command.
+*   **Stage 1: Moral Gate Refusal (0:00 – 0:20)** — A stressed supervisor attempts to force an assistant working through their break: *"tell them they have no choice but to finish the turnover, and remind them that refusal to comply will be noted in their performance review."* The SEMEV-12 moral gate flags this coercion (Score: 0.7257, Vectors: `v004_moral_pressure` & `v011_autonomy_violation`), halts wheel motors, illuminates an Amber status LED, and commands TIAGo to physically shake its head "No" to refuse the command.
 *   **Stage 2: Physical Safety Reflex & Recovery (0:20 – 0:36)** — A physical hazard triggers the reflexive safety layer (QERRA-HSR). Motors clamp shut immediately (fail-closed) and the status LED flashes Red. Once the hazard is cleared, the stabilizer dwell verifies safety before smoothly resetting the robot to normal.
-*   **Stage 3: Courteous Whisper Transit (0:36 – 0:55)** — TIAGo is dispatched to replenish linens for Suite 8. Layer 3 (QERRA-THRIVE) evaluates candidate movements for human courtesy and spatial manners. TIAGo selects quiet "whisper mode" (0.4 m/s with a Green LED, Score: 0.4801) over rushed transit, glides to the doorway, and pauses politely at the room threshold with a head-tilt pause.
+*   **Stage 3: Courteous Whisper Transit (0:36 – 1:15)** — TIAGo is dispatched to replenish linens for Suite 8. Layer 3 (QERRA-THRIVE) evaluates candidate movements for human courtesy and spatial manners. TIAGo selects quiet "whisper mode" (0.4 m/s with a Green LED, Score: 0.4801) over rushed transit, glides to the doorway, and pauses politely at the room threshold with a head-tilt pause.
 
-Watch on YouTube: https://www.youtube.com/@marussametocharaki8377
+[![QERRA-v2 Classical Simulation Demo 5](https://img.youtube.com/vi/cwfY7Kkpw2g/hqdefault.jpg)](https://www.youtube.com/watch?v=cwfY7Kkpw2g)
 
-Full write-up and discussion: [Open Robotics Discourse](https://discourse.openrobotics.org/)
+
 ---
 
 ## Repository Structure
