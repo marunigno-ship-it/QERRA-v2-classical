@@ -4,7 +4,7 @@
 Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranked choice (QERRA-THRIVE) — 24 named, auditable vectors, zero black boxes.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
-[![Website](https://img.shields.io/badge/Website-Live-blue)](https://marunigno-ship-it.github.io/QERRA-v2-classical/)
+
 [![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
 ---
