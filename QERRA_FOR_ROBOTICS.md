@@ -1,19 +1,17 @@
 # QERRA-v2 Classical for Robotics Integration
 
-QERRA-v2 Classical is a fully explainable, 100% classical ethical evaluation
-engine based on 12 core human-centred vectors (SEMEV-12). It is designed
-as a **Condition node** in robot Behaviour Trees — an ethical safety layer that
-evaluates situations before action execution.
+QERRA-v2 Classical is an explainable, hybrid deterministic ethical evaluation engine designed as a **Condition node** and **Action Ranker** in robot Behavior Trees — an ethical safety layer that evaluates situations and candidate actions before execution.
+
+It pairs lightweight sentence embeddings (`all-MiniLM-L6-v2` via `sentence-transformers` for semantic similarity) with strictly auditable, deterministic scoring rules and zero-ML physical safety reflex guards (QERRA-HSR).
 
 **Key strengths for robotics:**
-- Deterministic and auditable (no black boxes)
-- Full per-vector reasoning and similarity scores in every response
-- Ready ROS 2 bridge (`ros2_bridge.py`) — a non-blocking ROS 2 Action Server
-  (`/qerra/evaluate`, type `qerra_msgs/action/QerraEvaluate`)
-- Live public API for immediate testing — no installation required
+- **Hybrid Deterministic:** Auditable threshold logic and deterministic scoring operating on compact embeddings (zero generative hallucinations, full trace auditability)
+- **Physical Safety Reflex (QERRA-HSR):** Sub-1ms fail-closed watchdog that halts motors immediately on physical distress or hazard proximity
+- **Ready ROS 2 Bridge:** Non-blocking ROS 2 Action Server (`/qerra/evaluate`, type `qerra_msgs/action/QerraEvaluate`) and PyTrees Condition leaf nodes
+- **Simulation Validated:** Tested and verified in Webots across 5 published PAL Robotics TIAGo scenarios
+- **Live Public API:** Available for immediate remote testing — no installation required
 
-**Repository:** https://github.com/marunigno-ship-it/QERRA-v2-classical  
-**Live API:** https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
+
 
 ---
 
