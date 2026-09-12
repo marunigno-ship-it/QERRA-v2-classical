@@ -163,6 +163,7 @@ def analyze(request: Request, data: CombinedRequest):
             "status": hsr_result.status.value,
             "vectors_activated": hsr_result.vectors_activated,
             "reasoning": hsr_result.reasoning,
+            "recovery_directive": hsr_result.recovery_directive,
             "version": hsr_result.version,
         }
 
@@ -230,6 +231,7 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
             "status": hsr_res.status.value,
             "vectors_activated": hsr_res.vectors_activated,
             "reasoning": hsr_res.reasoning,
+            "recovery_directive": hsr_res.recovery_directive,
         }
 
         # If Physical Safety is CRITICAL, abort pipeline immediately
