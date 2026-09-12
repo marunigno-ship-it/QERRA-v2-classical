@@ -41,6 +41,7 @@ class HSRResult:
     status: HSRStatus
     vectors_activated: list[str] = field(default_factory=list)
     reasoning: str = ""
+    recovery_directive: str = ""
     version: str = "0.1"
 
 
@@ -107,10 +108,16 @@ def evaluate_hsr(hsr_input: HSRInput) -> HSRResult:
 
     if is_critical:
         status = HSRStatus.CRITICAL
+        recovery_directive = ""
     elif distress_monitor:
         status = HSRStatus.MONITOR
+        recovery_directive = ""
     else:
         status = HSRStatus.CLEAR
+        if hsr_input.robot_task_interruptible:
+            recovery_directive = "Clear now — resume as normal."
+        else:
+            recovery_directive = "Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."
 
     # Build reasoning
     if reasons:
@@ -121,7 +128,8 @@ def evaluate_hsr(hsr_input: HSRInput) -> HSRResult:
     result = HSRResult(
         status=status,
         vectors_activated=activated,
-        reasoning=reasoning
+        reasoning=reasoning,
+        recovery_directive=recovery_directive
     )
 
     logger.info(f"HSR | {result.status.value} | vectors={activated} | interruptible={hsr_input.robot_task_interruptible}")
