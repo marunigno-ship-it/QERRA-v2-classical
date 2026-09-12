@@ -41,14 +41,16 @@ class StabilizedHSR:
     evaluate_hsr(hsr_input) directly.
     """
 
-    def __init__(self):
+    def __init__(self, clock=time.monotonic):
+        self._clock = clock
         self._current_status = HSRStatus.CLEAR
         self._calm_reading_since = None
+        self._calm_candidate_status = None
 
     def evaluate(self, hsr_input: HSRInput):
         raw_result = evaluate_hsr(hsr_input)
         raw_status = raw_result.status
-        now = time.monotonic()
+        now = self._clock()
 
         raw_severity = _SEVERITY[raw_status]
         current_severity = _SEVERITY[self._current_status]
@@ -57,18 +59,24 @@ class StabilizedHSR:
             # Escalating, or staying the same — instant, no exceptions.
             self._current_status = raw_status
             self._calm_reading_since = None
+            self._calm_candidate_status = None
         else:
             # Trying to de-escalate — don't trust it immediately.
             if (self._current_status == HSRStatus.MONITOR
                     and hsr_input.distress_confidence > MONITOR_EXIT_THRESHOLD):
                 self._calm_reading_since = None
+                self._calm_candidate_status = None
             else:
-                if self._calm_reading_since is None:
+                # Reset dwell timer if the candidate status changes mid-dwell
+                if self._calm_candidate_status != raw_status or self._calm_reading_since is None:
+                    self._calm_candidate_status = raw_status
                     self._calm_reading_since = now
                 elif now - self._calm_reading_since >= DWELL_SECONDS:
                     self._current_status = raw_status
                     self._calm_reading_since = None
+                    self._calm_candidate_status = None
 
         raw_result.status = self._current_status
+        if self._current_status != HSRStatus.CLEAR:
+            raw_result.recovery_directive = ""
         return raw_result
-      
