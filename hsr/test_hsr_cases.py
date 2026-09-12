@@ -2,11 +2,12 @@
 QERRA Human Safety Response Layer — hsr/test_hsr_cases.py
 Regression test suite v0.1
 
-12 deterministic test cases covering:
+14 deterministic test cases covering:
 - All three vectors individually
 - The combined distress + isolation condition
 - Boundary threshold values
-- robot_task_interruptible contract
+- robot_task_interruptible contract (affects HOW, never WHETHER)
+- Recovery directive verification
 - Multiple vectors active simultaneously
 
 All tests must pass before any commit.
@@ -18,11 +19,9 @@ import unittest
 from hsr.qerra_hsr import (
     HSRInput,
     HSRStatus,
-    HSRResult,
     evaluate_hsr,
     DISTRESS_CRITICAL_THRESHOLD,
     DISTRESS_MONITOR_THRESHOLD,
-    ISOLATION_COUNT_THRESHOLD,
 )
 
 
@@ -177,6 +176,51 @@ class TestHSRContractGuarantees(unittest.TestCase):
         self.assertEqual(res_true.status, HSRStatus.CRITICAL)
         self.assertEqual(res_false.status, HSRStatus.CRITICAL)
         self.assertEqual(res_true.vectors_activated, res_false.vectors_activated)
+
+    def test_interruptible_affects_recovery_directive_when_clear(self):
+        """Enforces the 'affects HOW' contract:
+        When CLEAR, robot_task_interruptible dictates whether the robot may
+        resume automatically or must hold for human confirmation."""
+        inp_interruptible = HSRInput(
+            distress_confidence=0.10,
+            persons_nearby_count=3,
+            hazard_proximity_flag=False,
+            robot_task_interruptible=True,
+        )
+        inp_not_interruptible = HSRInput(
+            distress_confidence=0.10,
+            persons_nearby_count=3,
+            hazard_proximity_flag=False,
+            robot_task_interruptible=False,
+        )
+
+        res_true = evaluate_hsr(inp_interruptible)
+        res_false = evaluate_hsr(inp_not_interruptible)
+
+        self.assertEqual(res_true.status, HSRStatus.CLEAR)
+        self.assertEqual(res_false.status, HSRStatus.CLEAR)
+        self.assertEqual(res_true.recovery_directive, "Clear now — resume as normal.")
+        self.assertEqual(res_false.recovery_directive, "Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing.")
+        self.assertNotEqual(res_true.recovery_directive, res_false.recovery_directive)
+
+    def test_recovery_directive_empty_during_active_incident(self):
+        """Recovery directive is empty during active CRITICAL or MONITOR incidents,
+        as the system is in containment, not recovery."""
+        inp_critical = HSRInput(
+            distress_confidence=0.85,
+            persons_nearby_count=2,
+            hazard_proximity_flag=False,
+            robot_task_interruptible=False,
+        )
+        inp_monitor = HSRInput(
+            distress_confidence=0.50,
+            persons_nearby_count=3,
+            hazard_proximity_flag=False,
+            robot_task_interruptible=False,
+        )
+
+        self.assertEqual(evaluate_hsr(inp_critical).recovery_directive, "")
+        self.assertEqual(evaluate_hsr(inp_monitor).recovery_directive, "")
 
     def test_result_always_has_reasoning(self):
         """Every result must have a non-empty reasoning string — even CLEAR.
