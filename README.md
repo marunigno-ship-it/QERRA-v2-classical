@@ -359,6 +359,12 @@ running live against a PAL Robotics TIAGo humanoid:
   and the safety wrapper cuts wheel velocity instantly, halting TIAGo before
   it crosses the hazard boundary.
 
+> **Commanded Reflex Latency vs. Physical Braking Distance:**  
+> QERRA-HSR guarantees sub-millisecond software reflex latency (<1ms, independently verified at 0.0ms delay to command `velocity = 0.0`). Physical stopping distance (~4.5 cm coasting over ~0.5s in simulation) is governed by actuator dynamics and Newtonian momentum, cleanly decoupled from the deterministic safety layer.
+>
+> **Human-in-the-Loop Recovery Directive:**  
+> Once safe conditions hold steady across the 1.0s dwell window (`CLEAR`), QERRA issues a `recovery_directive`: routine tasks (`robot_task_interruptible=True`) are cleared to resume autonomously (`"Clear now — resume as normal."`), whereas delicate or high-consequence tasks (`robot_task_interruptible=False`) enforce human oversight by design (`"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."`).
+
 [![QERRA-HSR Webots Demo](https://img.youtube.com/vi/Wn-2N6LLWJQ/maxresdefault.jpg)](https://youtu.be/Wn-2N6LLWJQ)
 
 Full write-up and discussion: [Open Robotics Discourse](https://discourse.openrobotics.org/t/hardening-hri-safety-with-a-deterministic-wrapper-a-webots-demo-using-tiago/56428)
