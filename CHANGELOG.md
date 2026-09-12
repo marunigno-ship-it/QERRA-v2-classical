@@ -4,11 +4,50 @@ All changes are additive. SEMEV-12 vectors are maintained as a stable core
 across versions.
 
 ---
-Confirm the three-layer Filter-First diagram includes Layer 3 QERRA-THRIVE.
 
-Add values/ package structure with human_centered/ and ecological/.
+## [2.0.1] - 2026-09-12 — QERRA-HSR Safety Hardening & Recovery Contract
 
-Mention the new /evaluate_pipeline endpoint and its response contract.
+### Added
+- **Human-in-the-Loop Recovery Directive (`recovery_directive`):**
+  - Formally implemented the architectural intent of `robot_task_interruptible: bool` ("affects HOW, never WHETHER").
+  - Added `recovery_directive: str` to `HSRResult`.
+  - When `status == CLEAR`:
+    - Routine task (`robot_task_interruptible=True`): `"Clear now — resume as normal."` (permits autonomous resumption).
+    - Delicate/non-interruptible task (`robot_task_interruptible=False`): `"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."` (enforces human oversight by design).
+  - During active incidents (`CRITICAL` or `MONITOR`), `recovery_directive` remains silenced (`""`).
+- **Injectable Clock in `StabilizedHSR`:**
+  - Added dependency-injected `clock=time.monotonic` to `StabilizedHSR.__init__`.
+  - Enables sub-millisecond simulated clock jumps for deterministic test harnesses and playback without relying on real-time delays.
+
+### Fixed
+- **Dwell Timer De-escalation Candidate Reset (`StabilizedHSR`):**
+  - Resolved timing defect where transitioning between distinct calm levels (e.g. `CRITICAL` → `MONITOR` → `CLEAR`) retained the initial calm timestamp rather than verifying the new candidate status.
+  - Added `_calm_candidate_status` tracking to guarantee that a step-down to a calmer state strictly holds continuous for the full `DWELL_SECONDS` (1.0s) window.
+- **Hysteresis Recovery Guard:**
+  - Enforced that `StabilizedHSR` suppresses `recovery_directive` while actively dwelling in elevated states, preventing premature resumption cues before de-escalation officially completes.
+
+### Testing & Verification
+- Test suite expanded to **20 automated unit tests** (100% passing):
+  - `hsr/test_hsr_cases.py`: Expanded from 12 to 14 tests (added contract guarantees for `recovery_directive` under `CLEAR` and active incident states).
+  - `hsr/test_hysteresis.py`: Expanded from 5 to 6 tests (added simulated clock regression test verifying dwell timer reset upon candidate status change).
+- Preserved sub-millisecond reflex latency (<1ms, independently verified at 0.0ms delay).
+
+### API Integration
+- Updated `app.py` to expose `recovery_directive` inside the `hsr` dictionary payload for both `/analyze` and `/evaluate_pipeline` endpoints.
+
+---
+
+## [2.0.0] - 2026-08-20 — Unified 3-Layer Filter-First Architecture
+
+### Added
+- **Unified 3-Layer Evaluation Pipeline (`/evaluate_pipeline`):**
+  - Implemented end-to-end Filter-First pipeline connecting Layer 2 HSR (physical reflex), Layer 1 SEMEV-12 (moral filter), and Layer 3 THRIVE (action ranker).
+  - Protected by an 800ms fail-closed real-time watchdog budget (`WATCHDOG_TIMEOUT_SECONDS = 0.800`).
+- **Layer 3 Package (`values/`):**
+  - Added QERRA-THRIVE package structure with `human_centered_suite_a` and `ecological_suite_b`.
+  - Added standalone `/rank` endpoint and public `/thrive/vectors` catalog.
+
+---
 
 ## [2.0-alpha] - 2026-07-18 — HSR calibration patch
 - **v004 (moral_pressure) Semantic Calibration:** Expanded the semantic anchor to cover formal corporate coercion, bookkeeping falsification, and product safety cover-ups. One of three follow-up tests using independent wording activated correctly; two did not. Held-out validation not yet complete.
@@ -177,5 +216,5 @@ Mention the new /evaluate_pipeline endpoint and its response contract.
 
 ---
 
-*Repository:* https://github.com/marunigno-ship-it/QERRA-v2-classical
+*Repository:* https://github.com/marunigno-ship-it/QERRA-v2-classical  
 *Live API:* https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs
