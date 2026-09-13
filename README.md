@@ -360,7 +360,7 @@ running live against a PAL Robotics TIAGo humanoid:
   it crosses the hazard boundary.
 
 > **Commanded Reflex Latency vs. Physical Braking Distance:**  
-> QERRA-HSR guarantees sub-millisecond software reflex latency (<1ms, independently verified at 0.0ms delay to command `velocity = 0.0`). Physical stopping distance (~4.5 cm coasting over ~0.5s in simulation) is governed by actuator dynamics and Newtonian momentum, cleanly decoupled from the deterministic safety layer.
+> QERRA-HSR guarantees sub-millisecond software reflex latency (<1ms, independently verified at 0.0ms delay to command `velocity = 0.0`). Physical stopping distance is governed by actuator dynamics and Newtonian momentum, cleanly decoupled from the deterministic safety layer — independently measured by third-party simulator testing at ~0.9 cm over ~0.08s at 0.33 m/s cruise speed on a 56.58 kg four-wheeled test platform (not the TIAGo shown in this demo).
 >
 > **Human-in-the-Loop Recovery Directive:**  
 > Once safe conditions hold steady across the 1.0s dwell window (`CLEAR`), QERRA issues a `recovery_directive`: routine tasks (`robot_task_interruptible=True`) are cleared to resume autonomously (`"Clear now — resume as normal."`), whereas delicate or high-consequence tasks (`robot_task_interruptible=False`) enforce human oversight by design (`"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."`).
