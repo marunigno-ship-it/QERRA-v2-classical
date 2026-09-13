@@ -1,8 +1,8 @@
 # WHITE PAPER: SEMEV-12 Ethical Vector Framework
 
-**Version:** 1.1
+**Version:** 1.2
 **Date of Original Release:** 23 May 2026
-**Date of Last Update:** June 2026
+**Date of Last Update:** September 2026
 **Author:** Marussa Metocharaki
 **Location:** Greece
 **Repository:** https://github.com/marunigno-ship-it/QERRA-v2-classical
@@ -109,24 +109,16 @@ All logic is classical, deterministic, and auditable.
 
 ## 5. QERRA-HSR v0.1 — Physical Safety Companion
 
-As of June 2026, SEMEV-12 operates alongside a companion layer:
-**QERRA-HSR v0.1** (Human Safety Response Layer).
+SEMEV-12 operates alongside a dedicated physical reflex companion layer: **QERRA-HSR v0.1** (Human Safety Response Layer).
 
-QERRA-HSR addresses immediate physical human welfare — acute distress,
+QERRA-HSR monitors immediate physical welfare — acute distress, human isolation, and environmental hazard proximity — using pure Python threshold logic with zero machine learning overhead. It executes in under 1 millisecond (independently verified in simulation at 0.0 ms command delay, achieving physical stopping in <1 cm at 0.33 m/s).
 
-human isolation, environmental hazard proximity — using pure Python
+It operates on a strict fail-closed priority order:
+- **Pre-Emptive Reflex:** QERRA-HSR evaluates before SEMEV-12 on every control cycle. A `CRITICAL` state immediately commands 0.0 velocity to motors and suspends SEMEV-12 deliberation.
+- **Stabilized Cooldown:** Wrapped in `StabilizedHSR`, it enforces a continuous 1.0-second dwell window to verify that conditions remain steady before de-escalating.
+- **Recovery Directive:** Enforces an active recovery contract: routine tasks resume autonomously once clear, while delicate or high-consequence tasks hold position until a human supervisor explicitly confirms it is safe to proceed.
 
-deterministic logic with zero ML overhead. It runs before SEMEV-12 on
-
-every evaluation cycle. A CRITICAL output from QERRA-HSR suspends
-
-SEMEV-12 deliberation. A modified decision from SEMEV-12 is never
-
-overridden by QERRA-HSR. Both protections apply simultaneously.
-QERRA-HSR is documented in HSR-ADR-001-Three-Vector-Design.md and
-
-implemented in hsr/qerra_hsr.py.
-
+QERRA-HSR is implemented in `hsr/qerra_hsr.py` and documented in `HSR-ADR-001-Three-Vector-Design.md`.
 ---
 
 ## 6. Prior Art and Legal Notice
@@ -147,7 +139,7 @@ open license. Contact: marunigno@gmail.com
 
 ---
 
-*SEMEV-12 Whitepaper v1.1 — June 2026*
+*SEMEV-12 Whitepaper v1.2 — September 2026*
 *Original release: 23 May 2026*
 *This document is a living record updated to reflect the current*
 *implementation state while preserving the original prior art claim.*
