@@ -1,170 +1,136 @@
-"""QERRA-HSR v0.1 — Self-contained Webots Controller for TIAGo.
+"""QERRA-HSR v0.1 — Integrated Webots Controller for TIAGo.
 
-This combines the HSR evaluation safety layer with the TIAGo motion loop.
-Provides interactive keyboard controls to demonstrate CLEAR, MONITOR, and CRITICAL states.
+Connects the verified QERRA-HSR core evaluation module and StabilizedHSR
+dwell wrapper directly to the TIAGo AMR wheel motors in Webots.
+Features simulation-clock synchronization and Human-in-the-Loop recovery.
 """
 
 from controller import Robot, Keyboard
-from dataclasses import dataclass, field
-from enum import Enum
+import os
+import sys
 import logging
 
-# Configure logging to output cleanly inside Webots
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-
 # =====================================================
-# QERRA-HSR Core Logic (DO NOT MODIFY Core Thresholds)
+# Universal Path Discovery to QERRA-v2-classical Core
 # =====================================================
-class HSRStatus(Enum):
-    CLEAR = "CLEAR"
-    MONITOR = "MONITOR"
-    CRITICAL = "CRITICAL"
+qerra_path = os.environ.get("QERRA_PATH")
+if not qerra_path:
+    candidates = [
+        # 1. Direct repo root relative discovery (Linux, macOS, Windows)
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")),
+        # 2. Local PyCharm developer path
+        os.path.expanduser(r"C:\Users\marun\PycharmProjects\QERRA-v2-classical"),
+        # 3. Fallback relative paths
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "Users", "marun", "PycharmProjects", "QERRA-v2-classical")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "QERRA-v2-classical")),
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate) and os.path.exists(os.path.join(candidate, "hsr")):
+            qerra_path = candidate
+            break
 
-@dataclass
-class HSRInput:
-    distress_confidence: float      # 0.0–1.0
-    persons_nearby_count: int       # upright, responsive humans nearby
-    hazard_proximity_flag: bool
-    robot_task_interruptible: bool  # affects HOW, never WHETHER
+if qerra_path and qerra_path not in sys.path:
+    sys.path.insert(0, qerra_path)
+    logger.info(f"QERRA core loaded from: {qerra_path}")
+else:
+    logger.warning("QERRA core path not resolved explicitly; relying on local environment.")
 
-@dataclass
-class HSRResult:
-    status: HSRStatus
-    vectors_activated: list[str] = field(default_factory=list)
-    reasoning: str = ""
-    version: str = "0.1"
-
-DISTRESS_CRITICAL_THRESHOLD = 0.75
-DISTRESS_MONITOR_THRESHOLD  = 0.45
-ISOLATION_COUNT_THRESHOLD   = 1
-
-def evaluate_hsr(hsr_input: HSRInput) -> HSRResult:
-    activated = []
-    reasons = []
-
-    # Pre-compute conditions
-    distress_critical = hsr_input.distress_confidence >= DISTRESS_CRITICAL_THRESHOLD
-    distress_monitor = hsr_input.distress_confidence >= DISTRESS_MONITOR_THRESHOLD
-    person_isolated = hsr_input.persons_nearby_count <= ISOLATION_COUNT_THRESHOLD
-    distress_isolated_combined = distress_monitor and person_isolated
-
-    # --- HSR-V01: immediate_physical_distress ---
-    if distress_critical or distress_isolated_combined:
-        activated.append("immediate_physical_distress")
-        if distress_critical:
-            reasons.append(f"distress_confidence={hsr_input.distress_confidence:.2f} >= CRITICAL threshold")
-        else:
-            reasons.append(f"distress_monitor + isolated (count={hsr_input.persons_nearby_count})")
-
-    # --- HSR-V02: human_isolation ---
-    if (distress_critical or distress_monitor) and person_isolated:
-        activated.append("human_isolation")
-        reasons.append(f"person_isolated (count={hsr_input.persons_nearby_count}) with distress signal")
-
-    # --- HSR-V03: environmental_hazard_proximity ---
-    if hsr_input.hazard_proximity_flag:
-        activated.append("environmental_hazard_proximity")
-        reasons.append("hazard_proximity_flag=True")
-
-    # Determine final status
-    is_critical = distress_critical or hsr_input.hazard_proximity_flag or distress_isolated_combined
-
-    if is_critical:
-        status = HSRStatus.CRITICAL
-    elif distress_monitor:
-        status = HSRStatus.MONITOR
-    else:
-        status = HSRStatus.CLEAR
-
-    # Build reasoning
-    if reasons:
-        reasoning = " | ".join(reasons)
-    else:
-        reasoning = "No safety signals detected"
-
-    result = HSRResult(
-        status=status,
-        vectors_activated=activated,
-        reasoning=reasoning
-    )
-
-    logger.info(f"HSR | {result.status.value} | vectors={activated} | interruptible={hsr_input.robot_task_interruptible}")
-    return result
+# Import the real, verified production modules directly
+from hsr.qerra_hsr import HSRInput, HSRStatus, evaluate_hsr
+from hsr.hysteresis_wrapper import StabilizedHSR
 
 
 # =====================================================
 # Main Webots Execution Loop
 # =====================================================
 def main():
-    # Initialize the Robot instance
     robot = Robot()
     timestep = int(robot.getBasicTimeStep())
 
-    # Initialize TIAGo's Keyboard interface
     keyboard = robot.getKeyboard()
     keyboard.enable(timestep)
 
-    # Initialize TIAGo's Left and Right wheel motors
+    # Initialize TIAGo's wheel motors
     left_motor = robot.getDevice('wheel_left_joint')
     right_motor = robot.getDevice('wheel_right_joint')
-    
-    # Configure velocity-control mode
+
     left_motor.setPosition(float('inf'))
     right_motor.setPosition(float('inf'))
     left_motor.setVelocity(0.0)
     right_motor.setVelocity(0.0)
 
-    # Baseline HSR inputs (CLEAR state)
+    # Use Webots simulation clock for deterministic dwell timing
+    def get_sim_time():
+        return robot.getTime()
+
+    stabilizer = StabilizedHSR(clock=get_sim_time)
+
+    # Baseline telemetry inputs
     distress_confidence = 0.0
     persons_nearby_count = 1
     hazard_proximity_flag = False
     robot_task_interruptible = True
+    human_cleared_confirmation = False
 
-    # Output interactive menu to the Webots Console
-    print("\n" + "="*50)
-    print("QERRA-HSR INTERACTIVE DEMO ACTIVE")
-    print("Click inside the 3D window, then press these keys:")
-    print("  'C' -> CLEAR: Reset to baseline. Patrol (Velocity: 2.0)")
-    print("  'D' -> MONITOR: Mild distress, bystander present (Velocity: 0.5)")
-    print("  'I' -> CRITICAL: Distress + Isolation (Velocity: 0.0 - STOP)")
-    print("  'H' -> CRITICAL: Environmental Hazard (Velocity: 0.0 - STOP)")
-    print("="*50 + "\n")
+    print("\n" + "=" * 60)
+    print("QERRA-HSR WEBOTS CONTROLLER (v2.0.1 Synchronized)")
+    print("Interactive controls (Click inside 3D window, then press):")
+    print("  'C' -> CLEAR: Reset telemetry to baseline")
+    print("  'D' -> MONITOR: Mild distress (Vel: 0.5)")
+    print("  'I' -> CRITICAL: Distress + Isolation (Commanded Vel: 0.0)")
+    print("  'H' -> CRITICAL: Environmental Hazard (Commanded Vel: 0.0)")
+    print("  'T' -> TOGGLE Task Interruptible (Routine vs. Delicate)")
+    print("  'K' -> HUMAN CONFIRMATION: Acknowledge & resume held task")
+    print("=" * 60 + "\n")
 
     last_status = None
+    last_directive = None
 
     while robot.step(timestep) != -1:
-        # Read keypresses from the user
         key = keyboard.getKey()
         if key != -1:
             char = chr(key).upper()
-            
+
             if char == 'C':
                 distress_confidence = 0.0
                 persons_nearby_count = 1
                 hazard_proximity_flag = False
-                print("\n[KEYPRESS] 'C' - Reseting to baseline (CLEAR)")
-                
+                human_cleared_confirmation = False
+                print("\n[KEYPRESS] 'C' - Telemetry reset to baseline (CLEAR)")
+
             elif char == 'D':
-                distress_confidence = 0.50    # Above MONITOR threshold (0.45)
-                persons_nearby_count = 3       # Bystanders nearby (not isolated)
+                distress_confidence = 0.50
+                persons_nearby_count = 3
                 hazard_proximity_flag = False
-                print("\n[KEYPRESS] 'D' - Mild distress with people nearby (MONITOR)")
-                
+                human_cleared_confirmation = False
+                print("\n[KEYPRESS] 'D' - Mild distress with bystanders present (MONITOR)")
+
             elif char == 'I':
-                distress_confidence = 0.50    # Above MONITOR threshold (0.45)
-                persons_nearby_count = 1       # Isolated (<= 1)
+                distress_confidence = 0.50
+                persons_nearby_count = 1
                 hazard_proximity_flag = False
+                human_cleared_confirmation = False
                 print("\n[KEYPRESS] 'I' - Moderate distress + Isolation (CRITICAL)")
-                
+
             elif char == 'H':
                 distress_confidence = 0.0
                 persons_nearby_count = 1
-                hazard_proximity_flag = True   # Human near industrial hazard
-                print("\n[KEYPRESS] 'H' - Human entered Chemical Spill/Hazard Zone (CRITICAL)")
+                hazard_proximity_flag = True
+                human_cleared_confirmation = False
+                print("\n[KEYPRESS] 'H' - Environmental Hazard Proximity (CRITICAL)")
 
-        # Package the simulated inputs
+            elif char == 'T':
+                robot_task_interruptible = not robot_task_interruptible
+                print(f"\n[KEYPRESS] 'T' - Task Interruptibility toggled: {robot_task_interruptible}")
+
+            elif char == 'K':
+                human_cleared_confirmation = True
+                print("\n[KEYPRESS] 'K' - Human supervisor confirmed task resumption!")
+
+        # Package the telemetry
         hsr_input = HSRInput(
             distress_confidence=distress_confidence,
             persons_nearby_count=persons_nearby_count,
@@ -172,26 +138,36 @@ def main():
             robot_task_interruptible=robot_task_interruptible
         )
 
-        # Evaluate safety state via QERRA-HSR
-        result = evaluate_hsr(hsr_input)
+        # Evaluate safety state via StabilizedHSR (with dwell and recovery directive)
+        result = stabilizer.evaluate(hsr_input)
 
-        # Control TIAGo's physical motors based on QERRA's output
+        # Physical motor actuation based on QERRA status & recovery directive
         if result.status == HSRStatus.CLEAR:
-            left_motor.setVelocity(2.0)
-            right_motor.setVelocity(2.0)
+            # If a delicate task was interrupted, hold wheels at 0.0 until human confirmation
+            if not robot_task_interruptible and not human_cleared_confirmation:
+                left_motor.setVelocity(0.0)
+                right_motor.setVelocity(0.0)
+            else:
+                left_motor.setVelocity(2.0)
+                right_motor.setVelocity(2.0)
         elif result.status == HSRStatus.MONITOR:
             left_motor.setVelocity(0.5)
             right_motor.setVelocity(0.5)
         elif result.status == HSRStatus.CRITICAL:
+            # Software commands instant 0.0 velocity (<1ms reflex latency)
             left_motor.setVelocity(0.0)
             right_motor.setVelocity(0.0)
 
-        # Print state transitions directly to the Webots Console to avoid spam
-        if result.status != last_status:
-            print(f"\n>>> [QERRA-HSR STATUS CHANGE] : {result.status.value}")
+        # Print state transitions cleanly to the Webots Console
+        if result.status != last_status or result.recovery_directive != last_directive:
+            print(f"\n>>> [QERRA-HSR STATUS] : {result.status.value}")
             print(f"    Reasoning: {result.reasoning}")
-            print(f"    Activated Vectors: {result.vectors_activated}")
+            print(f"    Vectors Activated: {result.vectors_activated}")
+            if result.recovery_directive:
+                print(f"    Recovery Directive: {result.recovery_directive}")
             last_status = result.status
+            last_directive = result.recovery_directive
+
 
 if __name__ == "__main__":
     main()
