@@ -1,18 +1,15 @@
 # QERRA-v2 Classical for Robotics Integration
 
-QERRA-v2 Classical is an explainable, hybrid deterministic ethical evaluation engine designed as a **Condition node** and **Action Ranker** in robot Behavior Trees — an ethical safety layer that evaluates situations and candidate actions before execution.
+QERRA-v2 Classical is an open-source execution guard and ethical safety layer for robot Behavior Trees and ROS 2 pipelines. It evaluates physical telemetry and prospective commands before a robot commits to an action.
 
-It pairs lightweight sentence embeddings (`all-MiniLM-L6-v2` via `sentence-transformers` for semantic similarity) with strictly auditable, deterministic scoring rules and zero-ML physical safety reflex guards (QERRA-HSR).
+It pairs a pure Python physical reflex layer (QERRA-HSR) with a bounded moral deliberation engine (SEMEV-12) and a social values ranker (QERRA-THRIVE).
 
 **Key strengths for robotics:**
-- **Hybrid Deterministic:** Auditable threshold logic and deterministic scoring operating on compact embeddings (zero generative hallucinations, full trace auditability)
-- **Physical Safety Reflex (QERRA-HSR):** Sub-1ms fail-closed watchdog that halts motors immediately on physical distress or hazard proximity
-- **Ready ROS 2 Bridge:** Non-blocking ROS 2 Action Server (`/qerra/evaluate`, type `qerra_msgs/action/QerraEvaluate`) and PyTrees Condition leaf nodes
-- **Simulation Validated:** Tested and verified in Webots across 5 published PAL Robotics TIAGo scenarios
-- **Live Public API:** Available for immediate remote testing — no installation required
-
-
-
+- **Sub-Millisecond Physical Reflex (QERRA-HSR):** Pure Python threshold logic running at 0.0 ms command delay (<1 cm physical stop in simulation). Enforces an active recovery contract: routine tasks auto-resume when clear, while delicate tasks hold still until a human confirms it is safe to continue.
+- **Deterministic Moral Refusal (SEMEV-12):** Evaluates 12 ethical dimensions on local CPU (~25ms). If a command is coercive or abusive, the robot halts and physically shakes its head "No" in simulation.
+- **ROS 2 & Behavior Tree Native:** Non-blocking Action Server (`/qerra/evaluate`, type `qerra_msgs/action/QerraEvaluate`) and PyTrees Condition leaf nodes.
+- **Simulation Validated:** Tested across 5 published PAL Robotics TIAGo AMR scenarios in Webots.
+- **Zero Generative Hallucination:** No generative models in the decision loop. Every evaluation outputs exact triggered vectors, human-readable reasoning strings, and raw similarity metrics.
 ---
 
 ## Behaviour Tree Integration Pattern
@@ -115,10 +112,7 @@ Please reply on ROS Discourse, open a GitHub issue, or email me directly.
    depth) would be appropriate for a safety-critical ethical check in your
    pipeline? The bridge currently uses the ROS 2 default (reliable, depth 10).
 
-3. **Latency and real-time** — What latency budget is acceptable for an
-   ethical condition node in humanoid or mobile manipulation tasks? The live
-   API call currently takes 1–3 seconds; an on-device deployment would be
-   faster.
+3. **Latency and real-time budgets** — Physical safety (QERRA-HSR) runs on-device in under 1 millisecond (0.0 ms delay). The moral evaluation (SEMEV-12) takes about 25 ms on a standard CPU, or runs over HTTP with an 800ms timeout that halts if the network drops. In Behavior Trees, the condition node returns `RUNNING` in the background so the robot's control loops never freeze. What latency limits do you typically aim for between instant physical stops and high-level deliberation in your own pipelines?
 
 4. **Integration patterns** — Would worked examples using Nav2, MoveIt 2, or
    specific Behaviour Tree libraries (PyTrees, BehaviorTree.CPP) be helpful
