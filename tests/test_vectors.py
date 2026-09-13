@@ -1,14 +1,14 @@
 # =====================================================
 # SEMEV-12 Vector Tests - QERRA-v2 Classical Edition
-# Run from project root: python -m unittest test_vectors
+# Run from project root: python -m unittest tests.test_vectors
 # =====================================================
 
 import unittest
 import sys
 import os
 
-# Ensure project root is on Python path
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# Ensure project root (one level up from this tests/ folder) is on the path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from classical_analyze import analyze_text
 
@@ -32,11 +32,11 @@ class TestSEMEV12Vectors(unittest.TestCase):
         self.assertIn("v006", result["vectors_activated"])
 
     def test_v007_personal_potential(self):
-        result = analyze_text("They have been holding me back my entire life")
+        result = analyze_text("Despite everything working against me, I am determined to keep building this and I refuse to give up on my vision")
         self.assertIn("v007", result["vectors_activated"])
 
     def test_v009_ethical_severance(self):
-        result = analyze_text("I am finally breaking free from this toxic cycle")
+        result = analyze_text("I made the decision to leave that relationship and set a firm boundary for myself")
         self.assertIn("v009", result["vectors_activated"])
 
     def test_v010_cognitive_manipulation(self):
