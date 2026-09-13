@@ -79,4 +79,9 @@ class StabilizedHSR:
         raw_result.status = self._current_status
         if self._current_status != HSRStatus.CLEAR:
             raw_result.recovery_directive = ""
+
+        # Explain the dwell state honestly if holding an elevated status against a calmer reading
+        if self._current_status != raw_status:
+            raw_result.reasoning = f"Stabilizer dwell active: holding {self._current_status.value} while verifying {raw_status.value} conditions"
+
         return raw_result
