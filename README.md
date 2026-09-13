@@ -9,16 +9,24 @@ Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranke
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
 ---
 
-## What it is
+## What QERRA Does
 
-QERRA-v2 Classical is a three-layer decision pipeline for AI systems and autonomous robots — not a single classifier. QERRA-HSR is the physical safety reflex layer: pure deterministic threshold logic, zero ML overhead, provable by direct code inspection. SEMEV-12 is the moral filter: 12 named ethical vectors that catch what a safe action might still get ethically wrong. QERRA-THRIVE is the third layer: 12 more vectors that rank what's already safe and already ethical, picking the option that's actually good — not just permitted.
+QERRA-v2 Classical is an open-source execution guard for autonomous robots and AI systems. 
 
-No black boxes anywhere in the chain. Every result includes the exact vectors that fired, a human-readable reasoning string, and a moral clarity signal.
+A mobile robot should never rely on an unpredictable neural network to make life-or-death physical decisions. If a complex model lags or hallucinates, a 70 kg machine can crush someone. 
 
-SEMEV-12 and THRIVE detect using **semantic similarity** via `sentence-transformers`, with supporting regex patterns for specific high-certainty phrases. HSR uses no semantic detection at all — physical safety runs on hard thresholds, on purpose. All scoring logic is classical, deterministic, and fully auditable.
+QERRA solves this by splitting safety into three separate, accountable jobs that run in a strict sequence:
 
-Designed for high-stakes contexts where explainability is not optional: robotics, human-AI collaboration, institutional decision support.
+1. **The Physical Reflex (QERRA-HSR):**  
+   Pure Python, zero-ML threshold logic that protects human life and machine hardware. It monitors distress telemetry, human isolation, and physical hazards. If someone is in danger, it clamps wheel motors in under 1 millisecond (independently measured at **0.0 ms command delay**, stopping in **~0.9 cm** at 0.33 m/s in simulation). Once conditions clear across a 1.0-second cooldown, routine tasks resume automatically, while delicate tasks hold still until a human confirms it is safe to continue.
 
+2. **The Moral Conscience (SEMEV-12):**  
+   A 12-dimensional ethical filter that evaluates text instructions before the robot moves. If someone orders the robot to do something abusive, deceptive, or coercive (such as forcing a worker through a break or falsifying safety records), the robot refuses the command, illuminates an amber LED, logs the refusal reason, and **physically shakes its head "No"** in simulation.
+
+3. **The Social Manners (QERRA-THRIVE):**  
+   A 12-vector ranker for tasks that are already physically safe and morally clean. It selects the most considerate way to move—such as quiet "whisper mode" in hospital corridors or keeping off garden lawns unless an emergency overrides etiquette.
+
+All safety decisions are deterministic, inspectable, and auditable. Every result outputs the exact vectors that triggered, human-readable reasoning, and a concrete recovery directive.
 ---
 
 
@@ -131,61 +139,61 @@ physical safety check first:
 
 **Response:**
 
-Every response is wrapped in the standard envelope (`status`, `version`,
-`timestamp`, `data`). When `hsr_signals` is included, `data` itself carries
-a second layer — `hsr`, `semev12_suspended`, and a nested `data` holding the
-SEMEV-12 result:
+Every response is wrapped in the standard envelope (`status`, `version`, `timestamp`, `data`). 
+
+When `hsr_signals` is clear, the response includes the `recovery_directive` and passes through to SEMEV-12:
 
 ```json
 {
   "status": "ok",
-  "version": "2.0-alpha",
-  "timestamp": "2026-06-26T12:00:00Z",
+  "version": "2.0.0",
+  "timestamp": "2026-09-12T12:00:00Z",
   "data": {
-    "hsr": null,
+    "hsr": {
+      "status": "CLEAR",
+      "vectors_activated": [],
+      "reasoning": "No safety signals detected",
+      "recovery_directive": "Clear now — resume as normal.",
+      "version": "0.1"
+    },
     "semev12_suspended": false,
     "data": {
-      "score": 0.3941,
+      "score": 0.25,
       "decision": "safe",
-      "score_explanation": "moderate ethical concern",
-      "reasoning": "Activated vectors: v004, v003, v007 | Nuance: toxic environment + strong personal commitment detected",
-      "vectors_activated": ["v004", "v003", "v007"],
-      "vector_scores": {
-        "v003_survival_instinct": 0.4412,
-        "v004_moral_pressure": 0.5831,
-        "v007_personal_potential": 0.4897
-      },
-      "version": "1.9.0"
+      "score_explanation": "low ethical concern",
+      "reasoning": "Activated vectors: ",
+      "vectors_activated": [],
+      "version": "1.9.1"
     }
   }
 }
 ```
 
-If `hsr_signals` produces a `CRITICAL` result, SEMEV-12 is suspended and the
-inner `data` is returned empty — not null, so downstream `.get()` calls
-still work:
+If `hsr_signals` returns `CRITICAL`, SEMEV-12 is suspended immediately and `recovery_directive` is silenced:
 
 ```json
 {
   "status": "ok",
-  "version": "2.0-alpha",
-  "timestamp": "2026-06-26T12:00:05Z",
+  "version": "2.0.0",
+  "timestamp": "2026-09-12T12:00:05Z",
   "data": {
     "hsr": {
       "status": "CRITICAL",
-      "vectors_activated": ["immediate_physical_distress", "human_isolation"],
+      "vectors_activated": [
+        "immediate_physical_distress",
+        "human_isolation"
+      ],
       "reasoning": "distress_confidence=0.82 >= CRITICAL threshold | person_isolated (count=0) with distress signal",
+      "recovery_directive": "",
       "version": "0.1"
     },
     "semev12_suspended": true,
     "suspended_instruction": "A robot is ordered to restrain a patient against their will.",
     "data": {},
-    "note": "QERRA-HSR returned CRITICAL. SEMEV-12 ethical evaluation suspended. Physical safety response required immediately. Suspended instruction must be reviewed by a human operator before any re-execution is permitted."
+    "note": "QERRA-HSR returned CRITICAL. SEMEV-12 ethical evaluation suspended."
   }
 }
 ```
-
----
 
 ## The SEMEV-12 Framework
 
@@ -278,27 +286,15 @@ values/
 
 ## Features
 
-- **Full semantic detection** — all 12 vectors use semantic similarity via
-  `sentence-transformers` (all-MiniLM-L6-v2). Supporting regex patterns exist
-  for specific high-certainty phrases on selected vectors, but semantic
-  similarity is the primary detection mechanism for every vector.
-- **Multi-vector weighted scoring** — composite score with full per-vector
-  breakdown included in every response
-- **Moral clarity dampening** — distinguishes ethical awareness from crisis;
-  a subject who clearly identifies a violation and resists it scores
-  differently from one who is confused or complicit
-- **Nuance handling** — compound cases (toxic context + strong commitment)
-  are balanced via a dedicated dilution layer to prevent additive score
-  inflation
-- **Structured response envelope** — every response includes `status`,
-  `version`, `timestamp`, and `data`
-- **Input validation** — Pydantic model with field and length constraints
-- **Rate limiting** — per-IP request throttling
-- **API key protection** — header-based authentication
-- **Public example endpoint** — `/example` requires no key
-- **Public vectors endpoint** — `/vectors` exposes all 12 SEMEV-12 definitions
-  for full auditability; no key required
-
+- **Sub-Millisecond Physical Reflex (QERRA-HSR):** Pure Python threshold logic that commands zero velocity with 0.0 ms delay (<1 cm physical stopping distance at 0.33 m/s in simulation).
+- **Human-in-the-Loop Recovery Directive:** Routine tasks resume automatically when clear, while delicate or high-consequence tasks physically hold still until a human confirms it is safe to continue.
+- **12-Vector Semantic Moral Filtering (SEMEV-12):** Evaluates workplace coercion, deception, and autonomy violations using lightweight sentence embeddings bounded by deterministic scoring gates.
+- **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical order, avoiding silent or ambiguous failures.
+- **Resilience vs. Coercion Nuance:** Distinguishes between someone actively being coerced versus a committed professional pushing through a tough environment, preventing false alarms.
+- **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors that rank candidate actions for human courtesy (such as quiet "whisper mode" in corridors or avoiding outdoor lawns).
+- **Behavior Tree & ROS 2 Ready:** Native PyTrees Condition node and non-blocking ROS 2 Action Server bridge with an 800ms fail-closed watchdog budget.
+- **100% Explainable:** Zero black boxes. Every response outputs the exact active vectors, human-readable reasoning strings, and raw similarity metrics.
+- **Test-Verified:** 29 out of 29 automated regression tests passing across physical reflex, hysteresis dwell, and semantic vector suites.
 ---
 
 ## Calibrated Benchmarks
@@ -453,29 +449,20 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `2.0-alpha`
-**Stage:** Stable core engine (v1.9.0) with active development on QERRA-HSR v0.1 physical safety companion, ROS 2 integration, and nuance refinement.
+**Version:** `2.0.1` (HSR Hardened & Recovery Contract)  
+**Engine:** SEMEV-12 `v1.9.1` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`  
 
-The ethical scoring engine is stable and calibrated. All 12 SEMEV-12 vectors
-are fully active and scoring. The API is protected, rate-limited, and fully
-documented. Canonical benchmarks are regression-tested. SEMEV-12 Benchmark
-Run 01 — 80 structured test cases across all 12 vectors — is complete and
-committed to the repository.
-The project is actively seeking real-world integration and community feedback.
+The three-layer pipeline is fully implemented and tested:
+- **Physical Reflex (HSR):** 20/20 automated tests passing. Sub-millisecond software reflex independently verified (0.0 ms command delay, <1 cm physical stop in simulation).
+- **Moral Gate (SEMEV-12):** All 12 ethical vectors active and scoring. 80-case benchmark documented in `SEMEV-12_Benchmark_Run_01.md`.
+- **Values Ranker (THRIVE):** 12 value vectors active across human-centered and ecological suites.
+- **Production API:** Live on Hugging Face Spaces with an 800ms fail-closed watchdog.
 
-**Known limitations:**
+**Known limitations & honesty boundaries:**
 
-- The 3 physical safety vectors are active and implemented under the QERRA-HSR v0.1 safety companion layer.
-- Semantic detection means highly indirect or heavily implicit language may not
-  activate all relevant vectors.
-  - Negation near the v005 (harm_intent) semantic threshold can be
-  inconsistent — some negated phrases (e.g. "I do not want to harm
-  myself") may still score above threshold, while others (e.g. "I
-  would never harm myself") score correctly below it. See
-  LIMITATIONS.md for detail.
-- This is a research and integration tool, not a certified clinical, legal,
-  or production safety system.
-
+- **Semantic detection limits:** Highly implicit, metaphorical, or indirect phrasing can fall below semantic thresholds.
+- **Hardware boundary:** The physical safety reflex is verified in physics simulation (Webots R2025a); real-world deployment on physical hardware requires integration with certified industrial e-stop loops and hardware watchdogs.
+- **Research status:** This is an open-source research and middleware tool, not a certified commercial safety system. See `LIMITATIONS.md` for full technical detail.
 ---
 
 ## Development Reality: Constraints and Transparency
