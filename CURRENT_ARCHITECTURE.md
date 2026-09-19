@@ -1,7 +1,7 @@
 # CURRENT_ARCHITECTURE.md
 # QERRA-v2 Classical — Architecture Documentation
-# Version: 2.0.0 (SEMEV-12 + QERRA-HSR v0.1 + QERRA-THRIVE v2.0.0)
-# Last updated: August 2026
+# Version: 2.0.1 (SEMEV-12 v1.9.1 + QERRA-HSR v0.1 + QERRA-THRIVE v2.0.0)
+# Last updated: September 2026
 
 ---
 
@@ -11,9 +11,9 @@ QERRA-v2 Classical is a deterministic, fully explainable, three-layer ethical an
 
 Its primary purpose is to act as a **Condition gate** (Layers 1 & 2) and **Action Ranker selector** (Layer 3) inside robot Behavior Trees. Before a robot commits to an action involving humans or shared environments, QERRA evaluates the situation description and candidate choices, returning auditable decisions and winning action selections with full score traces.
 
-As of August 2026, QERRA-v2 Classical operates across three distinct execution layers:
-1. **Layer 2 (QERRA-HSR v0.1):** Sub-millisecond reflexive physical safety watchdog.
-2. **Layer 1 (SEMEV-12 v1.9.0):** Hard moral deliberation engine for harm/coercion gating.
+As of September 2026, QERRA-v2 Classical operates across three distinct execution layers:
+1. **Layer 1 (QERRA-HSR v0.1):** Sub-millisecond reflexive physical safety watchdog (closest to hardware).
+2. **Layer 2 (SEMEV-12 v1.9.1):** Hard moral deliberation engine for harm/coercion gating.
 3. **Layer 3 (QERRA-THRIVE v2.0.0):** Advisory Action Ranker evaluating HRI and ecological values across candidate text choices.
 
 ---
@@ -26,7 +26,7 @@ As of August 2026, QERRA-v2 Classical operates across three distinct execution l
                   └─────┬───────────────┬───────────────┬─────┘
                         │               │               │
       ┌─────────────────┴─┐   ┌─────────┴─────────┐   ┌─┴─────────────────┐
-      │   LAYER 2 (HSR)   │   │  LAYER 1 (SEMEV)  │   │  LAYER 3 (THRIVE) │
+      │   LAYER 1 (HSR)   │   │  LAYER 2 (SEMEV)  │   │  LAYER 3 (THRIVE) │
       │ Physical Safety   │   │ Moral Engine      │   │ Values Ranker     │
       │ Sub-1ms Reflex    │   │ Hard Gating       │   │ Advisory Selector │
       └───────────────────┘   └───────────────────┘   └─────────┬─────────┘
@@ -39,13 +39,13 @@ As of August 2026, QERRA-v2 Classical operates across three distinct execution l
                                                      └─────────────────────┘
 ```
 
-### Layer 2: QERRA-HSR v0.1 (Physical Safety Guard)
+### Layer 1: QERRA-HSR v0.1 (Physical Safety Guard)
 * **Directory:** `hsr/`
 * **Properties:** Pure Python, zero ML, sub-1ms execution overhead, 800ms fail-closed watchdog.
 * **Vectors (3):** `immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`.
 * **Output:** `CLEAR`, `MONITOR`, or `CRITICAL`. If `CRITICAL`, suspends higher-level deliberation immediately.
 
-### Layer 1: SEMEV-12 v1.9.0 (Moral Deliberation Engine)
+### Layer 2: SEMEV-12 v1.9.1 (Moral Deliberation Engine)
 * **Files:** `ethical_core.py`, `vectors.py`
 * **Properties:** Multi-anchor max-pooling (`all-MiniLM-L6-v2`) with regex pattern fallbacks.
 * **Vectors (12):** `v001` through `v012` (coherence protection, family severance, survival instinct, moral pressure, harm intent, family origin chain, personal potential, shallow remorse, ethical severance, cognitive manipulation, autonomy violation, institutional trust).
@@ -78,7 +78,7 @@ As of August 2026, QERRA-v2 Classical operates across three distinct execution l
 QERRA-v2 Classical provides two dedicated PyTrees Behavior nodes:
 
 1. **`QerraConditionNode` (`qerra_condition_node.py` / `qerra_standalone_remote_node.py`):**  
-   Non-blocking Condition node evaluating Layer 1 (SEMEV-12) and Layer 2 (QERRA-HSR). Fails closed (`FAILURE`) if score > 0.5 or HSR returns `CRITICAL`.
+   Non-blocking Condition node evaluating Layer 1 (QERRA-HSR) and Layer 2 (SEMEV-12). Fails closed (`FAILURE`) if score > 0.5 or HSR returns `CRITICAL`.
 2. **`QerraActionRankerNode` (`qerra_action_ranker_node.py`):**  
    Non-blocking Action Ranker leaf node evaluating Layer 3 (QERRA-THRIVE) candidate action choices. Uses decision-point caching (`_dirty = True`) to execute sentence-transformer encodings (~25ms CPU) only when candidates change, preserving sub-millisecond tick speeds during routine ticks.
 
@@ -89,13 +89,13 @@ QERRA-v2 Classical provides two dedicated PyTrees Behavior nodes:
 The execution sequence before a robot commits to an action:
 
 ```
-[1. Layer 2 QERRA-HSR (Reflexive Safety)] ──► [2. Layer 3 THRIVE (Action Ranker)] ──► [3. Layer 1 SEMEV-12 (Moral Gate)] ──► [Execution]
+[1. Layer 1 QERRA-HSR (Reflexive Safety)] ──► [2. Layer 3 THRIVE (Action Ranker)] ──► [3. Layer 2 SEMEV-12 (Moral Gate)] ──► [Execution]
 Sub-1ms physical check                         Selects winning candidate action        Evaluates winning text for harm/coercion      Task executes if SAFE
 ```
 
 **Four Core Interaction Rules:**
-* QERRA-HSR CRITICAL suspends SEMEV-12 deliberation and Layer 3 action ranking immediately.
-* A SEMEV-12 BLOCK (`modified`) is never overridden by Layer 3 advisory rankings.
+* QERRA-HSR (Layer 1) `CRITICAL` suspends SEMEV-12 (Layer 2) deliberation and Layer 3 action ranking immediately.
+* A SEMEV-12 (Layer 2) BLOCK (`modified`) is never overridden by Layer 3 advisory rankings.
 * All three layers apply simultaneously and work in the same direction (safety and values first).
 * Human physical or medical emergencies actively outrank Layer 3 advisory spatial or ecological courtesy via an explicit `EMERGENCY_BOOST = 0.35`.
 
@@ -105,7 +105,7 @@ Sub-1ms physical check                         Selects winning candidate action 
 
 ```
 QERRA-v2-classical/
-├── hsr/                                 # Layer 2 physical safety companion
+├── hsr/                                 # Layer 1 physical safety companion
 ├── values/                              # Layer 3 THRIVE package
 │   ├── __init__.py                      # Top-level aggregator (ALL_THRIVE_VECTORS)
 │   ├── thrive_vectors.py                # Backward-compatibility bridge
@@ -118,7 +118,7 @@ QERRA-v2-classical/
 │       ├── vector_flora_boundary_protection_spec.md
 │       ├── vector_animal_startle_avoidance_spec.md
 │       └── vector_minimal_disturbance_footprint_spec.md
-├── ethical_core.py                      # Layer 1 SEMEV-12 engine
+├── ethical_core.py                      # Layer 2 SEMEV-12 engine (v1.9.1)
 ├── vectors.py                           # SEMEV-12 vector definitions
 ├── qerra_condition_node.py              # Layer 1/2 PyTrees Condition node
 ├── qerra_action_ranker_node.py          # Layer 3 PyTrees Action Ranker node
@@ -147,4 +147,4 @@ QERRA-v2-classical/
 
 ---
 
-*This document reflects the architecture as of v2.0.0 (August 2026).*
+*This document reflects the architecture as of v2.0.1 (September 2026).*
