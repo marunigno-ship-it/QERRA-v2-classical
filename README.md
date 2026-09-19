@@ -307,7 +307,9 @@ values/
 
 All benchmarks are verified by `tests/test_cases.py` before every commit.
 
-For the complete structured benchmark (80 verified test cases across all 12 vectors, including all findings and calibration analysis), see [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md).
+For the complete baseline benchmark (80 verified test cases across all 12 vectors, including all findings and calibration analysis), see [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md).
+
+For the active **Adversarial Red-Teaming Benchmark** (stress-testing subtle paternalistic coercion, covert reality denial, and weaponized realism using 3-leg contrastive semantic twins), see [`SEMEV-12_Adversarial_Benchmark_Run_01.md`](./SEMEV-12_Adversarial_Benchmark_Run_01.md).
 
 ---
 
@@ -418,14 +420,19 @@ This 1-minute 15-second simulation demonstrates the complete, unified three-laye
 ## Repository Structure
 
 ```
-├── hsr/                                 # QERRA-HSR v0.1 physical safety companion (3 vectors)
-├── ethical_core.py                      # SEMEV-12 scoring engine (v1.9.0)
-├── vectors.py                           # Core vector definitions and weights
+├── hsr/                                 # Layer 1: QERRA-HSR v0.1 physical safety reflex (3 vectors)
+├── ethical_core.py                      # Layer 2: SEMEV-12 scoring engine (v1.9.1)
+├── vectors.py                           # SEMEV-12 vector definitions and weights
+├── values/                              # Layer 3: QERRA-THRIVE v2.0.0 values ranker (12 vectors)
+├── adversarial_lab.py                   # Adversarial diagnostic runner (8 verified empirical cases)
 ├── app.py                               # FastAPI application
+├── classical_analyze.py                 # Single & batch evaluation entry point
 ├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
 ├── tests/
 │   └── test_cases.py                    # Regression test suite
-├── SEMEV-12_Benchmark_Run_01.md         # Structured benchmark — 80 verified test cases
+├── SEMEV-12_Benchmark_Run_01.md         # Baseline benchmark — 80 verified test cases
+├── SEMEV-12_Adversarial_Benchmark_Run_01.md # Active adversarial red-teaming benchmark
+├── CURRENT_ARCHITECTURE.md              # Canonical three-layer architecture documentation
 ├── SEMEV-12_Framework_Documentation.md  # Full framework documentation
 ├── QERRA_FOR_ROBOTICS.md                # Technical brief for the robotics community
 ├── CALL_FOR_TESTERS.md                  # Tester invitation and onboarding guide
@@ -452,10 +459,10 @@ All canonical benchmarks must pass before any commit.
 **Version:** `2.0.1` (HSR Hardened & Recovery Contract)  
 **Engine:** SEMEV-12 `v1.9.1` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`  
 
-The three-layer pipeline is fully implemented and tested:
-- **Physical Reflex (HSR):** 20/20 automated tests passing. Sub-millisecond software reflex independently verified (0.0 ms command delay, <1 cm physical stop in simulation).
-- **Moral Gate (SEMEV-12):** All 12 ethical vectors active and scoring. 80-case benchmark documented in `SEMEV-12_Benchmark_Run_01.md`.
-- **Values Ranker (THRIVE):** 12 value vectors active across human-centered and ecological suites.
+The three-layer pipeline is fully implemented, verified, and active:
+- **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex independently verified (0.0 ms command delay, <1 cm physical stop in simulation). Human-in-the-Loop recovery directives active.
+- **Layer 2 — Moral Gate (SEMEV-12 v1.9.1):** All 12 ethical vectors active and scoring. 80-case baseline benchmark documented in `SEMEV-12_Benchmark_Run_01.md`. Active adversarial red-teaming suite documented in `SEMEV-12_Adversarial_Benchmark_Run_01.md` (8 empirical cases, 3-leg contrastive controls).
+- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0):** 12 value vectors active across human-centered and ecological suites.
 - **Production API:** Live on Hugging Face Spaces with an 800ms fail-closed watchdog.
 
 **Known limitations & honesty boundaries:**
