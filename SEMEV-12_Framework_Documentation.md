@@ -130,7 +130,7 @@ The classical version already demonstrates the core concept and serves as a soli
 
 The current classical implementation of QERRA-v2 and the SEMEV-12 framework represent an early experimental prototype. While the system is functional and produces structured, explainable outputs, it has clear limitations.
 
-The detection engine, although improved with semantic similarity on seven vectors and nuance logic, can still miss highly nuanced or indirect expressions. The vector weights are researcher-assigned and remain candidates for empirical validation and refinement. The prototype does not yet include ROS 2 integration or real-time robotic deployment. It is currently designed as a text-based evaluation API and serves as a stable foundation for further development rather than a production-ready safety system.
+The detection engine, operating across all 12 vectors with multi-anchor semantic similarity and contextual nuance logic, can still miss highly disguised or indirect expressions (such as paternalistic coercion or caring-masked vision suppression). The vector weights and thresholds are researcher-assigned empirical calibration parameters under active adversarial stress-testing. While ROS 2 bridge actions and Behavior Tree condition nodes are implemented and validated in 3D physics simulation (Webots R2025a), the system has not yet undergone real-world clinical or industrial hardware deployment. It serves as an open-source research and middleware safety framework rather than a certified production safety system.
 
 The framework reflects the author’s cultural and experiential context. Cross-cultural validation and broader empirical testing are planned.
 
@@ -152,7 +152,9 @@ These changes were made to address real test failures while keeping risk minimal
 
 ## SEMEV-12 Benchmark Run 01 (June 2026)
 
-A structured benchmark of 80 verified test cases was conducted across all 12 vectors, run against the live API and fully documented with calibration analysis, findings, and a post-benchmark anchor expansion plan. See [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md) for the complete record.
+A structured baseline benchmark of 80 verified test cases was conducted across all 12 vectors, run against the live API and fully documented with calibration analysis, findings, and a post-benchmark anchor expansion plan. See [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md) for the complete baseline record.
+
+In September 2026, an active **Adversarial Red-Teaming Benchmark** was initiated to stress-test the engine beyond direct language, evaluating covert reality invalidation, paternalistic consent overrides, and weaponized realism using 3-leg contrastive semantic twins. See [`SEMEV-12_Adversarial_Benchmark_Run_01.md`](./SEMEV-12_Adversarial_Benchmark_Run_01.md) for active findings and camouflage delta metrics.
 
 ---
 
