@@ -420,27 +420,27 @@ This 1-minute 15-second simulation demonstrates the complete, unified three-laye
 ## Repository Structure
 
 ```
-├── hsr/                                 # Layer 1: QERRA-HSR v0.1 physical safety reflex (3 vectors)
-├── ethical_core.py                      # Layer 2: SEMEV-12 scoring engine (v1.9.1)
-├── vectors.py                           # SEMEV-12 vector definitions and weights
-├── values/                              # Layer 3: QERRA-THRIVE v2.0.0 values ranker (12 vectors)
-├── adversarial_lab.py                   # Adversarial diagnostic runner (8 verified empirical cases)
-├── app.py                               # FastAPI application
-├── classical_analyze.py                 # Single & batch evaluation entry point
-├── ros2_bridge.py                       # ROS 2 bridge (standalone + rclpy node)
+├── hsr/                                     # Layer 1: QERRA-HSR v0.1 physical safety reflex (3 vectors)
+├── ethical_core.py                          # Layer 2: SEMEV-12 scoring engine (v1.9.1)
+├── vectors.py                               # SEMEV-12 vector definitions and weights
+├── values/                                  # Layer 3: QERRA-THRIVE v2.0.0 values ranker (12 vectors)
+├── adversarial_lab.py                       # Adversarial diagnostic runner (8 verified empirical cases)
+├── app.py                                   # FastAPI application
+├── classical_analyze.py                     # Single & batch evaluation entry point
+├── qerra_condition_node.py                  # Behavior Tree Condition node (Layer 1 & 2 gate)
+├── qerra_action_ranker_node.py              # Behavior Tree Action Ranker node (Layer 3 selector)
+├── ros2_bridge.py                           # ROS 2 bridge (standalone + rclpy node)
 ├── tests/
-│   └── test_cases.py                    # Regression test suite
-├── SEMEV-12_Benchmark_Run_01.md         # Baseline benchmark — 80 verified test cases
+│   ├── test_cases.py                        # Regression test suite
+│   └── test_vectors.py                      # Vector unit tests
+├── SEMEV-12_Benchmark_Run_01.md             # Baseline benchmark — 80 verified test cases
 ├── SEMEV-12_Adversarial_Benchmark_Run_01.md # Active adversarial red-teaming benchmark
-├── CURRENT_ARCHITECTURE.md              # Canonical three-layer architecture documentation
-├── SEMEV-12_Framework_Documentation.md  # Full framework documentation
-├── QERRA_FOR_ROBOTICS.md                # Technical brief for the robotics community
-├── CALL_FOR_TESTERS.md                  # Tester invitation and onboarding guide
-├── CHANGELOG.md                         # Version history
+├── CURRENT_ARCHITECTURE.md                  # Canonical three-layer architecture documentation
+├── SEMEV-12_Framework_Documentation.md      # Full framework documentation
+├── QERRA_FOR_ROBOTICS.md                    # Technical brief for the robotics community
+├── CHANGELOG.md                             # Version history
 └── README.md
 ```
-
----
 
 ## Running the Regression Tests
 
