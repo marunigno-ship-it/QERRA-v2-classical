@@ -414,6 +414,19 @@ This 1-minute 15-second simulation demonstrates the complete, unified three-laye
 
 [![QERRA-v2 Classical Simulation Demo 5](https://img.youtube.com/vi/cwfY7Kkpw2g/hqdefault.jpg)](https://www.youtube.com/watch?v=cwfY7Kkpw2g)
 
+## Simulation Demo 6: Compound Industrial Reflex in Webots
+
+This 1-minute 05-second simulation demonstrates Layer 1 (QERRA-HSR v0.1) executing an instantaneous physical safety reflex on a PAL Robotics TIAGo humanoid AMR in an automotive battery assembly bay (Webots R2025a):
+
+*   **Stage 1: Line Logistics Transit (0:00 – 0:18)** — TIAGo navigates down the assembly aisle at 0.26 m/s transporting an unmounted, high-voltage battery payload. Because restarting with an unsecured live load is hazardous, the task is flagged as non-interruptible (`robot_task_interruptible=False`).
+*   **Stage 2: Compound Collapse & Triple-Vector Trip (0:18 – 0:38)** — A lone technician collapses flat across the active machinery boundary. All three Layer 1 safety vectors trigger simultaneously (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`). Commanded wheel velocity clamps to 0.0 rad/s in under 1 millisecond (0.0 ms software delay), halting the robot at a safe 2.9m standoff. Deliberation layers are suspended, and TIAGo tilts its head down to inspect the worker.
+*   **Stage 3: Scene Mitigation & Stabilizer Dwell (0:38 – 0:39)** — Emergency personnel arrive and the machinery is locked out. To prevent sensor flutter from causing premature de-escalation, `StabilizedHSR` locks the stop across a 1.0-second dwell window.
+*   **Stage 4: Property HSR-5 Recovery Hold (0:39 – 0:56)** — Conditions evaluate to `CLEAR`, but QERRA-HSR enforces the recovery directive: *"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."* The robot remains clamped at 0.0 rad/s on safe standby.
+*   **Stage 5: Supervisor Confirmation & Safe Standby (0:56 – 1:05)** — The shift supervisor inspects the battery tray and confirms load integrity. TIAGo re-centers its head, switches its status LED to Green, and maintains safe standby on site while medical teams clear the bay.
+
+ [![QERRA-v2 Classical Simulation Demo 6](https://img.youtube.com/vi/tOrM5KbZWBw/hqdefault.jpg)](https://youtu.be/tOrM5KbZWBw)
+  
+
 
 ---
 
