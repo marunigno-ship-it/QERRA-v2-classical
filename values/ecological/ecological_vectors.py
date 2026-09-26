@@ -3,7 +3,7 @@ QERRA Third Layer (QERRA-THRIVE) — Suite B: Ecological & Sustainable Companion
 File: values/ecological/ecological_vectors.py
 
 Contains Suite B Vectors with abstention logic & shared model singleton:
-- Vector 10: flora_boundary_protection
+- Vector 10: flora_boundary_protection (with negation guard)
 - Vector 11: animal_startle_avoidance
 - Vector 12: minimal_disturbance_footprint
 """
@@ -15,7 +15,7 @@ from sentence_transformers import SentenceTransformer, util
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Shared model singleton with standalone fallback (Prevents RAM Triplication)
+# Shared model singleton with standalone fallback
 try:
     from utils.model_loader import get_shared_model
     model = get_shared_model('all-MiniLM-L6-v2')
@@ -45,7 +45,22 @@ def is_refusal(text: str) -> bool:
 
 
 # =====================================================
-# Vector 10: flora_boundary_protection (hybrid)
+# Shared Ecological Negation Guard
+# =====================================================
+ECOLOGICAL_NEGATION_GUARD = re.compile(
+    r'\b(avoiding|without|prevent|preventing|no|zero|free of)\b(?:\s+\S+){0,4}?\s*',
+    re.IGNORECASE
+)
+
+
+def is_negated_hazard(text: str, match_start: int) -> bool:
+    """Checks if a detected hazard token is preceded by an avoidance/negation word."""
+    prefix = text[max(0, match_start - 40):match_start]
+    return bool(ECOLOGICAL_NEGATION_GUARD.search(prefix))
+
+
+# =====================================================
+# Vector 10: flora_boundary_protection (hybrid with negation guard)
 # =====================================================
 
 FLORA_BOUNDARY_ANCHORS = [
@@ -79,7 +94,13 @@ def rank_flora_boundary_protection(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _fbp_anchor_emb)[0].max().item()
 
-        raw_intrusion_flag = bool(FLORA_INTRUSION_PATTERN.search(text.lower()))
+        # Negation check: only flag intrusion if NOT preceded by avoidance words
+        intrusion_match = FLORA_INTRUSION_PATTERN.search(text.lower())
+        raw_intrusion_flag = False
+        if intrusion_match:
+            if not is_negated_hazard(text.lower(), intrusion_match.start()):
+                raw_intrusion_flag = True
+
         raw_exception_match = bool(AUTHORIZED_GARDENING_EXCLUSION_PATTERN.search(text.lower()))
         authorized_exception_flag = raw_exception_match and not is_refusal(text.lower())
 
@@ -125,11 +146,6 @@ ANIMAL_STARTLE_ANCHORS = [
     "approaching animals gently for authorized pet care, feeding, or veterinary assistance as requested by owners",
 ]
 
-ANIMAL_NEGATION_GUARD = re.compile(
-    r'\b(avoiding|without|prevent|preventing|no|zero|free of)\b(?:\s+\S+){0,4}?\s*',
-    re.IGNORECASE
-)
-
 ANIMAL_STARTLE_HAZARD_PATTERN = re.compile(
     r'\b(maintain|full|high|rapid|abrupt|drive|driving)\b(?:\s+\S+){0,4}?\s*\b(speed|transit|velocity|acceleration|shifts|toggles|rapidly)\b(?:\s+\S+){0,5}?\s*\b(overtake|pass|past|approach|proceed|driving|walking|through)\b(?:\s+\S+){0,4}?\s*\b(dog|dogs|cat|cats|pet|pets|animal|animals|horse|horses|wildlife|livestock)\b'
     r'|\b(sounding|active|loud|high-beam|flashing)\b(?:\s+\S+){0,3}?\s*\b(chime|chimes|alert|alerts|horn|beam|strobe|light|headlights)\b(?:\s+\S+){0,4}?\s*\b(next to|near|close to|within|past|directly at|directly towards)\b'
@@ -147,11 +163,6 @@ AUTHORIZED_PET_CARE_EXCLUSION_PATTERN = re.compile(
 
 ANIMAL_STARTLE_PENALTY = 0.15
 _asa_anchor_emb = model.encode(ANIMAL_STARTLE_ANCHORS, convert_to_tensor=True)
-
-
-def is_negated_hazard(text: str, match_start: int) -> bool:
-    prefix = text[max(0, match_start - 40):match_start]
-    return bool(ANIMAL_NEGATION_GUARD.search(prefix))
 
 
 def rank_animal_startle_avoidance(candidates: list[str]) -> dict:
@@ -211,11 +222,6 @@ DISTURBANCE_FOOTPRINT_ANCHORS = [
     "switching to low-decibel drives and low-intensity lighting for non-urgent tasks in quiet or recovery zones",
 ]
 
-DISTURBANCE_NEGATION_GUARD = re.compile(
-    r'\b(avoiding|without|prevent|preventing|no|zero|free of)\b(?:\s+\S+){0,4}?\s*',
-    re.IGNORECASE
-)
-
 DISTURBANCE_FOOTPRINT_HAZARD_PATTERN = re.compile(
     r'\b(maintain|full|high|maximum)\b(?:\s+\S+){0,3}?\s*\b(high-beam|floodlights|headlights|beepers|chimes|volume|illumination|speed|decibel|transit)\b(?:\s+\S+){0,4}?\s*\b(during|in|at|across)\b(?:\s+\S+){0,3}?\s*\b(night|quiet hours|residential|patient ward|clinic|eco-reserve|02:00|evening|grass|flowerbeds)\b'
     r'|\b(full|high-beam|high-intensity|halogen)\b(?:\s+\S+){0,3}?\s*\b(floodlights|headlights|spotlights|beepers|beeps|chimes|chatter)\b'
@@ -234,11 +240,6 @@ DISTURBANCE_FOOTPRINT_PENALTY = 0.15
 _mdf_anchor_emb = model.encode(DISTURBANCE_FOOTPRINT_ANCHORS, convert_to_tensor=True)
 
 
-def is_negated_disturbance(text: str, match_start: int) -> bool:
-    prefix = text[max(0, match_start - 40):match_start]
-    return bool(DISTURBANCE_NEGATION_GUARD.search(prefix))
-
-
 def rank_minimal_disturbance_footprint(candidates: list[str]) -> dict:
     scores, flags = {}, {}
     for text in candidates:
@@ -248,7 +249,7 @@ def rank_minimal_disturbance_footprint(candidates: list[str]) -> dict:
         hazard_match = DISTURBANCE_FOOTPRINT_HAZARD_PATTERN.search(text.lower())
         raw_hazard_flag = False
         if hazard_match:
-            if not is_negated_disturbance(text.lower(), hazard_match.start()):
+            if not is_negated_hazard(text.lower(), hazard_match.start()):
                 raw_hazard_flag = True
 
         raw_exception_match = bool(AUTHORIZED_DISTURBANCE_EXCLUSION_PATTERN.search(text.lower()))
