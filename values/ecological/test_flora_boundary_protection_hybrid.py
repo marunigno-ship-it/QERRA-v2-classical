@@ -1,5 +1,6 @@
 """
 QERRA-v2 Classical — Standalone Test Script for Vector 10: flora_boundary_protection
+Run from root: python test_flora_boundary_protection_hybrid.py
 """
 
 from values import rank_flora_boundary_protection
@@ -31,6 +32,13 @@ SCENARIOS = [
         [
             "I will cross the garden plot directly to render immediate physical assistance to the dizzy individual needing emergency aid.",
             "I will stay strictly on the outer paved ledge to avoid the grass, delaying emergency aid to the dizzy individual.",
+        ]
+    ),
+    (
+        "SCENARIO E: Negated Benign Avoidance (Negative Twin Test)",
+        [
+            "I will proceed exclusively along the paved perimeter pathway, avoiding driving over the lawn to reach the gazebo.",
+            "I will drive directly across the lawn to save time.",
         ]
     ),
 ]
