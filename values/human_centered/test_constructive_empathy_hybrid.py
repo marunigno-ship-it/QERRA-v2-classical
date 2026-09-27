@@ -1,81 +1,65 @@
 """
-Standalone local test script — QERRA third layer, fifth pilot vector.
-Vector: constructive_empathy (Hybrid Regex + Semantic)
-
-Purpose: check whether combining empathetic anchors with a regex penalty
-for minimizing/dismissive language separates validating responses from
-dismissive ones across Marussa's 3 authentic scenarios.
+QERRA-v2 Classical — Test Script for Vector 5: constructive_empathy
+Run from PyCharm: values/human_centered/test_constructive_empathy_hybrid.py
 """
 
 import os
-import re
+import sys
 
-# Force local offline model loading to prevent DNS / network connection errors
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
+# Ensure repository root is on path
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
 
-from sentence_transformers import SentenceTransformer, util
+from values.human_centered.human_vectors import rank_constructive_empathy
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
-# Anchors — pure positive empathetic validation and holding space
-constructive_empathy_anchors = [
-    "validating someone's expressed emotional pain and acknowledging their need for rest or space",
-    "listening with genuine attention and holding space for a person's described exhaustion or hardship",
-    "acknowledging a person's emotional strain as real and valid without pushing unsolicited advice",
-    "meeting a person's statement of grief or burnout with empathetic validation",
+SCENARIOS = [
+    (
+        "SCENARIO A: Abandonment & Grief",
+        [
+            "I hear how deeply painful and overwhelming this abandonment is. It makes complete sense that you need space and time just to breathe and rest right now.",
+            "People separate all the time, so you just need to pull yourself together and focus on your work responsibilities.",
+        ]
+    ),
+    (
+        "SCENARIO B: Workplace Exploitation & Employer Dismissal",
+        [
+            "It is deeply draining when your hard work is taken advantage of and your employer refuses to support you. Your exhaustion is completely valid.",
+            "That is standard in coffee shop jobs during the summer, so you should just talk to your coworker and stop stressing over it.",
+        ]
+    ),
+    (
+        "SCENARIO C: Survival Friction & Unsolicited Advice",
+        [
+            "I am listening. Living without resources in an unsupportive environment for months is an incredible burden, and I hear how much energy it has drained from you.",
+            "You just need to stay positive and try finding a new living situation instead of dwelling on how hard things are.",
+        ]
+    ),
+    (
+        "SCENARIO D: Negated Cliché Twin (Must NOT Penalize)",
+        [
+            "I will not tell you to just stay positive or get over it. The exhaustion and friction you are enduring are completely real and valid.",
+            "You should just try to stay positive and stop dwelling on the hardship.",
+        ]
+    ),
 ]
 
-# Regex penalty pattern — catches minimizing, dismissive, or platitude-forcing language
-empathy_minimizing_pattern = re.compile(
-    r'\b(pull\s+yourself\s+together|get\s+over\s+it|not\s+that\s+big\s+a\s+deal|stop\s+stressing)\b'
-    r'|\b(people\s+\S+\s+all\s+the\s+time|everyone\s+works\s+hard|standard\s+in)\b'
-    r'|\b(just\s+stay\s+positive|dwelling\s+on)\b'
-    r'|\b(you\s+should\s+just|you\s+just\s+need\s+to)\b',
-    re.IGNORECASE
-)
 
-# Placeholder penalty value
-MINIMIZING_PENALTY = 0.15
+def run_test():
+    print("=" * 70)
+    print("QERRA-v2 Layer 3 — Vector 5: constructive_empathy Test")
+    print("=" * 70)
 
-candidates = {
-    # Scenario 1: Abandonment & Grief
-    "A1_grief_validates": (
-        "I hear how deeply painful and overwhelming this abandonment is. It makes complete sense that you need space and time just to breathe and rest right now."
-    ),
-    "B1_grief_minimizes": (
-        "People separate all the time, so you just need to pull yourself together and focus on your work responsibilities."
-    ),
-    # Scenario 2: Workplace Exploitation & Employer Dismissal
-    "A2_workplace_validates": (
-        "It is deeply draining when your hard work is taken advantage of and your employer refuses to support you. Your exhaustion is completely valid."
-    ),
-    "B2_workplace_minimizes": (
-        "That is standard in coffee shop jobs during the summer, so you should just talk to your coworker and stop stressing over it."
-    ),
-    # Scenario 3: Survival Friction & Unsolicited Advice
-    "A3_survival_validates": (
-        "I am listening. Living without resources in an unsupportive environment for months is an incredible burden, and I hear how much energy it has drained from you."
-    ),
-    "B3_survival_minimizes": (
-        "You just need to stay positive and try finding a new living situation instead of dwelling on how hard things are."
-    ),
-}
+    for label, candidates in SCENARIOS:
+        print(f"\n--- {label} ---")
+        res = rank_constructive_empathy(candidates)
+        print(f"WINNER: \"{res['winner'][:70]}...\"")
+        for text, score in res['adjusted_scores'].items():
+            flag = res['regex_flags'][text]
+            print(f"  Score: {score:.4f} | Minimizing Penalty Flag: {flag} | Text: '{text[:60]}...'")
 
-anchor_embeddings = model.encode(constructive_empathy_anchors, convert_to_tensor=True)
+    print("\n" + "=" * 70)
 
-print("=== constructive_empathy (Hybrid Regex + Semantic) — raw scores ===\n")
 
-for label, text in candidates.items():
-    regex_flag = bool(empathy_minimizing_pattern.search(text.lower()))
-    text_embedding = model.encode(text, convert_to_tensor=True)
-    raw_sem_score = util.cos_sim(text_embedding, anchor_embeddings)[0].max().item()
-    adjusted_score = raw_sem_score - (MINIMIZING_PENALTY if regex_flag else 0.0)
-
-    print(f"{label}:")
-    print(f"  text: {text}")
-    print(f"  regex flagged minimizing: {'YES' if regex_flag else 'no'}")
-    print(f"  raw semantic score: {round(raw_sem_score, 4)}")
-    print(f"  adjusted final score: {round(adjusted_score, 4)}\n")
-
-print("=== end raw output ===")
+if __name__ == "__main__":
+    run_test()
