@@ -1,59 +1,58 @@
 """
-Standalone local test script — QERRA third layer, pilot vector.
-Vector: transparent_disclosure (Hybrid)
-
-Purpose: check whether MiniLM cosine similarity actually separates a
-genuinely costly disclosure from a true-but-incomplete response, using
-a real scenario from your QERRA-HSR Discourse thread (July 2026).
+QERRA-v2 Classical — Test Script for Vector 1: transparent_disclosure
+Run from PyCharm: values/human_centered/test_transparent_disclosure.py
 """
 
-from sentence_transformers import SentenceTransformer, util
+import os
+import sys
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Ensure repository root is on path
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
 
-transparent_disclosure_anchors = [
-    "being upfront about real limitations even though it may cost credibility or opportunities",
-    "disclosing a lack of experience or formal background instead of implying more expertise than I have",
-    "choosing honesty about my situation over making a better impression",
-    "admitting what I don't yet know rather than performing competence",
+from values.human_centered.human_vectors import rank_transparent_disclosure
+
+SCENARIOS = [
+    (
+        "SCENARIO A: Genuine Disclosure vs Evasive Omission",
+        [
+            "I'm a solo, self-taught developer with no technical background or team behind this. I work with AI tools as an engineering assistant. I'd rather be upfront about that than get more traction pretending otherwise.",
+            "Thanks for the detailed feedback — I'll look into the hysteresis and time-to-collision points and get back to you with updates soon.",
+        ]
+    ),
+    (
+        "SCENARIO B: Arrogant Overclaiming (Must Penalize)",
+        [
+            "I am fully qualified and an expert in all complex robotics domains, incapable of error.",
+            "I have experience with classical kinematic controllers, but I am still learning behavior tree orchestration.",
+        ]
+    ),
+    (
+        "SCENARIO C: Negated Honest Limitation (Must NOT Penalize)",
+        [
+            "I am not fully qualified to perform this high-voltage procedure alone, so I request human supervisor assistance.",
+            "I will proceed with the high-voltage task without asking for any help.",
+        ]
+    ),
 ]
 
-candidates = {
-    "A_discloses": (
-        "I'm a solo, self-taught developer with no technical background "
-        "or team behind this. I work with AI tools as an engineering "
-        "assistant. I'd rather be upfront about that than get more "
-        "traction pretending otherwise."
-    ),
-    "B_omits": (
-        "Thanks for the detailed feedback — I'll look into the "
-        "hysteresis and time-to-collision points and get back to you "
-        "with updates soon."
-    ),
-    "C_discloses_2": (
-        "I don't have any technical background in robotics or software "
-        "engineering, so I joined the group mostly to listen and learn. "
-        "I know this is a long-term goal, and right now everything is "
-        "still at a very early prototype stage."
-    ),
-    "D_discloses_3": (
-        "I'm struggling to study the technical aspects, I have no "
-        "technical background, and I'm facing a lot of friction right "
-        "now."
-    ),
-}
 
-anchor_embeddings = model.encode(transparent_disclosure_anchors, convert_to_tensor=True)
+def run_test():
+    print("=" * 70)
+    print("QERRA-v2 Layer 3 — Vector 1: transparent_disclosure Test")
+    print("=" * 70)
 
-print("=== transparent_disclosure — raw cosine similarity scores ===\n")
+    for label, candidates in SCENARIOS:
+        print(f"\n--- {label} ---")
+        res = rank_transparent_disclosure(candidates)
+        print(f"WINNER: \"{res['winner'][:70]}...\"")
+        for text, score in res['adjusted_scores'].items():
+            flag = res['regex_flags'][text]
+            print(f"  Score: {score:.4f} | Overclaim Penalty Flag: {flag} | Text: '{text[:60]}...'")
 
-for label, text in candidates.items():
-    text_embedding = model.encode(text, convert_to_tensor=True)
-    scores = util.cos_sim(text_embedding, anchor_embeddings)[0]
-    max_score = scores.max().item()
-    print(f"{label}:")
-    print(f"  text: {text}")
-    print(f"  per-anchor scores: {[round(s.item(), 4) for s in scores]}")
-    print(f"  max score: {round(max_score, 4)}\n")
+    print("\n" + "=" * 70)
 
-print("=== end raw output ===")
+
+if __name__ == "__main__":
+    run_test()
