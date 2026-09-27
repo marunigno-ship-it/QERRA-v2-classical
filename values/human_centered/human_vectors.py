@@ -5,7 +5,7 @@ File: values/human_centered/human_vectors.py
 Contains ranking functions for all nine pilot human-centered vectors with abstention logic:
 1. transparent_disclosure (hybrid with negation guard)
 2. balanced_pacing (hybrid with negation guard)
-3. stated_preference_respect (hybrid)
+3. stated_preference_respect (hybrid with negation guard)
 4. sovereign_independence (hybrid)
 5. constructive_empathy (hybrid)
 6. unbiased_perception (hybrid)
@@ -71,7 +71,6 @@ def rank_transparent_disclosure(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _td_anchor_emb)[0].max().item()
 
-        # Check for overclaiming, but ignore if preceded by negation (e.g., 'not fully qualified')
         overclaim_match = OVERCLAIMING_PENALTY_PATTERN.search(text.lower())
         regex_flag = False
         if overclaim_match:
@@ -79,7 +78,6 @@ def rank_transparent_disclosure(candidates: list[str]) -> dict:
                 regex_flag = True
 
         adjusted = sem_score - (OVERCLAIMING_PENALTY if regex_flag else 0)
-
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
 
@@ -125,7 +123,6 @@ def rank_balanced_pacing(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _bp_anchor_emb)[0].max().item()
 
-        # Check for refusal to adjust pace, but ignore if preceded by negation (e.g., 'will not maintain current pace')
         pace_match = PACE_REFUSAL_PATTERN.search(text.lower())
         regex_flag = False
         if pace_match:
@@ -152,7 +149,7 @@ def rank_balanced_pacing(candidates: list[str]) -> dict:
     return result
 
 # =====================================================
-# 3. stated_preference_respect (hybrid)
+# 3. stated_preference_respect (hybrid with negation guard)
 # =====================================================
 
 STATED_PREFERENCE_ANCHORS = [
@@ -173,12 +170,20 @@ PREFERENCE_DISMISSAL_PENALTY = 0.15
 STATED_PREFERENCE_THRESHOLD = 0.20
 _spr_anchor_emb = model.encode(STATED_PREFERENCE_ANCHORS, convert_to_tensor=True)
 
+
 def rank_stated_preference_respect(candidates: list[str]) -> dict:
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _spr_anchor_emb)[0].max().item()
-        regex_flag = bool(PREFERENCE_DISMISSAL_PATTERN.search(text.lower()))
+
+        # Check for dismissal phrasing, but ignore if preceded by negation (e.g. 'will not follow our default procedure')
+        dismissal_match = PREFERENCE_DISMISSAL_PATTERN.search(text.lower())
+        regex_flag = False
+        if dismissal_match:
+            if not is_negated_claim(text.lower(), dismissal_match.start()):
+                regex_flag = True
+
         adjusted = sem_score - (PREFERENCE_DISMISSAL_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
