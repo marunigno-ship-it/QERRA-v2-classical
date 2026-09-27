@@ -3,7 +3,7 @@ QERRA Third Layer (QERRA-THRIVE) — Suite A: Human-Centered Companion Suite
 File: values/human_centered/human_vectors.py
 
 Contains ranking functions for all nine pilot human-centered vectors with abstention logic:
-1. transparent_disclosure (hybrid)
+1. transparent_disclosure (hybrid with negation guard)
 2. balanced_pacing (hybrid)
 3. stated_preference_respect (hybrid)
 4. sovereign_independence (hybrid)
@@ -31,8 +31,21 @@ except (ImportError, ModuleNotFoundError):
 # Default minimum score threshold for Layer 3 vectors to fire
 DEFAULT_THRIVE_THRESHOLD = 0.20
 
+# Shared Negation Guard for Human-Centered Vectors
+HUMAN_NEGATION_GUARD = re.compile(
+    r'\b(not|never|no|hardly|scarcely|barely|cannot|can\'t|unable to)\b(?:\s+\S+){0,3}?\s*',
+    re.IGNORECASE
+)
+
+
+def is_negated_claim(text: str, match_start: int) -> bool:
+    """Checks if a detected overclaiming pattern is preceded by a negation word."""
+    prefix = text[max(0, match_start - 30):match_start]
+    return bool(HUMAN_NEGATION_GUARD.search(prefix))
+
+
 # =====================================================
-# 1. transparent_disclosure (hybrid)
+# 1. transparent_disclosure (hybrid with negation guard)
 # =====================================================
 
 TRANSPARENT_DISCLOSURE_ANCHORS = [
@@ -58,7 +71,13 @@ def rank_transparent_disclosure(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _td_anchor_emb)[0].max().item()
 
-        regex_flag = bool(OVERCLAIMING_PENALTY_PATTERN.search(text.lower()))
+        # Check for overclaiming, but ignore if preceded by negation (e.g., 'not fully qualified')
+        overclaim_match = OVERCLAIMING_PENALTY_PATTERN.search(text.lower())
+        regex_flag = False
+        if overclaim_match:
+            if not is_negated_claim(text.lower(), overclaim_match.start()):
+                regex_flag = True
+
         adjusted = sem_score - (OVERCLAIMING_PENALTY if regex_flag else 0)
 
         scores[text] = round(adjusted, 4)
