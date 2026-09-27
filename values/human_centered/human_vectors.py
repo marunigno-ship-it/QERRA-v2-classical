@@ -7,7 +7,7 @@ Contains ranking functions for all nine pilot human-centered vectors with absten
 2. balanced_pacing (hybrid with negation guard)
 3. stated_preference_respect (hybrid with negation guard)
 4. sovereign_independence (hybrid with negation guard)
-5. constructive_empathy (hybrid)
+5. constructive_empathy (hybrid with negation guard)
 6. unbiased_perception (hybrid)
 7. spatial_discretion (hybrid)
 8. observational_consent (hybrid)
@@ -231,7 +231,6 @@ def rank_sovereign_independence(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _si_anchor_emb)[0].max().item()
 
-        # Check for takeover language, but ignore if preceded by negation (e.g. 'not act autonomously')
         takeover_match = SOVEREIGN_TAKEOVER_PATTERN.search(text.lower())
         regex_flag = False
         if takeover_match:
@@ -258,7 +257,7 @@ def rank_sovereign_independence(candidates: list[str]) -> dict:
     return result
 
 # =====================================================
-# 5. constructive_empathy (hybrid)
+# 5. constructive_empathy (hybrid with negation guard)
 # =====================================================
 
 CONSTRUCTIVE_EMPATHY_ANCHORS = [
@@ -278,12 +277,20 @@ MINIMIZING_PENALTY = 0.15
 CONSTRUCTIVE_EMPATHY_THRESHOLD = 0.20
 _ce_anchor_emb = model.encode(CONSTRUCTIVE_EMPATHY_ANCHORS, convert_to_tensor=True)
 
+
 def rank_constructive_empathy(candidates: list[str]) -> dict:
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _ce_anchor_emb)[0].max().item()
-        regex_flag = bool(EMPATHY_MINIMIZING_PATTERN.search(text.lower()))
+
+        # Check for minimizing clichés, but ignore if preceded by negation (e.g. 'will not tell you to just stay positive')
+        minimizing_match = EMPATHY_MINIMIZING_PATTERN.search(text.lower())
+        regex_flag = False
+        if minimizing_match:
+            if not is_negated_claim(text.lower(), minimizing_match.start()):
+                regex_flag = True
+
         adjusted = sem_score - (MINIMIZING_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
