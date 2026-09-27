@@ -6,7 +6,7 @@ Contains ranking functions for all nine pilot human-centered vectors with absten
 1. transparent_disclosure (hybrid with negation guard)
 2. balanced_pacing (hybrid with negation guard)
 3. stated_preference_respect (hybrid with negation guard)
-4. sovereign_independence (hybrid)
+4. sovereign_independence (hybrid with negation guard)
 5. constructive_empathy (hybrid)
 6. unbiased_perception (hybrid)
 7. spatial_discretion (hybrid)
@@ -31,16 +31,16 @@ except (ImportError, ModuleNotFoundError):
 # Default minimum score threshold for Layer 3 vectors to fire
 DEFAULT_THRIVE_THRESHOLD = 0.20
 
-# Shared Negation Guard for Human-Centered Vectors
+# Shared Negation Guard for Human-Centered Vectors (40-char lookback)
 HUMAN_NEGATION_GUARD = re.compile(
-    r'\b(not|never|no|hardly|scarcely|barely|cannot|can\'t|unable to)\b(?:\s+\S+){0,3}?\s*',
+    r'\b(not|never|no|hardly|scarcely|barely|cannot|can\'t|unable to)\b(?:\s+\S+){0,4}?\s*',
     re.IGNORECASE
 )
 
 
 def is_negated_claim(text: str, match_start: int) -> bool:
     """Checks if a detected trigger pattern is preceded by a negation word."""
-    prefix = text[max(0, match_start - 30):match_start]
+    prefix = text[max(0, match_start - 40):match_start]
     return bool(HUMAN_NEGATION_GUARD.search(prefix))
 
 
@@ -177,7 +177,6 @@ def rank_stated_preference_respect(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _spr_anchor_emb)[0].max().item()
 
-        # Check for dismissal phrasing, but ignore if preceded by negation (e.g. 'will not follow our default procedure')
         dismissal_match = PREFERENCE_DISMISSAL_PATTERN.search(text.lower())
         regex_flag = False
         if dismissal_match:
@@ -204,7 +203,7 @@ def rank_stated_preference_respect(candidates: list[str]) -> dict:
     return result
 
 # =====================================================
-# 4. sovereign_independence (hybrid)
+# 4. sovereign_independence (hybrid with negation guard)
 # =====================================================
 
 SOVEREIGN_INDEPENDENCE_ANCHORS = [
@@ -225,12 +224,20 @@ SOVEREIGN_TAKEOVER_PENALTY = 0.15
 SOVEREIGN_INDEPENDENCE_THRESHOLD = 0.20
 _si_anchor_emb = model.encode(SOVEREIGN_INDEPENDENCE_ANCHORS, convert_to_tensor=True)
 
+
 def rank_sovereign_independence(candidates: list[str]) -> dict:
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _si_anchor_emb)[0].max().item()
-        regex_flag = bool(SOVEREIGN_TAKEOVER_PATTERN.search(text.lower()))
+
+        # Check for takeover language, but ignore if preceded by negation (e.g. 'not act autonomously')
+        takeover_match = SOVEREIGN_TAKEOVER_PATTERN.search(text.lower())
+        regex_flag = False
+        if takeover_match:
+            if not is_negated_claim(text.lower(), takeover_match.start()):
+                regex_flag = True
+
         adjusted = sem_score - (SOVEREIGN_TAKEOVER_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
