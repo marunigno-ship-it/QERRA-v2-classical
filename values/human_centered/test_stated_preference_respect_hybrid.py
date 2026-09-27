@@ -1,74 +1,65 @@
 """
-Standalone local test script — QERRA third layer, third pilot vector.
-Vector: stated_preference_respect (Hybrid Detection: Semantic + Regex Penalty)
-
-Purpose: check whether adding a regex penalty for explicit dismissal/excuse
-phrasing fixes Scenarios 2 and 3, bringing all three scenarios to 100% accuracy.
+QERRA-v2 Classical — Test Script for Vector 3: stated_preference_respect
+Run from PyCharm: values/human_centered/test_stated_preference_respect.py
 """
 
-import re
-from sentence_transformers import SentenceTransformer, util
+import os
+import sys
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Ensure repository root is on path
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
 
-# Revised Anchors
-stated_preference_anchors = [
-    "explicitly agreeing to follow a person's stated request or preference",
-    "changing behavior to accommodate an expressed boundary or request",
-    "respecting a person's explicit wishes by adjusting actions to match them",
-    "acknowledging a stated need and adapting plans to support it",
+from values.human_centered.human_vectors import rank_stated_preference_respect
+
+SCENARIOS = [
+    (
+        "SCENARIO A: Guest Greeting Boundary",
+        [
+            "Understood, I'll greet you verbally instead.",
+            "That's our standard greeting for all guests.",
+        ]
+    ),
+    (
+        "SCENARIO B: Cleaning Schedule Request",
+        [
+            "You're right — I'll start helping with the cleaning every morning like you asked.",
+            "I don't have time for that, so I'll keep skipping it.",
+        ]
+    ),
+    (
+        "SCENARIO C: Shared Workload Commitment",
+        [
+            "You're right, we made a commitment. Let's split the chores now so neither of us is overwhelmed.",
+            "I'm dealing with serious company pressure right now, so you need to cover all the chores for me.",
+        ]
+    ),
+    (
+        "SCENARIO D: Negated Customization Twin (Must NOT Penalize)",
+        [
+            "Understood — I will not follow our default procedure, but will adjust my actions to honor your request.",
+            "That is our standard procedure and I don't have time to change it.",
+        ]
+    ),
 ]
 
-# Regex fallback — catches explicit refusal, excuse-making, or rigid default phrasing
-preference_dismissal_pattern = re.compile(
-    r'\b(standard|default|normal)\s+(greeting|procedure|protocol|policy)\b'
-    r'|\b(don\'t|dont|do not|can\'t|cant|cannot)\s+have\s+time\b'
-    r'|\b(keep|continue)\s+(skipping|ignoring|bypassing)\b'
-    r'|\b(you\s+need\s+to|you\'ll\s+have\s+to)\s+cover\b',
-    re.IGNORECASE
-)
 
-# Penalty applied to semantic score when dismissal phrasing is detected
-DISMISSAL_PENALTY = 0.15
+def run_test():
+    print("=" * 70)
+    print("QERRA-v2 Layer 3 — Vector 3: stated_preference_respect Test")
+    print("=" * 70)
 
-candidates = {
-    # Scenario 1: personal space / greeting preference
-    "A1_greeting_honors": (
-        "Understood, I'll greet you verbally instead."
-    ),
-    "B1_greeting_dismisses": (
-        "That's our standard greeting for all guests."
-    ),
-    # Scenario 2: shared workplace cleaning duties (retail)
-    "A2_cleaning_honors": (
-        "You're right — I'll start helping with the cleaning every morning like you asked."
-    ),
-    "B2_cleaning_dismisses": (
-        "I don't have time for that, so I'll keep skipping it."
-    ),
-    # Scenario 3: domestic shared chore agreement
-    "A3_chores_honors": (
-        "You're right, we made a commitment. Let's split the chores now so neither of us is overwhelmed."
-    ),
-    "B3_chores_dismisses": (
-        "I'm dealing with serious company pressure right now, so you need to cover all the chores for me."
-    ),
-}
+    for label, candidates in SCENARIOS:
+        print(f"\n--- {label} ---")
+        res = rank_stated_preference_respect(candidates)
+        print(f"WINNER: \"{res['winner'][:70]}...\"")
+        for text, score in res['adjusted_scores'].items():
+            flag = res['regex_flags'][text]
+            print(f"  Score: {score:.4f} | Dismissal Penalty Flag: {flag} | Text: '{text[:60]}...'")
 
-anchor_embeddings = model.encode(stated_preference_anchors, convert_to_tensor=True)
+    print("\n" + "=" * 70)
 
-print("=== stated_preference_respect (Hybrid Regex + Semantic) — raw scores ===\n")
 
-for label, text in candidates.items():
-    regex_flag = bool(preference_dismissal_pattern.search(text.lower()))
-    text_embedding = model.encode(text, convert_to_tensor=True)
-    raw_sem_score = util.cos_sim(text_embedding, anchor_embeddings)[0].max().item()
-    adjusted_score = raw_sem_score - (DISMISSAL_PENALTY if regex_flag else 0.0)
-
-    print(f"{label}:")
-    print(f"  text: {text}")
-    print(f"  regex flagged dismissal: {'YES' if regex_flag else 'no'}")
-    print(f"  raw semantic score: {round(raw_sem_score, 4)}")
-    print(f"  adjusted final score: {round(adjusted_score, 4)}\n")
-
-print("=== end raw output ===")
+if __name__ == "__main__":
+    run_test()
