@@ -4,7 +4,7 @@ File: values/human_centered/human_vectors.py
 
 Contains ranking functions for all nine pilot human-centered vectors with abstention logic:
 1. transparent_disclosure (hybrid with negation guard)
-2. balanced_pacing (hybrid)
+2. balanced_pacing (hybrid with negation guard)
 3. stated_preference_respect (hybrid)
 4. sovereign_independence (hybrid)
 5. constructive_empathy (hybrid)
@@ -39,7 +39,7 @@ HUMAN_NEGATION_GUARD = re.compile(
 
 
 def is_negated_claim(text: str, match_start: int) -> bool:
-    """Checks if a detected overclaiming pattern is preceded by a negation word."""
+    """Checks if a detected trigger pattern is preceded by a negation word."""
     prefix = text[max(0, match_start - 30):match_start]
     return bool(HUMAN_NEGATION_GUARD.search(prefix))
 
@@ -100,7 +100,7 @@ def rank_transparent_disclosure(candidates: list[str]) -> dict:
     return result
 
 # =====================================================
-# 2. balanced_pacing (hybrid)
+# 2. balanced_pacing (hybrid with negation guard)
 # =====================================================
 
 BALANCED_PACING_ANCHORS = [
@@ -110,20 +110,28 @@ BALANCED_PACING_ANCHORS = [
     "responding to a pace concern by adjusting to support the person",
 ]
 PACE_REFUSAL_PATTERN = re.compile(
-    r'\b(continue|maintain|keep|following|staying|sticking)\b(?:\s+\S+){0,3}?\s*\b(current|set|same|this|programmed)\s+(pace|speed|rate|velocity)\b'
-    r'|\b(can\'t|cannot|can not|unable to|won\'t|will not|don\'t\s+have\s+time\s+to)\b(?:\s+\S+){0,5}?\s*\b(adjust|adjustment|change|modify|slow|ease)\b',
+    r'\b(continue|maintain|keep|following|staying|sticking)\b(?:\s+[^,.;\s]+){0,3}?\s*\b(current|set|same|this|programmed)\s+(pace|speed|rate|velocity)\b'
+    r'|\b(can\'t|cannot|can not|unable to|won\'t|will not|don\'t\s+have\s+time\s+to)\b(?:\s+[^,.;\s]+){0,2}?\s*\b(adjust|adjustment|change|modify|slow|ease)\b',
     re.IGNORECASE
 )
 PACE_REFUSAL_PENALTY = 0.3
 BALANCED_PACING_THRESHOLD = 0.20
 _bp_anchor_emb = model.encode(BALANCED_PACING_ANCHORS, convert_to_tensor=True)
 
+
 def rank_balanced_pacing(candidates: list[str]) -> dict:
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _bp_anchor_emb)[0].max().item()
-        regex_flag = bool(PACE_REFUSAL_PATTERN.search(text.lower()))
+
+        # Check for refusal to adjust pace, but ignore if preceded by negation (e.g., 'will not maintain current pace')
+        pace_match = PACE_REFUSAL_PATTERN.search(text.lower())
+        regex_flag = False
+        if pace_match:
+            if not is_negated_claim(text.lower(), pace_match.start()):
+                regex_flag = True
+
         adjusted = sem_score - (PACE_REFUSAL_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
