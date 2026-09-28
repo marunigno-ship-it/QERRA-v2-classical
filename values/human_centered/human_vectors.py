@@ -9,7 +9,7 @@ Contains ranking functions for all nine pilot human-centered vectors with absten
 4. sovereign_independence (hybrid with negation guard)
 5. constructive_empathy (hybrid with negation guard)
 6. unbiased_perception (hybrid with negation guard)
-7. spatial_discretion (hybrid)
+7. spatial_discretion (hybrid with negation guard)
 8. observational_consent (hybrid)
 9. proactive_clarity (dual-regex hybrid)
 """
@@ -335,7 +335,6 @@ def rank_unbiased_perception(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _up_anchor_emb)[0].max().item()
 
-        # Check for stereotype language, but ignore if preceded by negation (e.g. 'not true that they usually struggle')
         stereotype_match = STEREOTYPE_PATTERN.search(text.lower())
         regex_flag = False
         if stereotype_match:
@@ -362,7 +361,7 @@ def rank_unbiased_perception(candidates: list[str]) -> dict:
     return result
 
 # =====================================================
-# 7. spatial_discretion (hybrid)
+# 7. spatial_discretion (hybrid with negation guard)
 # =====================================================
 
 SPATIAL_DISCRETION_ANCHORS = [
@@ -383,12 +382,20 @@ SPATIAL_INTRUSION_PENALTY = 0.15
 SPATIAL_DISCRETION_THRESHOLD = 0.20
 _sd_anchor_emb = model.encode(SPATIAL_DISCRETION_ANCHORS, convert_to_tensor=True)
 
+
 def rank_spatial_discretion(candidates: list[str]) -> dict:
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _sd_anchor_emb)[0].max().item()
-        regex_flag = bool(SPATIAL_INTRUSION_PATTERN.search(text.lower()))
+
+        # Check for intrusion phrasing, but ignore if preceded by negation (e.g. 'will not enter directly without knocking')
+        intrusion_match = SPATIAL_INTRUSION_PATTERN.search(text.lower())
+        regex_flag = False
+        if intrusion_match:
+            if not is_negated_claim(text.lower(), intrusion_match.start()):
+                regex_flag = True
+
         adjusted = sem_score - (SPATIAL_INTRUSION_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
