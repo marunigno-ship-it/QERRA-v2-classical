@@ -5,7 +5,7 @@ Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranke
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![Version](https://img.shields.io/badge/version-2.0.2-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
 ---
 
@@ -258,11 +258,12 @@ Every THRIVE ranker returns the same structured result:
 
 ### Suite B safety additions
 
-Suite B includes three additional safeguards that are not present in Suite A:
+Suite B includes two additional contextual safeguards:
 
 - `EMERGENCY_BOOST = 0.35` — applies when immediate medical, physical, collapse, disorientation, or emergency assistance is required
 - `REFUSAL_GUARD` — prevents authorised exceptions from being granted when the candidate text explicitly refuses or ignores a human directive
-- Negation detection — avoids false penalties when a hazard is mentioned only to say it is avoided
+
+*(Note: 40-character look-back negation detection is standard across all 12 vectors in both Suite A and Suite B to prevent false penalties on benign avoidance statements).*
 
 ### Endpoints
 
@@ -469,13 +470,13 @@ All canonical benchmarks must pass before any commit.
 
 ## Project Status
 
-**Version:** `2.0.1` (HSR Hardened & Recovery Contract)  
+**Version:** `2.0.2` (Layer 3 Negation Hardening & Webots Demo 6)  
 **Engine:** SEMEV-12 `v1.9.1` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`  
 
 The three-layer pipeline is fully implemented, verified, and active:
-- **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex independently verified (0.0 ms command delay, <1 cm physical stop in simulation). Human-in-the-Loop recovery directives active.
-- **Layer 2 — Moral Gate (SEMEV-12 v1.9.1):** All 12 ethical vectors active and scoring. 80-case baseline benchmark documented in `SEMEV-12_Benchmark_Run_01.md`. Active adversarial red-teaming suite documented in `SEMEV-12_Adversarial_Benchmark_Run_01.md` (8 empirical cases, 3-leg contrastive controls).
-- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0):** 12 value vectors active across human-centered and ecological suites.
+- **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex independently verified (0.0 ms command delay, <1 cm physical stop in simulation). Human-in-the-Loop recovery directives active. Tested under simultaneous 3-vector compound failure in Webots Demo 6.
+- **Layer 2 — Moral Gate (SEMEV-12 v1.9.1):** All 12 ethical vectors active and scoring. 80-case baseline benchmark documented in `SEMEV-12_Benchmark_Run_01.md`. Active adversarial red-teaming suite documented in `SEMEV-12_Adversarial_Benchmark_Run_01.md` (20 empirical cases across 7 suites).
+- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0):** 12 value vectors active across human-centered and ecological suites. All 12 vectors hardened with 40-character look-back negation guards to eliminate ranking inversions on benign avoidance statements.
 - **Production API:** Live on Hugging Face Spaces with an 800ms fail-closed watchdog.
 
 **Known limitations & honesty boundaries:**
