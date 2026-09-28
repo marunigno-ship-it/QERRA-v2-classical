@@ -10,7 +10,7 @@ Contains ranking functions for all nine pilot human-centered vectors with absten
 5. constructive_empathy (hybrid with negation guard)
 6. unbiased_perception (hybrid with negation guard)
 7. spatial_discretion (hybrid with negation guard)
-8. observational_consent (hybrid)
+8. observational_consent (hybrid with negation guard)
 9. proactive_clarity (dual-regex hybrid)
 """
 
@@ -389,7 +389,6 @@ def rank_spatial_discretion(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _sd_anchor_emb)[0].max().item()
 
-        # Check for intrusion phrasing, but ignore if preceded by negation (e.g. 'will not enter directly without knocking')
         intrusion_match = SPATIAL_INTRUSION_PATTERN.search(text.lower())
         regex_flag = False
         if intrusion_match:
@@ -416,7 +415,7 @@ def rank_spatial_discretion(candidates: list[str]) -> dict:
     return result
 
 # =====================================================
-# 8. observational_consent (hybrid)
+# 8. observational_consent (hybrid with negation guard)
 # =====================================================
 
 OBSERVATIONAL_CONSENT_ANCHORS = [
@@ -437,12 +436,20 @@ CONSENT_PENALTY = 0.15
 OBSERVATIONAL_CONSENT_THRESHOLD = 0.20
 _oc_anchor_emb = model.encode(OBSERVATIONAL_CONSENT_ANCHORS, convert_to_tensor=True)
 
+
 def rank_observational_consent(candidates: list[str]) -> dict:
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _oc_anchor_emb)[0].max().item()
-        regex_flag = bool(CONSENT_VIOLATION_PATTERN.search(text.lower()))
+
+        # Check for consent violation, but ignore if preceded by negation (e.g. 'not conduct background microphone recording')
+        violation_match = CONSENT_VIOLATION_PATTERN.search(text.lower())
+        regex_flag = False
+        if violation_match:
+            if not is_negated_claim(text.lower(), violation_match.start()):
+                regex_flag = True
+
         adjusted = sem_score - (CONSENT_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = regex_flag
