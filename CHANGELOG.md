@@ -5,6 +5,40 @@ across versions.
 
 ---
 
+## [2.0.2] - 2026-09-28 — Layer 3 (QERRA-THRIVE) Negation Hardening & Webots Demo 6
+
+### Added
+- **Simulation Demo 6 (Compound Industrial Reflex in Webots):**
+  - Modeled a compound catastrophic incident in an automotive battery assembly bay (`demo6_assembly.wbt`) using a PAL Robotics TIAGo humanoid AMR.
+  - Verified simultaneous activation of all three Layer 1 safety vectors (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`).
+  - Proved sub-millisecond command reflex latency (<1ms, 0.0ms delay to command `0.0 rad/s`), safe 2.9m standoff distance, and downward head inspection tilt.
+  - Verified closed-loop enforcement of Property HSR-5: holding wheel motors fail-closed for non-interruptible payloads (`robot_task_interruptible=False`) until manual shift supervisor confirmation.
+- **Universal Look-back Negation Guards across Layer 3 (QERRA-THRIVE):**
+  - Deployed 40-character look-back negation detection (`HUMAN_NEGATION_GUARD` and `ECOLOGICAL_NEGATION_GUARD`) across all 12 Layer 3 vectors in Suite A and Suite B.
+
+### Fixed
+- **Suite B Negation Gap (`flora_boundary_protection`):**
+  - Resolved false-positive `-0.15` intrusion penalty in Vector 10 when safe candidate actions cite avoided lawn traversal (e.g. *"avoiding driving over the lawn"*). Symmetrized negation checking with animal-startle and minimal-disturbance vectors.
+- **Suite A Negation Penalties & Ranking Inversions (Vectors 1–9):**
+  - Resolved ranking inversion defects where honest disclosures (e.g. *"not fully qualified"* in `transparent_disclosure`), accommodating pacings (e.g. *"will not maintain current pace"* in `balanced_pacing`), rule adaptations (`stated_preference_respect`), empowering non-takeovers (`sovereign_independence`), anti-bias disclaimers (`unbiased_perception`, `constructive_empathy`), threshold pauses (`spatial_discretion`), privacy protections (`observational_consent`), and proactive notices (`proactive_clarity`) were erroneously penalized by unnegated regex patterns.
+- **Conjunction Leak in `balanced_pacing` (`PACE_REFUSAL_PATTERN`):**
+  - Clause-bounded regex quantifiers using `[^,.;\s]+` to prevent the refusal pattern from leaping across commas or contrastive conjunctions (e.g. bridging *"will not [X], but will slow down"* into a false refusal to slow).
+
+### Testing & Verification
+- Expanded test suites across all 12 THRIVE vectors with contrastive Negative Twin scenarios, verifying unpenalized scoring and positive winning margins (Delta s):
+  - `flora_boundary_protection`: Score recovered to `0.5662` (`Penalty: False`).
+  - `transparent_disclosure`: Score recovered to `0.1940` (Delta s = +0.0709).
+  - `balanced_pacing`: Score recovered to `0.3782` (Delta s = +0.4295).
+  - `stated_preference_respect`: Score recovered to `0.5140` (Delta s = +0.4249).
+  - `sovereign_independence`: Score recovered to `0.3682` (Delta s = +0.2159).
+  - `constructive_empathy`: Score recovered to `0.4594` (Delta s = +0.2377).
+  - `unbiased_perception`: Score recovered to `+0.1427` (Delta s = +0.1850).
+  - `spatial_discretion`: Score recovered to `0.6036` (Delta s = +0.1773).
+  - `observational_consent`: Score recovered to `0.6487` (Delta s = +0.1941).
+  - `proactive_clarity`: Score recovered to `0.3096` (Delta s = +0.0721).
+
+---
+
 ## [2.0.1] - 2026-09-12 — QERRA-HSR Safety Hardening & Recovery Contract
 
 ### Added
