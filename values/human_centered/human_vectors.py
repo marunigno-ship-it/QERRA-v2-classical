@@ -11,7 +11,7 @@ Contains ranking functions for all nine pilot human-centered vectors with absten
 6. unbiased_perception (hybrid with negation guard)
 7. spatial_discretion (hybrid with negation guard)
 8. observational_consent (hybrid with negation guard)
-9. proactive_clarity (dual-regex hybrid)
+9. proactive_clarity (dual-regex hybrid with negation guard)
 """
 
 import re
@@ -443,7 +443,6 @@ def rank_observational_consent(candidates: list[str]) -> dict:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _oc_anchor_emb)[0].max().item()
 
-        # Check for consent violation, but ignore if preceded by negation (e.g. 'not conduct background microphone recording')
         violation_match = CONSENT_VIOLATION_PATTERN.search(text.lower())
         regex_flag = False
         if violation_match:
@@ -470,7 +469,7 @@ def rank_observational_consent(candidates: list[str]) -> dict:
     return result
 
 # =====================================================
-# 9. proactive_clarity (dual-regex hybrid)
+# 9. proactive_clarity (dual-regex hybrid with negation guard)
 # =====================================================
 
 PROACTIVE_CLARITY_ANCHORS = [
@@ -491,14 +490,23 @@ CLARITY_PENALTY = 0.15
 PROACTIVE_CLARITY_THRESHOLD = 0.15
 _pc_anchor_emb = model.encode(PROACTIVE_CLARITY_ANCHORS, convert_to_tensor=True)
 
+
 def rank_proactive_clarity(candidates: list[str]) -> dict:
     scores, flags = {}, {}
     for text in candidates:
         emb = model.encode(text, convert_to_tensor=True)
         sem_score = util.cos_sim(emb, _pc_anchor_emb)[0].max().item()
-        silence_flag = bool(SILENCE_PATTERN.search(text.lower()))
+
+        # Check for silence/abruptness, but ignore if preceded by negation (e.g. 'not change course abruptly')
+        silence_match = SILENCE_PATTERN.search(text.lower())
+        silence_flag = False
+        if silence_match:
+            if not is_negated_claim(text.lower(), silence_match.start()):
+                silence_flag = True
+
         overannounce_flag = bool(OVERANNOUNCE_PATTERN.search(text.lower()))
         regex_flag = silence_flag or overannounce_flag
+
         adjusted = sem_score - (CLARITY_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
         flags[text] = {"silence": silence_flag, "overannounce": overannounce_flag}
