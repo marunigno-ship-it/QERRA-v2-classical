@@ -3,7 +3,7 @@
 # Version: 2.0.0 (Hardened & Watchdog-Protected)
 # Three-layer architecture:
 #   Layer 2 — QERRA-HSR v0.1 (physical safety, pure Python)
-#   Layer 1 — SEMEV-12 v1.9.0 (moral deliberation, semantic batch)
+#   Layer 1 — SEMEV-12 v1.9.1 (moral deliberation, semantic batch)
 #   Layer 3 — QERRA-THRIVE v2.0.0 (values companion, action ranker)
 #
 # Unified Pipeline (Filter-First Architecture with 800ms Fail-Closed Watchdog):
@@ -360,7 +360,7 @@ def home():
         "message": "Three-layer ethical, physical, and value-based safety middleware",
         "layers": {
             "qerra_hsr": "Layer 2 — Physical safety — v0.1 — 3 vectors pure Python",
-            "semev12": "Layer 1 — Moral deliberation — v1.9.0 — 12 vectors semantic batch",
+            "semev12": "Layer 1 — Moral deliberation — v1.9.1 — 12 vectors semantic batch",
             "qerra_thrive": "Layer 3 — Value action ranker — v2.0.0 — 12 vectors hybrid"
         },
         "endpoints": {
@@ -379,7 +379,7 @@ def health():
         "semev12_vectors_loaded": len(vectors),
         "thrive_vectors_loaded": len(values.ALL_THRIVE_VECTORS),
         "framework": "QERRA-v2 Classical Edition",
-        "semev12_version": "1.9.0",
+        "semev12_version": "1.9.1",
         "qerra_hsr_version": "0.1",
         "qerra_thrive_version": "2.0.0",
         "watchdog_timeout_ms": 800
