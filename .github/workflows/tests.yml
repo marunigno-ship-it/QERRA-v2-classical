@@ -12,6 +12,8 @@ jobs:
     container:
       image: python:3.10-slim
     timeout-minutes: 20
+    env:
+      QERRA_API_KEY: "TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765"
 
     steps:
       - uses: actions/checkout@v4
