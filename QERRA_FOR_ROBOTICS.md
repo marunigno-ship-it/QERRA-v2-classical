@@ -8,7 +8,7 @@ It pairs a pure Python physical reflex layer (QERRA-HSR) with a bounded moral de
 - **Sub-Millisecond Physical Reflex (QERRA-HSR):** Pure Python threshold logic running at 0.0 ms command delay (<1 cm physical stop in simulation). Enforces an active recovery contract: routine tasks auto-resume when clear, while delicate tasks hold still until a human confirms it is safe to continue.
 - **Deterministic Moral Refusal (SEMEV-12):** Evaluates 12 ethical dimensions on local CPU (~25ms). If a command is coercive or abusive, the robot halts and physically shakes its head "No" in simulation.
 - **ROS 2 & Behavior Tree Native:** Non-blocking Action Server (`/qerra/evaluate`, type `qerra_msgs/action/QerraEvaluate`) and PyTrees Condition leaf nodes.
-- **Simulation Validated:** Tested across 5 published PAL Robotics TIAGo AMR scenarios in Webots.
+- **Simulation Validated:** Tested across 6 published PAL Robotics TIAGo AMR scenarios in Webots.
 - **Zero Generative Hallucination:** No generative models in the decision loop. Every evaluation outputs exact triggered vectors, human-readable reasoning strings, and raw similarity metrics.
 ---
 
