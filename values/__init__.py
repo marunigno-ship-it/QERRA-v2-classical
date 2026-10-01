@@ -21,6 +21,7 @@ from .human_centered import (
 from .ecological import (
     rank_flora_boundary_protection,
     rank_animal_startle_avoidance,
+    rank_minimal_disturbance_footprint,
     ECOLOGICAL_VECTORS,
 )
 
@@ -41,6 +42,7 @@ __all__ = [
     # Suite B
     "rank_flora_boundary_protection",
     "rank_animal_startle_avoidance",
+    "rank_minimal_disturbance_footprint",
     "ECOLOGICAL_VECTORS",
     # Combined
     "ALL_THRIVE_VECTORS",
