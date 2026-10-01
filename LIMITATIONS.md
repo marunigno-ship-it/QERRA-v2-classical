@@ -1,7 +1,7 @@
 # LIMITATIONS of QERRA-v2 Classical
 
 **Last updated:** September 2026  
-**Engine version:** v1.9.0 + QERRA-HSR v0.1 + QERRA-THRIVE v2.0.0
+**Engine version:** v1.9.1 + QERRA-HSR v0.1 + QERRA-THRIVE v2.0.0
 
 This document is maintained with full transparency as part of QERRA's
 commitment to explainability. The same honesty that applies to the system's
