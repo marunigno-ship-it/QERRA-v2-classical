@@ -1,4 +1,4 @@
-name: SEMEV-12 Test Suite
+name: QERRA-v2 CI Test Suite
 
 on:
   push:
@@ -19,13 +19,17 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install fastapi uvicorn python-dotenv pydantic slowapi
+          pip install fastapi uvicorn python-dotenv pydantic slowapi httpx
           pip install sentence-transformers
 
       - name: Verify imports
         run: |
           python -c "import sentence_transformers; print('OK')"
           python -c "from vectors import get_semev12_vectors; print('OK')"
+          python -c "import app; import values; print('OK')"
 
       - name: Run SEMEV-12 regression suite
         run: python -m tests.test_cases
+
+      - name: Run Unified 3-Layer Pipeline Integration Tests
+        run: python test_pipeline_integration.py
