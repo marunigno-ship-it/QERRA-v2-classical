@@ -18,7 +18,7 @@ A mobile robot should never rely on an unpredictable neural network to make life
 QERRA solves this by splitting safety into three separate, accountable jobs that run in a strict sequence:
 
 1. **The Physical Reflex (QERRA-HSR):**  
-   Pure Python, zero-ML threshold logic that protects human life and machine hardware. It monitors distress telemetry, human isolation, and physical hazards. If someone is in danger, it clamps wheel motors in under 1 millisecond (independently measured at **0.0 ms command delay**, stopping in **~0.9 cm** at 0.33 m/s in simulation). Once conditions clear across a 1.0-second cooldown, routine tasks resume automatically, while delicate tasks hold still until a human confirms it is safe to continue.
+   Pure Python, zero-ML threshold logic that protects human life and machine hardware. It monitors distress telemetry, human isolation, and physical hazards.  If someone is in danger, it clamps wheel motors in under 1 millisecond (measured at 0.0 ms command delay in Webots R2025a simulation, stopping in ~0.9 cm at 0.33 m/s).Once conditions clear across a 1.0-second cooldown, routine tasks resume automatically, while delicate tasks hold still until a human confirms it is safe to continue.
 
 2. **The Moral Conscience (SEMEV-12):**  
    A 12-dimensional ethical filter that evaluates text instructions before the robot moves. If someone orders the robot to do something abusive, deceptive, or coercive (such as forcing a worker through a break or falsifying safety records), the robot refuses the command, illuminates an amber LED, logs the refusal reason, and **physically shakes its head "No"** in simulation.
@@ -359,7 +359,7 @@ running live against a PAL Robotics TIAGo humanoid:
   it crosses the hazard boundary.
 
 > **Commanded Reflex Latency vs. Physical Braking Distance:**  
-> QERRA-HSR guarantees sub-millisecond software reflex latency (<1ms, independently verified at 0.0ms delay to command `velocity = 0.0`). Physical stopping distance is governed by actuator dynamics and Newtonian momentum, cleanly decoupled from the deterministic safety layer — independently measured by third-party simulator testing at ~0.9 cm over ~0.08s at 0.33 m/s cruise speed on a 56.58 kg four-wheeled test platform (not the TIAGo shown in this demo).
+> QERRA-HSR guarantees sub-millisecond software reflex latency (<1ms, measured at 0.0ms delay to command velocity = 0.0 in simulation). Physical stopping distance is governed by actuator dynamics and Newtonian momentum, cleanly decoupled from the deterministic safety layer — measured in Webots R2025a simulation at ~0.9 cm over ~0.08s at 0.33 m/s cruise speed on a 56.58 kg four-wheeled test platform (not the TIAGo shown in this demo).
 >
 > **Human-in-the-Loop Recovery Directive:**  
 > Once safe conditions hold steady across the 1.0s dwell window (`CLEAR`), QERRA issues a `recovery_directive`: routine tasks (`robot_task_interruptible=True`) are cleared to resume autonomously (`"Clear now — resume as normal."`), whereas delicate or high-consequence tasks (`robot_task_interruptible=False`) enforce human oversight by design (`"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."`).
@@ -474,7 +474,7 @@ All canonical benchmarks must pass before any commit.
 **Engine:** SEMEV-12 `v1.9.1` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`  
 
 The three-layer pipeline is fully implemented, verified, and active:
-- **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex independently verified (0.0 ms command delay, <1 cm physical stop in simulation). Human-in-the-Loop recovery directives active. Tested under simultaneous 3-vector compound failure in Webots Demo 6.
+- **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex measured in Webots R2025a simulation (0.0 ms command delay, <1 cm physical stop). Human-in-the-Loop recovery directives active. Tested under simultaneous 3-vector compound failure in Webots Demo 6.
 - **Layer 2 — Moral Gate (SEMEV-12 v1.9.1):** All 12 ethical vectors active and scoring. 80-case baseline benchmark documented in `SEMEV-12_Benchmark_Run_01.md`. Active adversarial red-teaming suite documented in `SEMEV-12_Adversarial_Benchmark_Run_01.md` (20 empirical cases across 7 suites).
 - **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0):** 12 value vectors active across human-centered and ecological suites. All 12 vectors hardened with 40-character look-back negation guards to eliminate ranking inversions on benign avoidance statements.
 - **Production API:** Live on Hugging Face Spaces with an 800ms fail-closed watchdog.
