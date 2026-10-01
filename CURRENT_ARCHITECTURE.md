@@ -89,8 +89,8 @@ QERRA-v2 Classical provides two dedicated PyTrees Behavior nodes:
 The execution sequence before a robot commits to an action:
 
 ```
-[1. Layer 1 QERRA-HSR (Reflexive Safety)] ──► [2. Layer 3 THRIVE (Action Ranker)] ──► [3. Layer 2 SEMEV-12 (Moral Gate)] ──► [Execution]
-Sub-1ms physical check                         Selects winning candidate action        Evaluates winning text for harm/coercion      Task executes if SAFE
+[1. Layer 1 QERRA-HSR (Reflexive Safety)] ──► [2. Layer 2 SEMEV-12 (Moral Gate)] ──► [3. Layer 3 THRIVE (Action Ranker)] ──► [Execution]
+Sub-1ms physical check                         Filters coercive/harmful candidates      Ranks only surviving safe candidates          Winning safe action commits
 ```
 
 **Four Core Interaction Rules:**
