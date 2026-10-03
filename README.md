@@ -39,8 +39,7 @@ All safety decisions are deterministic, inspectable, and auditable. Every result
 - **Attribution**: Any commercial use, research citation, or modification must clearly credit the author and link to the original repository.
 - **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are the original creation and codebase of the author. The project is timestamped and permanently archived on Zenodo.
   
-  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.22077843
-
+  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23120335
 ## Quickstart
 
 **Public example endpoint** (no API key required):
