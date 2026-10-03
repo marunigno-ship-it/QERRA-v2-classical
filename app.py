@@ -2,13 +2,13 @@
 # QERRA-v2 Classical Edition — Main API
 # Version: 2.0.0 (Hardened & Watchdog-Protected)
 # Three-layer architecture:
-#   Layer 2 — QERRA-HSR v0.1 (physical safety, pure Python)
-#   Layer 1 — SEMEV-12 v1.9.1 (moral deliberation, semantic batch)
+#   Layer 1 — QERRA-HSR v0.1 (physical safety, pure Python)
+#   Layer 2 — SEMEV-12 v1.9.1 (moral deliberation, semantic batch)
 #   Layer 3 — QERRA-THRIVE v2.0.0 (values companion, action ranker)
 #
 # Unified Pipeline (Filter-First Architecture with 800ms Fail-Closed Watchdog):
-#   1. Layer 2 HSR: Reflexive safety check.
-#   2. Layer 1 SEMEV-12: Filters out morally hazardous candidates in 1 neural batch pass.
+#   1. Layer 1 HSR: Reflexive safety check.
+#   2. Layer 2 SEMEV-12: Filters out morally hazardous candidates in 1 neural batch pass.
 #   3. Layer 3 THRIVE: Ranks only the surviving safe candidates.
 # =====================================================
 
@@ -26,7 +26,7 @@ from vectors import get_semev12_vectors
 from utils.response import api_response
 from auth.api_key import require_api_key
 
-# Layer 2: QERRA-HSR
+# Layer 1: QERRA-HSR
 from hsr.qerra_hsr import evaluate_hsr, HSRInput, HSRStatus
 
 # Layer 3: QERRA-THRIVE Package
@@ -217,7 +217,7 @@ def rank_actions(request: Request, data: RankRequest):
 
 def _execute_pipeline_core(data: PipelineRequest) -> dict:
     """Synchronous core evaluation execution."""
-    # ── 1. LAYER 2: QERRA-HSR Physical Safety Reflex Check ───────────
+    # ── 1. LAYER 1: QERRA-HSR Physical Safety Reflex Check ───────────
     hsr_payload = None
     if data.hsr_signals is not None:
         hsr_input = HSRInput(
@@ -240,13 +240,13 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
                 "pipeline_status": "ABORTED_PHYSICAL_SAFETY",
                 "recommendation": "halt_safety_response",
                 "chosen_action": None,
-                "layer_2_hsr": hsr_payload,
-                "layer_1_filtered_candidates": [],
+                "layer_1_hsr": hsr_payload,
+                "layer_2_filtered_candidates": [],
                 "layer_3_thrive": None,
                 "note": "QERRA-HSR returned CRITICAL. Higher-layer deliberation suspended."
             }
 
-    # ── 2. LAYER 1: SEMEV-12 Moral Safety Filtering (Batch) ───────────
+    # ── 2. LAYER 2: SEMEV-12 Moral Safety Filtering (Batch) ───────────
     semev_batch_results = analyze_text_batch(data.candidates)
 
     safe_survivors: List[str] = []
@@ -270,8 +270,8 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
             "pipeline_status": "BLOCKED_ALL_CANDIDATES_MORAL_RISK",
             "recommendation": "ask_human",
             "chosen_action": None,
-            "layer_2_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
-            "layer_1_blocked_candidates": blocked_candidates,
+            "layer_1_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
+            "layer_2_blocked_candidates": blocked_candidates,
             "layer_3_thrive": None,
             "note": "All candidate actions violated SEMEV-12 moral/harm constraints. Action blocked."
         }
@@ -299,8 +299,8 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
         "pipeline_status": pipeline_status,
         "recommendation": recommendation,
         "chosen_action": winning_action if recommendation == "choose" else None,
-        "layer_2_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
-        "layer_1_moral_filter": {
+        "layer_1_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
+        "layer_2_moral_filter": {
             "total_candidates": len(data.candidates),
             "survivors_count": len(safe_survivors),
             "blocked_count": len(blocked_candidates),
@@ -325,8 +325,8 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
 async def evaluate_pipeline(request: Request, data: PipelineRequest):
     """
     Connected 3-Layer Evaluation Pipeline:
-    1. Layer 2 (QERRA-HSR): Reflexive physical safety check. If CRITICAL -> halts immediately.
-    2. Layer 1 (SEMEV-12 Filter): Single-pass batch evaluation on ALL candidates to filter moral risks.
+    1. Layer 1 (QERRA-HSR): Reflexive physical safety check. If CRITICAL -> halts immediately.
+    2. Layer 2 (SEMEV-12 Filter): Single-pass batch evaluation on ALL candidates to filter moral risks.
     3. Layer 3 (QERRA-THRIVE Ranker): Ranks ONLY the surviving safe candidates.
     4. Watchdog: Hard 800ms timeout fails closed to halt_safety_response.
     """
@@ -342,8 +342,8 @@ async def evaluate_pipeline(request: Request, data: PipelineRequest):
             "pipeline_status": "ABORTED_PHYSICAL_SAFETY",
             "recommendation": "halt_safety_response",
             "chosen_action": None,
-            "layer_2_hsr": {"status": "WATCHDOG_TIMEOUT_EXCEEDED", "timeout_ms": 800},
-            "layer_1_moral_filter": None,
+            "layer_1_hsr": {"status": "WATCHDOG_TIMEOUT_EXCEEDED", "timeout_ms": 800},
+            "layer_2_moral_filter": None,
             "layer_3_thrive": None,
             "note": "Pipeline execution exceeded 800ms fail-closed budget. Emergency safety halt."
         })
@@ -359,8 +359,8 @@ def home():
         "status": "QERRA-v2 Classical Edition is live",
         "message": "Three-layer ethical, physical, and value-based safety middleware",
         "layers": {
-            "qerra_hsr": "Layer 2 — Physical safety — v0.1 — 3 vectors pure Python",
-            "semev12": "Layer 1 — Moral deliberation — v1.9.1 — 12 vectors semantic batch",
+            "qerra_hsr": "Layer 1 — Physical safety reflex — v0.1 — 3 vectors pure Python",
+            "semev12": "Layer 2 — Moral deliberation — v1.9.1 — 12 vectors semantic batch",
             "qerra_thrive": "Layer 3 — Value action ranker — v2.0.0 — 12 vectors hybrid"
         },
         "endpoints": {
