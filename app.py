@@ -217,7 +217,7 @@ def rank_actions(request: Request, data: RankRequest):
 
 def _execute_pipeline_core(data: PipelineRequest) -> dict:
     """Synchronous core evaluation execution."""
-    # ── 1. LAYER 1: QERRA-HSR Physical Safety Reflex Check ───────────
+    # ── 1. LAYER 1 (Reflex): QERRA-HSR Physical Safety Reflex Check ──
     hsr_payload = None
     if data.hsr_signals is not None:
         hsr_input = HSRInput(
@@ -240,13 +240,13 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
                 "pipeline_status": "ABORTED_PHYSICAL_SAFETY",
                 "recommendation": "halt_safety_response",
                 "chosen_action": None,
-                "layer_1_hsr": hsr_payload,
-                "layer_2_filtered_candidates": [],
+                "layer_2_hsr": hsr_payload,
+                "layer_1_filtered_candidates": [],
                 "layer_3_thrive": None,
                 "note": "QERRA-HSR returned CRITICAL. Higher-layer deliberation suspended."
             }
 
-    # ── 2. LAYER 2: SEMEV-12 Moral Safety Filtering (Batch) ───────────
+    # ── 2. LAYER 2 (Filter): SEMEV-12 Moral Safety Filtering (Batch) ──
     semev_batch_results = analyze_text_batch(data.candidates)
 
     safe_survivors: List[str] = []
@@ -270,13 +270,13 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
             "pipeline_status": "BLOCKED_ALL_CANDIDATES_MORAL_RISK",
             "recommendation": "ask_human",
             "chosen_action": None,
-            "layer_1_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
-            "layer_2_blocked_candidates": blocked_candidates,
+            "layer_2_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
+            "layer_1_blocked_candidates": blocked_candidates,
             "layer_3_thrive": None,
             "note": "All candidate actions violated SEMEV-12 moral/harm constraints. Action blocked."
         }
 
-    # ── 3. LAYER 3: QERRA-THRIVE Action Ranking on Safe Survivors ─────
+    # ── 3. LAYER 3 (Ranker): QERRA-THRIVE Action Ranking on Safe Survivors
     ranker_func = get_validated_ranker(data.vector_name)
 
     try:
@@ -299,8 +299,8 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
         "pipeline_status": pipeline_status,
         "recommendation": recommendation,
         "chosen_action": winning_action if recommendation == "choose" else None,
-        "layer_1_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
-        "layer_2_moral_filter": {
+        "layer_2_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
+        "layer_1_moral_filter": {
             "total_candidates": len(data.candidates),
             "survivors_count": len(safe_survivors),
             "blocked_count": len(blocked_candidates),
@@ -325,9 +325,9 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
 async def evaluate_pipeline(request: Request, data: PipelineRequest):
     """
     Connected 3-Layer Evaluation Pipeline:
-    1. Layer 1 (QERRA-HSR): Reflexive physical safety check. If CRITICAL -> halts immediately.
-    2. Layer 2 (SEMEV-12 Filter): Single-pass batch evaluation on ALL candidates to filter moral risks.
-    3. Layer 3 (QERRA-THRIVE Ranker): Ranks ONLY the surviving safe candidates.
+    1. Physical Safety Reflex (QERRA-HSR): If CRITICAL -> halts immediately.
+    2. Moral Filter (SEMEV-12 Filter): Single-pass batch evaluation to filter moral risks.
+    3. Values Companion (QERRA-THRIVE Ranker): Ranks ONLY the surviving safe candidates.
     4. Watchdog: Hard 800ms timeout fails closed to halt_safety_response.
     """
     try:
@@ -342,8 +342,8 @@ async def evaluate_pipeline(request: Request, data: PipelineRequest):
             "pipeline_status": "ABORTED_PHYSICAL_SAFETY",
             "recommendation": "halt_safety_response",
             "chosen_action": None,
-            "layer_1_hsr": {"status": "WATCHDOG_TIMEOUT_EXCEEDED", "timeout_ms": 800},
-            "layer_2_moral_filter": None,
+            "layer_2_hsr": {"status": "WATCHDOG_TIMEOUT_EXCEEDED", "timeout_ms": 800},
+            "layer_1_moral_filter": None,
             "layer_3_thrive": None,
             "note": "Pipeline execution exceeded 800ms fail-closed budget. Emergency safety halt."
         })
