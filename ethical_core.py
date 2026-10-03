@@ -147,11 +147,16 @@ logger.info("Pre-encoding complete for all 12 multi-anchor arrays. Ready for eva
 # Negation helper
 # =====================================================
 NEGATION_PATTERN = r"\b(not|never|no|don't|dont|won't|wont|can't|cant|didn't|didnt|doesn't|doesnt|refuse|refuses|refused|refusing)\b"
+CLAUSE_BOUNDARY_PATTERN = re.compile(r'[\.\;\!\?\n]')
 
 
 def _find_unnegated(pattern: str, text: str, window_words: int = 4):
     for m in re.finditer(pattern, text):
-        preceding_words = text[:m.start()].split()[-window_words:]
+        snippet_before = text[:m.start()]
+        clauses = CLAUSE_BOUNDARY_PATTERN.split(snippet_before)
+        current_clause = clauses[-1] if clauses else snippet_before
+
+        preceding_words = current_clause.split()[-window_words:]
         preceding_snippet = " ".join(preceding_words)
         if not re.search(NEGATION_PATTERN, preceding_snippet):
             return m
