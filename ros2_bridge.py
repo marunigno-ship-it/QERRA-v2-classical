@@ -2,8 +2,8 @@
 # ros2_bridge.py
 # QERRA-v2 Classical — ROS 2 Action Server Bridge & Hybrid Engine
 # Version: 2.3 — Three-Layer Hybrid Evaluation Strategy:
-#                - Layer 2 QERRA-HSR v0.1 (physical safety, pure Python)
-#                - Layer 1 SEMEV-12 v1.9.0 (moral engine, semantic)
+#                - Layer 1 QERRA-HSR v0.1 (physical safety reflex, pure Python)
+#                - Layer 2 SEMEV-12 v1.9.1 (moral engine, semantic)
 #                - Layer 3 QERRA-THRIVE v2.0.0 (values action ranker, hybrid)
 #
 # Evaluation priority:
@@ -119,7 +119,7 @@ def _call_local_engine(
     stabilizer: StabilizedHSR | None = None,
 ) -> dict:
     """
-    Run local CPU evaluation (Layer 2 QERRA-HSR + Layer 1 SEMEV-12).
+    Run local CPU evaluation (Layer 1 QERRA-HSR + Layer 2 SEMEV-12).
     """
     if hsr_signals is not None:
         hsr_input = HSRInput(
@@ -331,9 +331,9 @@ if ROS2_AVAILABLE:
 
             except RuntimeError as e:
                 self.get_logger().error(f"Both evaluation paths failed: {e}")
-                result_msg.score = 0.25
+                result_msg.score = 1.0
                 result_msg.decision = "modified"
-                result_msg.score_explanation = "evaluation unavailable"
+                result_msg.score_explanation = "critical error: evaluation unavailable (fail-closed)"
                 result_msg.reasoning = f"Error: {e}"
                 result_msg.vectors_activated = []
                 result_msg.evaluation_source_local = False
