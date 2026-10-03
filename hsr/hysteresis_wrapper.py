@@ -67,12 +67,21 @@ class StabilizedHSR:
                 self._calm_reading_since = None
                 self._calm_candidate_status = None
             else:
-                # Reset dwell timer if the candidate status changes mid-dwell
-                if self._calm_candidate_status != raw_status or self._calm_reading_since is None:
+                # If we get an even calmer reading, adopt it without resetting the elapsed dwell time
+                if self._calm_reading_since is None:
                     self._calm_candidate_status = raw_status
                     self._calm_reading_since = now
-                elif now - self._calm_reading_since >= DWELL_SECONDS:
-                    self._current_status = raw_status
+                elif raw_severity < _SEVERITY[self._calm_candidate_status]:
+                    # Reading became even calmer (e.g. MONITOR -> CLEAR): adopt it, keep dwell timer rolling
+                    self._calm_candidate_status = raw_status
+                elif raw_severity > _SEVERITY[self._calm_candidate_status]:
+                    # Reading spiked back up toward danger: reset dwell timer
+                    self._calm_candidate_status = raw_status
+                    self._calm_reading_since = now
+
+                # Step down only once the dwell period is fully satisfied
+                if self._calm_reading_since is not None and (now - self._calm_reading_since >= DWELL_SECONDS):
+                    self._current_status = self._calm_candidate_status
                     self._calm_reading_since = None
                     self._calm_candidate_status = None
 
