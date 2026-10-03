@@ -509,7 +509,7 @@ def rank_proactive_clarity(candidates: list[str]) -> dict:
 
         adjusted = sem_score - (CLARITY_PENALTY if regex_flag else 0)
         scores[text] = round(adjusted, 4)
-        flags[text] = {"silence": silence_flag, "overannounce": overannounce_flag}
+        flags[text] = regex_flag
 
     winner = max(scores, key=scores.get)
     fires = bool(scores[winner] >= PROACTIVE_CLARITY_THRESHOLD)
