@@ -40,6 +40,7 @@ All safety decisions are deterministic, inspectable, and auditable. Every result
 - **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are the original creation and codebase of the author. The project is timestamped and permanently archived on Zenodo.
   
   **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23120335
+  **ORCID:** https://orcid.org/0009-0009-4100-9881
 ## Quickstart
 
 **Public example endpoint** (no API key required):
