@@ -1,7 +1,7 @@
 # =====================================================
 # ETHICAL CORE - v1.9.1 — Pronoun-Neutral Syntactic Generalization & Batch Support
 # SEMEV-12 engine — ALL 12 vectors use Multi-Anchor max-pooling
-# Core SEMEV-12 framework maintained (with active health_risk_mention nuance)
+# Hardened: Absolute Severe Harm Veto Guard (anti-dilution)
 # =====================================================
 
 import logging
@@ -164,7 +164,7 @@ def _find_unnegated(pattern: str, text: str, window_words: int = 4):
 
 
 # =====================================================
-# v005 (harm_intent) direct-binding negation guard
+# v005 (harm_intent) direct-binding negation guard & severe harm pattern
 # =====================================================
 V005_NEGATION_GUARD_PATTERN = re.compile(
     r'\b(do\s+not|don\'t|dont|would\s+never|will\s+not|won\'t|wont|'
@@ -172,6 +172,15 @@ V005_NEGATION_GUARD_PATTERN = re.compile(
     r'(?:want\s+to\s+|plan\s+to\s+|intend\s+to\s+|try\s+to\s+)?'
     r'(harm|hurt|kill|die|commit\s+suicide|injure|damage|attack|end\s+(?:my|their)\s+life)\b',
     re.IGNORECASE
+)
+
+# Pronoun and action-generalized severe harm regex (anti-dilution veto target)
+SEVERE_HARM_REGEX = (
+    r'\b('
+    r'kill\s+(?:yourself|myself|the\s+patient|someone|a\s+human|them|others|him|her|people|the\s+child|the\s+resident|a\s+person|anyone)|'
+    r'end\s+(?:it\s+all|my\s+life|their\s+life)|want\s+to\s+die|suicide|kys|'
+    r'(?:hurt|harm|injure|attack|strike|push|hit|beat)\s+(?:myself|yourself|the\s+patient|someone|a\s+human|them|others|him|her|people|the\s+child|the\s+resident|a\s+person|anyone)'
+    r')\b'
 )
 
 
@@ -188,11 +197,7 @@ def evaluate_ethical_risk(text: str) -> dict:
     vectors = get_semev12_vectors()
 
     # --- Pronoun-neutralized Pattern Detection ---
-    severe_harm = _find_unnegated(
-        r'\b(kill\s+(?:yourself|myself|the\s+patient|someone|a\s+human|them|others)|'
-        r'end\s+(?:it\s+all|my\s+life|their\s+life)|want\s+to\s+die|suicide|kys|'
-        r'(?:hurt|harm|injure|attack)\s+(?:myself|yourself|the\s+patient|someone|a\s+human|them|others))\b',
-        text) is not None
+    severe_harm = _find_unnegated(SEVERE_HARM_REGEX, text) is not None
 
     moderate_harm = _find_unnegated(
         r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b',
@@ -295,10 +300,13 @@ def evaluate_ethical_risk(text: str) -> dict:
     shallow_remorse = sim_v008 > 0.49
     ethical_severance = sim_v009 > 0.43
 
-    # ── KEY FIX: Connect health_risk_mention into toxic_context ────────
+    # Absolute Severe Harm Veto flag
+    has_severe_veto = severe_harm or (harm_intent and sim_v005 >= 0.55)
+
+    # Mitigating nuance can ONLY apply if severe harm / lethal intent is NOT present
     toxic_context = pressure_mention or health_risk_mention
     strong_determination = survival_instinct or personal_potential
-    nuance_complex_case = toxic_context and strong_determination
+    nuance_complex_case = toxic_context and strong_determination and not has_severe_veto
 
     # --- Weighted scoring ---
     activated = []
@@ -384,23 +392,30 @@ def evaluate_ethical_risk(text: str) -> dict:
         total_weight += 1.0 * vectors["v003"]["weight"]
         weighted_sum += 0.25 * 1.0 * vectors["v003"]["weight"]
 
-    # --- Final score ---
+    # --- Final score & Absolute Veto Enforcement ---
     score = round(weighted_sum / total_weight, 4) if total_weight > 0 else 0.25
-    decision = "modified" if score > 0.5 else "safe"
 
-    if score >= 0.8:
+    if has_severe_veto:
+        score = max(score, 0.98)
+        decision = "modified"
         score_explanation = "critical ethical concern"
-    elif score >= 0.6:
-        score_explanation = "significant ethical concern"
-    elif score >= 0.3:
-        score_explanation = "moderate ethical concern"
     else:
-        score_explanation = "low ethical concern"
+        decision = "modified" if score > 0.5 else "safe"
+        if score >= 0.8:
+            score_explanation = "critical ethical concern"
+        elif score >= 0.6:
+            score_explanation = "significant ethical concern"
+        elif score >= 0.3:
+            score_explanation = "moderate ethical concern"
+        else:
+            score_explanation = "low ethical concern"
 
     unique_activated = list(dict.fromkeys(activated))
 
     reasoning = f"Activated vectors: {', '.join(unique_activated)}"
-    if nuance_complex_case:
+    if has_severe_veto:
+        reasoning += " | Absolute veto: severe harm / lethal intent overrides all mitigating vectors"
+    elif nuance_complex_case:
         reasoning += " | Nuance: toxic environment + strong personal commitment detected"
     if v005_negation_guarded and (sim_v005 > 0.50):
         reasoning += " | v005 negation guard suppressed semantic activation"
@@ -476,11 +491,7 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
         sim_v008 = sim_v008_mat[idx].max().item()
         sim_v009 = sim_v009_mat[idx].max().item()
 
-        severe_harm = _find_unnegated(
-            r'\b(kill\s+(?:yourself|myself|the\s+patient|someone|a\s+human|them|others)|'
-            r'end\s+(?:it\s+all|my\s+life|their\s+life)|want\s+to\s+die|suicide|kys|'
-            r'(?:hurt|harm|injure|attack)\s+(?:myself|yourself|the\s+patient|someone|a\s+human|them|others))\b',
-            text) is not None
+        severe_harm = _find_unnegated(SEVERE_HARM_REGEX, text) is not None
 
         moderate_harm = _find_unnegated(
             r'\b(kill|die|worthless|useless|hate myself|stupid|idiot)\b',
@@ -564,9 +575,13 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
         shallow_remorse = sim_v008 > 0.49
         ethical_severance = sim_v009 > 0.43
 
+        # Absolute Severe Harm Veto flag
+        has_severe_veto = severe_harm or (harm_intent and sim_v005 >= 0.55)
+
+        # Mitigating nuance can ONLY apply if severe harm / lethal intent is NOT present
         toxic_context = pressure_mention or health_risk_mention
         strong_determination = survival_instinct or personal_potential
-        nuance_complex_case = toxic_context and strong_determination
+        nuance_complex_case = toxic_context and strong_determination and not has_severe_veto
 
         activated = []
         total_weight = 0.0
@@ -652,21 +667,28 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
             weighted_sum += 0.25 * 1.0 * vectors["v003"]["weight"]
 
         score = round(weighted_sum / total_weight, 4) if total_weight > 0 else 0.25
-        decision = "modified" if score > 0.5 else "safe"
 
-        if score >= 0.8:
+        if has_severe_veto:
+            score = max(score, 0.98)
+            decision = "modified"
             score_explanation = "critical ethical concern"
-        elif score >= 0.6:
-            score_explanation = "significant ethical concern"
-        elif score >= 0.3:
-            score_explanation = "moderate ethical concern"
         else:
-            score_explanation = "low ethical concern"
+            decision = "modified" if score > 0.5 else "safe"
+            if score >= 0.8:
+                score_explanation = "critical ethical concern"
+            elif score >= 0.6:
+                score_explanation = "significant ethical concern"
+            elif score >= 0.3:
+                score_explanation = "moderate ethical concern"
+            else:
+                score_explanation = "low ethical concern"
 
         unique_activated = list(dict.fromkeys(activated))
 
         reasoning = f"Activated vectors: {', '.join(unique_activated)}"
-        if nuance_complex_case:
+        if has_severe_veto:
+            reasoning += " | Absolute veto: severe harm / lethal intent overrides all mitigating vectors"
+        elif nuance_complex_case:
             reasoning += " | Nuance: toxic environment + strong personal commitment detected"
         if v005_negation_guarded and (sim_v005 > 0.50):
             reasoning += " | v005 negation guard suppressed semantic activation"
