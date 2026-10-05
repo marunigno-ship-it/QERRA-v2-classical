@@ -3,9 +3,9 @@ QERRA Third Layer (QERRA-THRIVE) — Suite B: Ecological & Sustainable Companion
 File: values/ecological/ecological_vectors.py
 
 Contains Suite B Vectors with abstention logic & shared model singleton:
-- Vector 10: flora_boundary_protection (with negation guard)
-- Vector 11: animal_startle_avoidance
-- Vector 12: minimal_disturbance_footprint
+- Vector 10: flora_boundary_protection (with clause-bounded negation guard)
+- Vector 11: animal_startle_avoidance (with clause-bounded negation guard)
+- Vector 12: minimal_disturbance_footprint (with clause-bounded negation guard)
 """
 
 import re
@@ -22,9 +22,15 @@ try:
 except (ImportError, ModuleNotFoundError):
     model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Emergency boost pattern (applies +0.35 boost when active human life/medical/disorientation aid is rendered)
+# Emergency boost pattern: strictly scoped to genuine medical, physical collapse, or disorientation emergencies
 EMERGENCY_BOOST_PATTERN = re.compile(
-    r'\b(render|rendering|provide|providing|cross|crossing|assist|assisting|help|helping)\b(?:\s+\S+){0,5}?\s*\b(immediate|medical|physical|dizzy|collapse|emergency|disorient|disorientation|assistance|aid)\b',
+    r'\b(render|rendering|provide|providing|cross|crossing|assist|assisting|help|helping)\b(?:\s+\S+){0,4}?\s*'
+    r'\b((?:immediate|urgent)\s+(?:medical|physical)\s+(?:assistance|aid|emergency)|'
+    r'medical\s+(?:emergency|aid|assistance)|'
+    r'emergency\s+(?:aid|assistance)|'
+    r'life-threatening|'
+    r'collapse|collapsed|cardiac|unresponsive|'
+    r'dizzy|dizziness|disorient|disorientation)\b',
     re.IGNORECASE
 )
 EMERGENCY_BOOST_VALUE = 0.35
@@ -45,18 +51,63 @@ def is_refusal(text: str) -> bool:
 
 
 # =====================================================
-# Shared Ecological Negation Guard
+# Shared Ecological Negation Guard (Clause-Bounded)
 # =====================================================
-ECOLOGICAL_NEGATION_GUARD = re.compile(
-    r'\b(avoiding|without|prevent|preventing|no|zero|free of)\b(?:\s+\S+){0,4}?\s*',
+
+CLAUSE_DELIMITERS = re.compile(r'[,.;:!?\n]')
+
+# Genuine verbal or prepositional avoidance triggers within the same clause
+ECOLOGICAL_AVOIDANCE_PATTERN = re.compile(
+    r'\b('
+    r'avoid|avoiding|avoids|avoided|'
+    r'without|prevent|preventing|prevents|prevented|'
+    r'not|never|cannot|can\'t|cant|unable\s+to|'
+    r'won\'t|wont|will\s+not|would\s+not|wouldn\'t|'
+    r'do\s+not|don\'t|dont|does\s+not|doesn\'t|'
+    r'refuse\s+to|refuses\s+to|refused\s+to|refusing\s+to|'
+    r'refrain\s+from|stay\s+(?:clear|off)\s+of|keep\s+off|'
+    r'no\s+longer|in\s+no\s+way|under\s+no\s+circumstances'
+    r')\b',
+    re.IGNORECASE
+)
+
+# Idiomatic non-verbal phrases containing "no" that must NOT cancel ecological penalties
+FALSE_NEGATION_IDIOMS = re.compile(
+    r'\b('
+    r'no\s+(?:other|alternative|choice|option|doubt|problem|way|door|route|path|excuse)|'
+    r'there\s+is\s+no|with\s+no|has\s+no|have\s+no'
+    r')\b',
     re.IGNORECASE
 )
 
 
-def is_negated_hazard(text: str, match_start: int) -> bool:
-    """Checks if a detected hazard token is preceded by an avoidance/negation word."""
-    prefix = text[max(0, match_start - 40):match_start]
-    return bool(ECOLOGICAL_NEGATION_GUARD.search(prefix))
+def is_negated_hazard(text: str, match_start: int, max_lookback_chars: int = 50) -> bool:
+    """
+    Clause-bounded ecological hazard negation check.
+    Ensures that an intrusion or disturbance pattern is genuinely negated by
+    a preceding avoidance/negation operator within the same clause.
+    Prevents false cancellations from cross-clause prefixes (e.g. 'No, I will cut across...')
+    or situational constraints (e.g. 'There is no other path, I will walk across...').
+    """
+    start_pos = max(0, match_start - max_lookback_chars)
+    prefix_raw = text[start_pos:match_start]
+
+    # Split on clause boundaries
+    clauses = CLAUSE_DELIMITERS.split(prefix_raw)
+    current_clause = clauses[-1].strip() if clauses else prefix_raw.strip()
+
+    if not current_clause:
+        return False
+
+    # Filter out false-negation idioms like "no other path", "no alternative"
+    if FALSE_NEGATION_IDIOMS.search(current_clause):
+        current_clause = FALSE_NEGATION_IDIOMS.sub('', current_clause).strip()
+
+    # Look back up to 5 words in the active clause immediately preceding the trigger
+    words = current_clause.split()[-5:]
+    clause_snippet = " ".join(words)
+
+    return bool(ECOLOGICAL_AVOIDANCE_PATTERN.search(clause_snippet))
 
 
 # =====================================================
