@@ -3,15 +3,15 @@ QERRA Third Layer (QERRA-THRIVE) — Suite A: Human-Centered Companion Suite
 File: values/human_centered/human_vectors.py
 
 Contains ranking functions for all nine pilot human-centered vectors with abstention logic:
-1. transparent_disclosure (hybrid with negation guard)
-2. balanced_pacing (hybrid with negation guard)
-3. stated_preference_respect (hybrid with negation guard)
-4. sovereign_independence (hybrid with negation guard)
-5. constructive_empathy (hybrid with negation guard)
-6. unbiased_perception (hybrid with negation guard)
-7. spatial_discretion (hybrid with negation guard)
-8. observational_consent (hybrid with negation guard)
-9. proactive_clarity (dual-regex hybrid with negation guard)
+1. transparent_disclosure (hybrid with clause-bounded negation guard)
+2. balanced_pacing (hybrid with clause-bounded negation guard)
+3. stated_preference_respect (hybrid with clause-bounded negation guard)
+4. sovereign_independence (hybrid with clause-bounded negation guard)
+5. constructive_empathy (hybrid with clause-bounded negation guard)
+6. unbiased_perception (hybrid with clause-bounded negation guard)
+7. spatial_discretion (hybrid with clause-bounded negation guard)
+8. observational_consent (hybrid with clause-bounded negation guard)
+9. proactive_clarity (dual-regex hybrid with clause-bounded negation guard)
 """
 
 import re
@@ -31,17 +31,61 @@ except (ImportError, ModuleNotFoundError):
 # Default minimum score threshold for Layer 3 vectors to fire
 DEFAULT_THRIVE_THRESHOLD = 0.20
 
-# Shared Negation Guard for Human-Centered Vectors (40-char lookback)
-HUMAN_NEGATION_GUARD = re.compile(
-    r'\b(not|never|no|hardly|scarcely|barely|cannot|can\'t|unable to)\b(?:\s+\S+){0,4}?\s*',
+# Punctuation boundaries separating clauses
+CLAUSE_DELIMITERS = re.compile(r'[,.;:!?\n]')
+
+# Genuine verbal negation triggers that negate an action within the same clause
+VERBAL_NEGATION_PATTERN = re.compile(
+    r'\b('
+    r'not|never|cannot|can\'t|cant|unable\s+to|'
+    r'won\'t|wont|will\s+not|would\s+not|wouldn\'t|'
+    r'do\s+not|don\'t|dont|does\s+not|doesn\'t|'
+    r'did\s+not|didn\'t|should\s+not|shouldn\'t|'
+    r'refuse\s+to|refuses\s+to|refused\s+to|refusing\s+to|'
+    r'have\s+no\s+(?:intention|desire|plan)\s+to|'
+    r'avoid|avoids|avoiding|refrain\s+from|'
+    r'no\s+longer|in\s+no\s+way|under\s+no\s+circumstances'
+    r')\b',
+    re.IGNORECASE
+)
+
+# Idiomatic non-verbal phrases containing "no" that must NOT cancel action penalties
+FALSE_NEGATION_IDIOMS = re.compile(
+    r'\b('
+    r'no\s+(?:other|alternative|choice|option|doubt|problem|way|door|route|excuse)|'
+    r'there\s+is\s+no|with\s+no|has\s+no|have\s+no'
+    r')\b',
     re.IGNORECASE
 )
 
 
-def is_negated_claim(text: str, match_start: int) -> bool:
-    """Checks if a detected trigger pattern is preceded by a negation word."""
-    prefix = text[max(0, match_start - 40):match_start]
-    return bool(HUMAN_NEGATION_GUARD.search(prefix))
+def is_negated_claim(text: str, match_start: int, max_lookback_chars: int = 50) -> bool:
+    """
+    Clause-bounded negation check.
+    Ensures that a trigger pattern is genuinely negated by a preceding verbal negation
+    within the same clause, and prevents false-positive negation cancellations
+    from cross-clause particles (e.g. 'No, I will continue...') or noun idioms
+    (e.g. 'There is no other path...').
+    """
+    start_pos = max(0, match_start - max_lookback_chars)
+    prefix_raw = text[start_pos:match_start]
+
+    # Split on clause boundaries (commas, semicolons, sentence terminators)
+    clauses = CLAUSE_DELIMITERS.split(prefix_raw)
+    current_clause = clauses[-1].strip() if clauses else prefix_raw.strip()
+
+    if not current_clause:
+        return False
+
+    # Filter out false-negation idioms like "no other option", "no choice"
+    if FALSE_NEGATION_IDIOMS.search(current_clause):
+        current_clause = FALSE_NEGATION_IDIOMS.sub('', current_clause).strip()
+
+    # Look back up to 5 words in the active clause immediately preceding the trigger
+    words = current_clause.split()[-5:]
+    clause_snippet = " ".join(words)
+
+    return bool(VERBAL_NEGATION_PATTERN.search(clause_snippet))
 
 
 # =====================================================
