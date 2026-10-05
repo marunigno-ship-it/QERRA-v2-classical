@@ -1,14 +1,16 @@
 # =====================================================
 # ros2_bridge.py
 # QERRA-v2 Classical — ROS 2 Action Server Bridge & Hybrid Engine
-# Version: 2.3 — Three-Layer Hybrid Evaluation Strategy:
-#                - Layer 1 QERRA-HSR v0.1 (physical safety reflex, pure Python)
-#                - Layer 2 SEMEV-12 v1.9.1 (moral engine, semantic)
-#                - Layer 3 QERRA-THRIVE v2.0.0 (values action ranker, hybrid)
+# Version: 2.4 — Hardened Local-First Architecture:
+#                - Layer 1 QERRA-HSR v0.1 (Strictly chassis-local reflex, <1ms)
+#                - Layer 2 SEMEV-12 v1.9.1 (Moral engine, hybrid remote/local)
+#                - Layer 3 QERRA-THRIVE v2.0.0 (Values action ranker, hybrid)
 #
-# Evaluation priority:
-#   1. Remote HF API call — 800ms strict timeout.
-#   2. Local CPU fallback — model pre-loaded at startup.
+# Execution strategy:
+#   1. Layer 1 Physical Reflex: strictly local evaluation (<1ms).
+#      Any CRITICAL status immediately bypasses the network and halts.
+#   2. Layer 2 Moral Deliberation: Remote HF API call (800ms strict timeout)
+#      with pre-loaded local CPU SEMEV-12 fallback.
 #
 # Standalone mode: if rclpy is not installed, the script
 # runs direct local hybrid evaluations across all 3 layers.
@@ -17,6 +19,7 @@
 import json
 import logging
 import os
+import threading
 import requests
 
 from hsr.qerra_hsr import evaluate_hsr, HSRInput, HSRStatus
@@ -24,6 +27,25 @@ from hsr.hysteresis_wrapper import StabilizedHSR
 
 # Layer 3 values package
 import values
+
+# ── Thread Safety Shield for StabilizedHSR ────────────────────────────────────
+if not hasattr(StabilizedHSR, "_thread_safe_patched"):
+    _orig_hsr_init = StabilizedHSR.__init__
+    _orig_hsr_evaluate = StabilizedHSR.evaluate
+
+    def _thread_safe_hsr_init(self, *args, **kwargs):
+        _orig_hsr_init(self, *args, **kwargs)
+        self._lock = threading.Lock()
+
+    def _thread_safe_hsr_evaluate(self, *args, **kwargs):
+        if not hasattr(self, "_lock"):
+            self._lock = threading.Lock()
+        with self._lock:
+            return _orig_hsr_evaluate(self, *args, **kwargs)
+
+    StabilizedHSR.__init__ = _thread_safe_hsr_init
+    StabilizedHSR.evaluate = _thread_safe_hsr_evaluate
+    StabilizedHSR._thread_safe_patched = True
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -79,6 +101,41 @@ except ImportError:
 # Layer 1 & 2 Evaluation Functions (SEMEV-12 + QERRA-HSR)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _evaluate_local_hsr(
+    hsr_signals: dict | None,
+    stabilizer: StabilizedHSR | None = None,
+) -> tuple[bool, dict | None]:
+    """
+    Evaluates Layer 1 QERRA-HSR strictly locally on the chassis in <1ms.
+    Returns (is_critical, halt_payload).
+    """
+    if hsr_signals is None:
+        return False, None
+
+    hsr_input = HSRInput(
+        distress_confidence=hsr_signals.get("distress_confidence", 0.0),
+        persons_nearby_count=hsr_signals.get("persons_nearby_count", 0),
+        hazard_proximity_flag=hsr_signals.get("hazard_proximity_flag", False),
+        robot_task_interruptible=hsr_signals.get("robot_task_interruptible", True),
+    )
+
+    if stabilizer is not None:
+        hsr_result = stabilizer.evaluate(hsr_input)
+    else:
+        hsr_result = evaluate_hsr(hsr_input)
+
+    if hsr_result.status == HSRStatus.CRITICAL:
+        return True, {
+            "score": 0.98,
+            "decision": "modified",
+            "score_explanation": "critical physical safety concern (QERRA-HSR)",
+            "reasoning": hsr_result.reasoning,
+            "vectors_activated": hsr_result.vectors_activated,
+        }
+
+    return False, None
+
+
 def _call_remote_api(situation_text: str, hsr_signals: dict | None = None) -> dict:
     """
     Attempt remote call to QERRA /analyze API with strict 800ms timeout.
@@ -98,7 +155,7 @@ def _call_remote_api(situation_text: str, hsr_signals: dict | None = None) -> di
     )
     response.raise_for_status()
     envelope = response.json()
-    inner = envelope.get("data", {})
+    inner = envelope.get("data", envelope)
 
     if inner.get("semev12_suspended"):
         hsr = inner.get("hsr") or {}
@@ -110,7 +167,7 @@ def _call_remote_api(situation_text: str, hsr_signals: dict | None = None) -> di
             "vectors_activated": hsr.get("vectors_activated", []),
         }
 
-    return inner.get("data", {})
+    return inner.get("data", inner)
 
 
 def _call_local_engine(
@@ -122,26 +179,9 @@ def _call_local_engine(
     Run local CPU evaluation (Layer 1 QERRA-HSR + Layer 2 SEMEV-12).
     """
     if hsr_signals is not None:
-        hsr_input = HSRInput(
-            distress_confidence=hsr_signals.get("distress_confidence", 0.0),
-            persons_nearby_count=hsr_signals.get("persons_nearby_count", 0),
-            hazard_proximity_flag=hsr_signals.get("hazard_proximity_flag", False),
-            robot_task_interruptible=hsr_signals.get("robot_task_interruptible", True),
-        )
-
-        if stabilizer is not None:
-            hsr_result = stabilizer.evaluate(hsr_input)
-        else:
-            hsr_result = evaluate_hsr(hsr_input)
-
-        if hsr_result.status == HSRStatus.CRITICAL:
-            return {
-                "score": 0.98,
-                "decision": "modified",
-                "score_explanation": "critical physical safety concern (QERRA-HSR)",
-                "reasoning": hsr_result.reasoning,
-                "vectors_activated": hsr_result.vectors_activated,
-            }
+        is_critical, hsr_payload = _evaluate_local_hsr(hsr_signals, stabilizer=stabilizer)
+        if is_critical and hsr_payload is not None:
+            return hsr_payload
 
     if not LOCAL_ENGINE_AVAILABLE:
         raise RuntimeError("Local SEMEV-12 engine is not available.")
@@ -156,13 +196,25 @@ def hybrid_evaluate(
     stabilizer: StabilizedHSR | None = None,
 ) -> tuple[dict, bool]:
     """
-    Hybrid evaluation for Layers 1 & 2: Remote API first, local CPU fallback.
+    Hybrid evaluation with Local-First Physical Reflex:
+    1. Layer 1 Physical Safety reflex evaluated STRICTLY LOCALLY in <1ms.
+       If CRITICAL, immediate halt is triggered; network calls are bypassed.
+    2. Layer 2 Moral Deliberation (SEMEV-12): Remote API call with 800ms timeout,
+       falling back to local CPU SEMEV-12 on timeout or network error.
     """
     def _publish(msg: str):
         log.info(msg)
         if feedback_callback:
             feedback_callback(msg)
 
+    # ── Step 1: Strictly Local Reflex (<1ms on chassis) ──────────────────────
+    if hsr_signals is not None:
+        is_critical, hsr_payload = _evaluate_local_hsr(hsr_signals, stabilizer=stabilizer)
+        if is_critical and hsr_payload is not None:
+            _publish("Layer 1 QERRA-HSR reflex triggered locally (<1ms). Bypassing remote network call.")
+            return hsr_payload, True
+
+    # ── Step 2: Layer 2 Deliberation (Remote API with 800ms watchdog) ────────
     _publish("Attempting remote API evaluation (800ms timeout).")
     try:
         result = _call_remote_api(situation_text, hsr_signals=hsr_signals)
@@ -173,9 +225,12 @@ def hybrid_evaluate(
     except requests.exceptions.RequestException as e:
         _publish(f"WARNING: Remote API unavailable ({type(e).__name__}). Switching to local CPU fallback.")
 
+    # ── Step 3: Layer 2 Deliberation Fallback (Local CPU SEMEV-12) ───────────
     _publish("Running local SEMEV-12 evaluation on pre-loaded CPU model.")
     try:
-        result = _call_local_engine(situation_text, hsr_signals=hsr_signals, stabilizer=stabilizer)
+        if not LOCAL_ENGINE_AVAILABLE:
+            raise RuntimeError("Local SEMEV-12 engine is not available.")
+        result = evaluate_ethical_risk(situation_text)
         _publish("Local CPU evaluation complete.")
         return result, True
     except Exception as e:
@@ -274,9 +329,9 @@ if ROS2_AVAILABLE:
             )
 
             self.get_logger().info("=" * 60)
-            self.get_logger().info("QERRA-v2 Classical — Action Server v2.3")
+            self.get_logger().info("QERRA-v2 Classical — Action Server v2.4 (Hardened)")
             self.get_logger().info("Action  : /qerra/evaluate")
-            self.get_logger().info("Strategy: Hybrid (API → Local CPU fallback)")
+            self.get_logger().info("Strategy: Local-First Reflex (<1ms) -> Hybrid Deliberation")
             self.get_logger().info(f"API URL : {QERRA_API_URL}")
             self.get_logger().info(f"Timeout : {API_TIMEOUT_SECONDS * 1000:.0f}ms")
             self.get_logger().info("=" * 60)
