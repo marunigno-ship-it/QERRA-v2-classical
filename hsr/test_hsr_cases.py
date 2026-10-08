@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Marussa Metocharaki
+
+
 """
 QERRA Human Safety Response Layer — hsr/test_hsr_cases.py
 Regression test suite v0.1
