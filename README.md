@@ -33,15 +33,16 @@ All safety decisions are deterministic, inspectable, and auditable. Every result
 
 ## ⚖️ Authorship & License
 
-**QERRA-v2 Classical** is built upon the **SEMEV-12 Framework** and the **QERRA-THRIVE** value architecture, designed and developed by **Marussa Metocharaki**.
+**QERRA-v2 Classical** is designed and developed by **Marussa Metocharaki**.
 
-- **License**: This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). Any use in a networked service or derivative work must comply with the license terms and maintain full source code disclosure.
-- **Attribution**: Any commercial use, research citation, or modification must clearly credit the author and link to the original repository.
-- **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are the original creation and codebase of the author. The project is timestamped and permanently archived on Zenodo.
-  
-  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23120335
-  
+- **Layer 1 (`hsr/`):** [Apache License 2.0](hsr/LICENSE) (with attribution in [`hsr/NOTICE`](hsr/NOTICE)). Permissive for chassis-local ROS 2 integration.
+- **Layers 2 & 3 (SEMEV-12 & QERRA-THRIVE):** [GNU AGPL-3.0](LICENSE). Open-source copyleft.
+- **Commercial Licensing:** Closed-source enterprise integration available under a commercial license. See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md).
+- **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are timestamped and permanently archived on Zenodo.
+
+  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23120335  
   **ORCID:** https://orcid.org/0009-0009-4100-9881
+  
 ## Quickstart
 
 **Public example endpoint** (no API key required):
