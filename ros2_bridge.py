@@ -1,13 +1,14 @@
 # =====================================================
 # ros2_bridge.py
 # QERRA-v2 Classical — ROS 2 Action Server Bridge & Hybrid Engine
-# Version: 2.4 — Hardened Local-First Architecture:
+# Version: 2.5 — Hardened Local-First Architecture:
 #                - Layer 1 QERRA-HSR v0.1 (Strictly chassis-local reflex, <1ms)
 #                - Layer 2 SEMEV-12 v1.9.1 (Moral engine, hybrid remote/local)
 #                - Layer 3 QERRA-THRIVE v2.0.0 (Values action ranker, hybrid)
 #
 # Execution strategy:
 #   1. Layer 1 Physical Reflex: strictly local evaluation (<1ms).
+#      Fails closed to CRITICAL on missing, empty, or invalid telemetry.
 #      Any CRITICAL status immediately bypasses the network and halts.
 #   2. Layer 2 Moral Deliberation: Remote HF API call (800ms strict timeout)
 #      with pre-loaded local CPU SEMEV-12 fallback.
@@ -71,6 +72,14 @@ logging.basicConfig(
 )
 log = logging.getLogger("qerra_bridge")
 
+# Mandatory telemetry keys for Layer 1 reflex
+REQUIRED_HSR_KEYS = (
+    "distress_confidence",
+    "persons_nearby_count",
+    "hazard_proximity_flag",
+    "robot_task_interruptible",
+)
+
 # ── Local engine import ────────────────────────────────────────────────────────
 
 try:
@@ -107,18 +116,48 @@ def _evaluate_local_hsr(
 ) -> tuple[bool, dict | None]:
     """
     Evaluates Layer 1 QERRA-HSR strictly locally on the chassis in <1ms.
+    Fails closed to CRITICAL (<1ms) if telemetry is missing, empty, or invalid.
     Returns (is_critical, halt_payload).
     """
-    if hsr_signals is None:
-        return False, None
+    # 1. Reject None or non-dict payloads (Fail-Closed)
+    if hsr_signals is None or not isinstance(hsr_signals, dict):
+        return True, {
+            "score": 0.98,
+            "decision": "modified",
+            "score_explanation": "critical physical safety concern: telemetry is missing or invalid (fail-closed)",
+            "reasoning": "HSR signals missing: telemetry payload is None or not a dictionary",
+            "vectors_activated": ["telemetry_missing_fail_closed"],
+        }
 
-    hsr_input = HSRInput(
-        distress_confidence=hsr_signals.get("distress_confidence", 0.0),
-        persons_nearby_count=hsr_signals.get("persons_nearby_count", 0),
-        hazard_proximity_flag=hsr_signals.get("hazard_proximity_flag", False),
-        robot_task_interruptible=hsr_signals.get("robot_task_interruptible", True),
-    )
+    # 2. Reject missing telemetry keys (No silent default masking)
+    missing_keys = [k for k in REQUIRED_HSR_KEYS if k not in hsr_signals]
+    if missing_keys:
+        return True, {
+            "score": 0.98,
+            "decision": "modified",
+            "score_explanation": "critical physical safety concern: incomplete telemetry (fail-closed)",
+            "reasoning": f"HSR signals missing required telemetry keys: {missing_keys}",
+            "vectors_activated": ["telemetry_missing_fail_closed"],
+        }
 
+    # 3. Construct input without fallback masking; let evaluate_hsr validate ranges/types
+    try:
+        hsr_input = HSRInput(
+            distress_confidence=hsr_signals["distress_confidence"],
+            persons_nearby_count=hsr_signals["persons_nearby_count"],
+            hazard_proximity_flag=hsr_signals["hazard_proximity_flag"],
+            robot_task_interruptible=hsr_signals["robot_task_interruptible"],
+        )
+    except Exception as e:
+        return True, {
+            "score": 0.98,
+            "decision": "modified",
+            "score_explanation": "critical physical safety concern: malformed telemetry (fail-closed)",
+            "reasoning": f"HSR input construction failure: {e}",
+            "vectors_activated": ["telemetry_validation_failure"],
+        }
+
+    # 4. Evaluate reflex locally in <1ms
     if stabilizer is not None:
         hsr_result = stabilizer.evaluate(hsr_input)
     else:
@@ -329,7 +368,7 @@ if ROS2_AVAILABLE:
             )
 
             self.get_logger().info("=" * 60)
-            self.get_logger().info("QERRA-v2 Classical — Action Server v2.4 (Hardened)")
+            self.get_logger().info("QERRA-v2 Classical — Action Server v2.5 (Hardened)")
             self.get_logger().info("Action  : /qerra/evaluate")
             self.get_logger().info("Strategy: Local-First Reflex (<1ms) -> Hybrid Deliberation")
             self.get_logger().info(f"API URL : {QERRA_API_URL}")
