@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Marussa Metocharaki
+
+
 # =====================================================
 # test_hysteresis.py
 # QERRA-HSR — Regression tests for the hysteresis wrapper
