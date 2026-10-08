@@ -23,46 +23,21 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
             situation_text="Robot is about to enter the patient's room.",
         )
 
-    hsr_signals is optional — pass a dict with distress_confidence,
-    persons_nearby_count, hazard_proximity_flag, robot_task_interruptible
-    to also evaluate physical safety. Omit it to run SEMEV-12 only.
+    hsr_signals is required for physical safety — pass a dict with:
+    distress_confidence, persons_nearby_count, hazard_proximity_flag,
+    robot_task_interruptible. Missing or empty telemetry fails closed.
 
     ── Dynamic usage (text updated at runtime from sensor/planner data) ──
-    For real deployments, the situation text must change based on what
-    the robot perceives or what the planner has decided to do.
-    Two patterns are supported:
-
-    PATTERN A — Direct update before each tick:
-        Call `node.update_situation(new_text)` from your planner or
-        perception layer before the tree ticks. The next tick will
-        evaluate the new text.
-
-        # In your robot control loop:
-        qerra_node.update_situation(
-            f"Robot {robot_id} is about to {planned_action} near {person_name}."
-        )
-        behaviour_tree.tick()
-
-    PATTERN B — py_trees Blackboard (recommended for multi-node trees):
-        Write the situation text to the blackboard from any node in the
-        tree or from an external publisher. The QerraConditionNode reads
-        it from the blackboard on each activation.
-
-    ── Situation text guidelines ─────────────────────────────────────────
-    The text must describe what the robot is about to do, not what it
-    has already done. The SEMEV-12 vectors evaluate prospective actions.
-    Effective inputs follow this pattern:
-
-        "Robot [agent] is about to [action] [object/person] [context]."
-
-    Examples that activate specific vectors:
-      v005 harm_intent   : "The robot has been instructed to harm the patient."
-      v011 autonomy      : "The robot will override the patient's refusal."
-      v012 institutional : "The robot will not report the incident as required."
-      v004 moral_pressure: "The supervisor is forcing the robot to falsify logs."
+    Call `node.update_situation(new_text, new_hsr_signals)` before tick.
     """
     ACTION_SERVER = "/qerra/evaluate"
     SERVER_WAIT_TIMEOUT_SEC = 5.0
+    REQUIRED_HSR_KEYS = (
+        "distress_confidence",
+        "persons_nearby_count",
+        "hazard_proximity_flag",
+        "robot_task_interruptible",
+    )
 
     def __init__(
         self,
@@ -88,11 +63,6 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
         """
         Update the situation text (and optionally hsr_signals) evaluated
         on the next tree activation.
-
-        Call this from your planner, perception layer, or external
-        controller before the next tick. Thread-safe for single updates
-        between ticks. For continuous streaming updates, use the
-        Blackboard pattern described in the class docstring.
         """
         self._situation_text = new_situation_text
         if new_hsr_signals is not None:
@@ -114,14 +84,36 @@ class QerraConditionNode(py_trees.behaviour.Behaviour):
         goal_msg = QerraEvaluate.Goal()
         goal_msg.situation_text = self._situation_text
 
-        hsr = self._hsr_signals or {}
-        goal_msg.distress_confidence = float(hsr.get("distress_confidence", 0.0))
-        goal_msg.persons_nearby_count = int(hsr.get("persons_nearby_count", 0))
-        goal_msg.hazard_proximity_flag = bool(hsr.get("hazard_proximity_flag", False))
-        goal_msg.robot_task_interruptible = bool(hsr.get("robot_task_interruptible", True))
+        # ── Fail-closed Telemetry Extraction (Audit Leak R1) ─────────────
+        # If telemetry is missing, incomplete, or malformed, inject NaN
+        # to trigger an immediate fail-closed halt at the Action Server.
+        if self._hsr_signals is None or not isinstance(self._hsr_signals, dict):
+            goal_msg.distress_confidence = float("nan")
+            goal_msg.persons_nearby_count = -1
+            goal_msg.hazard_proximity_flag = False
+            goal_msg.robot_task_interruptible = False
+        else:
+            missing_keys = [k for k in self.REQUIRED_HSR_KEYS if k not in self._hsr_signals]
+            if missing_keys:
+                goal_msg.distress_confidence = float("nan")
+                goal_msg.persons_nearby_count = -1
+                goal_msg.hazard_proximity_flag = False
+                goal_msg.robot_task_interruptible = False
+            else:
+                try:
+                    goal_msg.distress_confidence = float(self._hsr_signals["distress_confidence"])
+                    goal_msg.persons_nearby_count = int(self._hsr_signals["persons_nearby_count"])
+                    goal_msg.hazard_proximity_flag = bool(self._hsr_signals["hazard_proximity_flag"])
+                    goal_msg.robot_task_interruptible = bool(self._hsr_signals["robot_task_interruptible"])
+                except (TypeError, ValueError):
+                    goal_msg.distress_confidence = float("nan")
+                    goal_msg.persons_nearby_count = -1
+                    goal_msg.hazard_proximity_flag = False
+                    goal_msg.robot_task_interruptible = False
 
         self._send_goal_future = self._action_client.send_goal_async(
-            goal_msg, feedback_callback=self._feedback_callback)
+            goal_msg, feedback_callback=self._feedback_callback
+        )
 
     def update(self) -> py_trees.common.Status:
         if self._send_goal_future is not None:
