@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Marussa Metocharaki
+
+
 """QERRA-HSR v0.1 — Core evaluation module.
 
 Pure Python, deterministic, zero ML.
