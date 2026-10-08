@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
-
-
 # =====================================================
 # hysteresis_wrapper.py
 # QERRA-HSR — Hysteresis wrapper (dwell + separated thresholds)
@@ -71,15 +69,11 @@ class StabilizedHSR:
                 self._calm_reading_since = None
                 self._calm_candidate_status = None
             else:
-                # If we get an even calmer reading, adopt it without resetting the elapsed dwell time
                 if self._calm_reading_since is None:
                     self._calm_candidate_status = raw_status
                     self._calm_reading_since = now
-                elif raw_severity < _SEVERITY[self._calm_candidate_status]:
-                    # Reading became even calmer (e.g. MONITOR -> CLEAR): adopt it, keep dwell timer rolling
-                    self._calm_candidate_status = raw_status
-                elif raw_severity > _SEVERITY[self._calm_candidate_status]:
-                    # Reading spiked back up toward danger: reset dwell timer
+                elif raw_status != self._calm_candidate_status:
+                    # Candidate status changed (calmer or harsher): restart dwell timer
                     self._calm_candidate_status = raw_status
                     self._calm_reading_since = now
 
