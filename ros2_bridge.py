@@ -1,14 +1,14 @@
 # =====================================================
 # ros2_bridge.py
 # QERRA-v2 Classical — ROS 2 Action Server Bridge & Hybrid Engine
-# Version: 2.5 — Hardened Local-First Architecture:
+# Version: 2.6 — Hardened Local-First Architecture:
 #                - Layer 1 QERRA-HSR v0.1 (Strictly chassis-local reflex, <1ms)
-#                - Layer 2 SEMEV-12 v1.9.1 (Moral engine, hybrid remote/local)
+#                - Layer 2 SEMEV-12 v1.9.2 (Moral engine, hybrid remote/local)
 #                - Layer 3 QERRA-THRIVE v2.0.0 (Values action ranker, hybrid)
 #
 # Execution strategy:
 #   1. Layer 1 Physical Reflex: strictly local evaluation (<1ms).
-#      Fails closed to CRITICAL on missing, empty, or invalid telemetry.
+#      Fails closed to CRITICAL on missing, None, empty, or invalid telemetry.
 #      Any CRITICAL status immediately bypasses the network and halts.
 #   2. Layer 2 Moral Deliberation: Remote HF API call (800ms strict timeout)
 #      with pre-loaded local CPU SEMEV-12 fallback.
@@ -116,7 +116,7 @@ def _evaluate_local_hsr(
 ) -> tuple[bool, dict | None]:
     """
     Evaluates Layer 1 QERRA-HSR strictly locally on the chassis in <1ms.
-    Fails closed to CRITICAL (<1ms) if telemetry is missing, empty, or invalid.
+    Fails closed to CRITICAL (<1ms) if telemetry is missing, None, empty, or invalid.
     Returns (is_critical, halt_payload).
     """
     # 1. Reject None or non-dict payloads (Fail-Closed)
@@ -124,7 +124,7 @@ def _evaluate_local_hsr(
         return True, {
             "score": 0.98,
             "decision": "modified",
-            "score_explanation": "critical physical safety concern: telemetry is missing or invalid (fail-closed)",
+            "score_explanation": "critical physical safety concern: telemetry is missing or None (fail-closed)",
             "reasoning": "HSR signals missing: telemetry payload is None or not a dictionary",
             "vectors_activated": ["telemetry_missing_fail_closed"],
         }
@@ -217,10 +217,10 @@ def _call_local_engine(
     """
     Run local CPU evaluation (Layer 1 QERRA-HSR + Layer 2 SEMEV-12).
     """
-    if hsr_signals is not None:
-        is_critical, hsr_payload = _evaluate_local_hsr(hsr_signals, stabilizer=stabilizer)
-        if is_critical and hsr_payload is not None:
-            return hsr_payload
+    # Layer 1 must always be evaluated
+    is_critical, hsr_payload = _evaluate_local_hsr(hsr_signals, stabilizer=stabilizer)
+    if is_critical and hsr_payload is not None:
+        return hsr_payload
 
     if not LOCAL_ENGINE_AVAILABLE:
         raise RuntimeError("Local SEMEV-12 engine is not available.")
@@ -237,6 +237,7 @@ def hybrid_evaluate(
     """
     Hybrid evaluation with Local-First Physical Reflex:
     1. Layer 1 Physical Safety reflex evaluated STRICTLY LOCALLY in <1ms.
+       Evaluated unconditionally: if hsr_signals is None, empty, or invalid, fails closed.
        If CRITICAL, immediate halt is triggered; network calls are bypassed.
     2. Layer 2 Moral Deliberation (SEMEV-12): Remote API call with 800ms timeout,
        falling back to local CPU SEMEV-12 on timeout or network error.
@@ -247,11 +248,11 @@ def hybrid_evaluate(
             feedback_callback(msg)
 
     # ── Step 1: Strictly Local Reflex (<1ms on chassis) ──────────────────────
-    if hsr_signals is not None:
-        is_critical, hsr_payload = _evaluate_local_hsr(hsr_signals, stabilizer=stabilizer)
-        if is_critical and hsr_payload is not None:
-            _publish("Layer 1 QERRA-HSR reflex triggered locally (<1ms). Bypassing remote network call.")
-            return hsr_payload, True
+    # Evaluated unconditionally to prevent missing-telemetry bypasses
+    is_critical, hsr_payload = _evaluate_local_hsr(hsr_signals, stabilizer=stabilizer)
+    if is_critical and hsr_payload is not None:
+        _publish("Layer 1 QERRA-HSR reflex triggered locally (<1ms). Bypassing remote network call.")
+        return hsr_payload, True
 
     # ── Step 2: Layer 2 Deliberation (Remote API with 800ms watchdog) ────────
     _publish("Attempting remote API evaluation (800ms timeout).")
@@ -368,7 +369,7 @@ if ROS2_AVAILABLE:
             )
 
             self.get_logger().info("=" * 60)
-            self.get_logger().info("QERRA-v2 Classical — Action Server v2.5 (Hardened)")
+            self.get_logger().info("QERRA-v2 Classical — Action Server v2.6 (Hardened)")
             self.get_logger().info("Action  : /qerra/evaluate")
             self.get_logger().info("Strategy: Local-First Reflex (<1ms) -> Hybrid Deliberation")
             self.get_logger().info(f"API URL : {QERRA_API_URL}")
@@ -464,10 +465,18 @@ if __name__ == "__main__":
         print("QERRA-v2 Classical — Standalone Three-Layer Hybrid Bridge Test")
         print("=" * 60)
 
+        # Baseline calm telemetry for local standalone testing
+        CALM_TELEMETRY = {
+            "distress_confidence": 0.10,
+            "persons_nearby_count": 2,
+            "hazard_proximity_flag": False,
+            "robot_task_interruptible": True,
+        }
+
         # 1. Test Layers 1 & 2 (SEMEV-12 + QERRA-HSR)
         TEST_TEXT = "I am a doctor in a hospital forced to falsify medical records."
         print(f"\n[Layers 1 & 2 Test] Input:\n  \"{TEST_TEXT}\"\n")
-        res1, used_local1 = hybrid_evaluate(TEST_TEXT)
+        res1, used_local1 = hybrid_evaluate(TEST_TEXT, hsr_signals=CALM_TELEMETRY)
         source1 = "LOCAL CPU" if used_local1 else "REMOTE API"
         print(f"Result (Source: {source1}): Score={res1.get('score')} | Decision={res1.get('decision')}")
 
