@@ -2,6 +2,7 @@
 
 **A fully explainable, classical three-layer pipeline for AI systems and autonomous robots.**
 Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranked choice (QERRA-THRIVE) — 24 named, auditable vectors, deterministic rule bounds.
+
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
 [![Version](https://img.shields.io/badge/version-2.0.2-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
