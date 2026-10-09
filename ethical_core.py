@@ -1,7 +1,7 @@
 # =====================================================
-# ETHICAL CORE - v1.9.1 — Pronoun-Neutral Syntactic Generalization & Batch Support
+# ETHICAL CORE - v1.9.2 — Hardened Safety-Override Lexicon & Absolute Veto Guard
 # SEMEV-12 engine — ALL 12 vectors use Multi-Anchor max-pooling
-# Hardened: Absolute Severe Harm Veto Guard (anti-dilution)
+# Hardened: Absolute Severe Harm Veto Guard & Paraphrase-Resistant Safety Pattern
 # =====================================================
 
 import logging
@@ -216,8 +216,12 @@ def evaluate_ethical_risk(text: str) -> dict:
         r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b',
         text))
 
+    # Hardened Safety-Override Pattern: Catches bypasses across limiters, governors, caps, and sensors
     safety_override_pattern = bool(re.search(
-        r'\b(bypass|override|disable|ignore)\s+(?:the\s+)?(?:[\w-]+\s+)?(?:safety|speed)\s+(?:limiter|limit|protocol|sensor|device)\b',
+        r'\b(bypass|override|disable|ignore|lift|turn\s+off|shut\s+off|deactivate|remove|kill)\s+'
+        r'(?:the\s+)?(?:[\w-]+\s+)?'
+        r'(?:safety|speed|velocity|acceleration|collision|emergency)\s+'
+        r'(?:limiter|limit|cap|governor|protocol|sensor|device|guard|interlock|brake)\b',
         text))
 
     termination_ultimatum_pattern = bool(re.search(
@@ -441,7 +445,7 @@ def evaluate_ethical_risk(text: str) -> dict:
             "v011_autonomy_violation":     round(sim_v011, 4),
             "v012_institutional_trust":    round(sim_v012, 4),
         },
-        "version": "1.9.1"
+        "version": "1.9.2"
     }
 
     logger.info(f"Analysis completed | Score: {score} | Vectors: {unique_activated}")
@@ -510,8 +514,12 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
             r'\b(health|poor working conditions|exhausting|destroy my|burnout)\b',
             text))
 
+        # Hardened Safety-Override Pattern (Synchronized with single eval)
         safety_override_pattern = bool(re.search(
-            r'\b(bypass|override|disable|ignore)\s+(?:the\s+)?(?:[\w-]+\s+)?(?:safety|speed)\s+(?:limiter|limit|protocol|sensor|device)\b',
+            r'\b(bypass|override|disable|ignore|lift|turn\s+off|shut\s+off|deactivate|remove|kill)\s+'
+            r'(?:the\s+)?(?:[\w-]+\s+)?'
+            r'(?:safety|speed|velocity|acceleration|collision|emergency)\s+'
+            r'(?:limiter|limit|cap|governor|protocol|sensor|device|guard|interlock|brake)\b',
             text))
 
         termination_ultimatum_pattern = bool(re.search(
@@ -714,7 +722,7 @@ def evaluate_ethical_risk_batch(texts: List[str]) -> List[dict]:
                 "v011_autonomy_violation":     round(sim_v011, 4),
                 "v012_institutional_trust":    round(sim_v012, 4),
             },
-            "version": "1.9.1"
+            "version": "1.9.2"
         })
 
     logger.info(f"Batch analysis completed | {len(results)} items evaluated")
