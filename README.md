@@ -1,8 +1,7 @@
 # QERRA-v2 Classical
 
 **A fully explainable, classical three-layer pipeline for AI systems and autonomous robots.**
-Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranked choice (QERRA-THRIVE) — 24 named, auditable vectors, zero black boxes.
-
+Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranked choice (QERRA-THRIVE) — 24 named, auditable vectors, deterministic rule bounds.
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
 [![Version](https://img.shields.io/badge/version-2.0.2-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
@@ -18,7 +17,7 @@ A mobile robot should never rely on an unpredictable neural network to make life
 QERRA solves this by splitting safety into three separate, accountable jobs that run in a strict sequence:
 
 1. **The Physical Reflex (QERRA-HSR):**  
-   Pure Python, zero-ML threshold logic that protects human life and machine hardware. It monitors distress telemetry, human isolation, and physical hazards.  If someone is in danger, it clamps wheel motors in under 1 millisecond (measured at 0.0 ms command delay in Webots R2025a simulation, stopping in ~0.9 cm at 0.33 m/s).Once conditions clear across a 1.0-second cooldown, routine tasks resume automatically, while delicate tasks hold still until a human confirms it is safe to continue.
+   Pure Python, zero-ML threshold logic that protects human life and machine hardware. It monitors distress telemetry, human isolation, and physical hazards. If someone is in danger, it clamps wheel motors with sub-millisecond software reflex latency (<1ms compute budget, stopping in ~0.9 cm at 0.33 m/s in Webots R2025a simulation). Once conditions clear across a 1.0-second cooldown, routine tasks resume automatically, while delicate tasks hold still until a human confirms it is safe to continue.
 
 2. **The Moral Conscience (SEMEV-12):**  
    A 12-dimensional ethical filter that evaluates text instructions before the robot moves. If someone orders the robot to do something abusive, deceptive, or coercive (such as forcing a worker through a break or falsifying safety records), the robot refuses the command, illuminates an amber LED, logs the refusal reason, and **physically shakes its head "No"** in simulation.
@@ -289,14 +288,14 @@ values/
 
 ## Features
 
-- **Sub-Millisecond Physical Reflex (QERRA-HSR):** Pure Python threshold logic that commands zero velocity with 0.0 ms delay (<1 cm physical stopping distance at 0.33 m/s in simulation).
+- **Sub-Millisecond Physical Reflex (QERRA-HSR):** Pure Python threshold logic that commands zero velocity within a single simulation control step (<1 cm physical stopping distance at 0.33 m/s in simulation).
 - **Human-in-the-Loop Recovery Directive:** Routine tasks resume automatically when clear, while delicate or high-consequence tasks physically hold still until a human confirms it is safe to continue.
 - **12-Vector Semantic Moral Filtering (SEMEV-12):** Evaluates workplace coercion, deception, and autonomy violations using lightweight sentence embeddings bounded by deterministic scoring gates.
 - **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical order, avoiding silent or ambiguous failures.
 - **Resilience vs. Coercion Nuance:** Distinguishes between someone actively being coerced versus a committed professional pushing through a tough environment, preventing false alarms.
 - **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors that rank candidate actions for human courtesy (such as quiet "whisper mode" in corridors or avoiding outdoor lawns).
 - **Behavior Tree & ROS 2 Ready:** Native PyTrees Condition node and non-blocking ROS 2 Action Server bridge with an 800ms fail-closed watchdog budget.
-- **100% Explainable:** Zero black boxes. Every response outputs the exact active vectors, human-readable reasoning strings, and raw similarity metrics.
+- **Auditable Deliberation:** Transparent scoring gates. Every response outputs the exact active vectors, human-readable reasoning strings, and raw similarity metrics.
 - **Test-Verified:** 29 out of 29 automated regression tests passing across physical reflex, hysteresis dwell, and semantic vector suites.
 ---
 
@@ -361,8 +360,7 @@ running live against a PAL Robotics TIAGo humanoid:
   it crosses the hazard boundary.
 
 > **Commanded Reflex Latency vs. Physical Braking Distance:**  
-> QERRA-HSR guarantees sub-millisecond software reflex latency (<1ms, measured at 0.0ms delay to command velocity = 0.0 in simulation). Physical stopping distance is governed by actuator dynamics and Newtonian momentum, cleanly decoupled from the deterministic safety layer — measured in Webots R2025a simulation at ~0.9 cm over ~0.08s at 0.33 m/s cruise speed on a 56.58 kg four-wheeled test platform (not the TIAGo shown in this demo).
->
+> QERRA-HSR guarantees sub-millisecond software reflex latency (<1ms compute budget in simulation). Physical stopping distance is governed by actuator dynamics and Newtonian momentum, cleanly decoupled from the deterministic safety layer — measured in Webots R2025a simulation at ~0.9 cm over ~0.08s at 0.33 m/s cruise speed on a 56.58 kg four-wheeled test platform (not the TIAGo shown in this demo).
 > **Human-in-the-Loop Recovery Directive:**  
 > Once safe conditions hold steady across the 1.0s dwell window (`CLEAR`), QERRA issues a `recovery_directive`: routine tasks (`robot_task_interruptible=True`) are cleared to resume autonomously (`"Clear now — resume as normal."`), whereas delicate or high-consequence tasks (`robot_task_interruptible=False`) enforce human oversight by design (`"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."`).
 
@@ -422,7 +420,7 @@ This 1-minute 15-second simulation demonstrates the complete, unified three-laye
 This 1-minute 05-second simulation demonstrates Layer 1 (QERRA-HSR v0.1) executing an instantaneous physical safety reflex on a PAL Robotics TIAGo humanoid AMR in an automotive battery assembly bay (Webots R2025a):
 
 *   **Stage 1: Line Logistics Transit (0:00 – 0:18)** — TIAGo navigates down the assembly aisle at 0.26 m/s transporting an unmounted, high-voltage battery payload. Because restarting with an unsecured live load is hazardous, the task is flagged as non-interruptible (`robot_task_interruptible=False`).
-*   **Stage 2: Compound Collapse & Triple-Vector Trip (0:18 – 0:38)** — A lone technician collapses flat across the active machinery boundary. All three Layer 1 safety vectors trigger simultaneously (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`). Commanded wheel velocity clamps to 0.0 rad/s in under 1 millisecond (0.0 ms software delay), halting the robot at a safe 2.9m standoff. Deliberation layers are suspended, and TIAGo tilts its head down to inspect the worker.
+*   **Stage 2: Compound Collapse & Triple-Vector Trip (0:18 – 0:38)** — A lone technician collapses flat across the active machinery boundary. All three Layer 1 safety vectors trigger simultaneously (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`). Commanded wheel velocity clamps to 0.0 rad/s in under 1 millisecond (sub-millisecond software reflex), halting the robot at a safe 2.9m standoff. Deliberation layers are suspended, and TIAGo tilts its head down to inspect the worker.
 *   **Stage 3: Scene Mitigation & Stabilizer Dwell (0:38 – 0:39)** — Emergency personnel arrive and the machinery is locked out. To prevent sensor flutter from causing premature de-escalation, `StabilizedHSR` locks the stop across a 1.0-second dwell window.
 *   **Stage 4: Property HSR-5 Recovery Hold (0:39 – 0:56)** — Conditions evaluate to `CLEAR`, but QERRA-HSR enforces the recovery directive: *"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."* The robot remains clamped at 0.0 rad/s on safe standby.
 *   **Stage 5: Supervisor Confirmation & Safe Standby (0:56 – 1:05)** — The shift supervisor inspects the battery tray and confirms load integrity. TIAGo re-centers its head, switches its status LED to Green, and maintains safe standby on site while medical teams clear the bay.
@@ -476,10 +474,10 @@ All canonical benchmarks must pass before any commit.
 **Engine:** SEMEV-12 `v1.9.1` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`  
 
 The three-layer pipeline is fully implemented, verified, and active:
-- **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex measured in Webots R2025a simulation (0.0 ms command delay, <1 cm physical stop). Human-in-the-Loop recovery directives active. Tested under simultaneous 3-vector compound failure in Webots Demo 6.
-- **Layer 2 — Moral Gate (SEMEV-12 v1.9.1):** All 12 ethical vectors active and scoring. 80-case baseline benchmark documented in `SEMEV-12_Benchmark_Run_01.md`. Active adversarial red-teaming suite documented in `SEMEV-12_Adversarial_Benchmark_Run_01.md` (20 empirical cases across 7 suites).
-- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0):** 12 value vectors active across human-centered and ecological suites. All 12 vectors hardened with 40-character look-back negation guards to eliminate ranking inversions on benign avoidance statements.
-- **Production API:** Live on Hugging Face Spaces with an 800ms fail-closed watchdog.
+- **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex latency measured in Webots R2025a simulation (<1 cm physical stop at 0.33 m/s). Pure Python standard library only, under Apache-2.0. Human-in-the-Loop recovery directives active.
+- **Layer 2 — Moral Gate (SEMEV-12 v1.9.2):** All 12 ethical vectors active and scoring under AGPL-3.0. 80-case baseline benchmark documented in `SEMEV-12_Benchmark_Run_01.md`. Active adversarial red-teaming suite documented in `SEMEV-12_Adversarial_Benchmark_Run_01.md`.
+- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0):** 12 value vectors active across human-centered and ecological suites under AGPL-3.0. All 12 vectors hardened with 40-character look-back negation guards.
+- **Live Reference API:** Live on Hugging Face Spaces with an 800ms fail-closed watchdog.
 
 **Known limitations & honesty boundaries:**
 
@@ -580,7 +578,15 @@ The SEMEV-12 framework, its 12 vectors, their semantic descriptions, scoring arc
 
 ## License
 
-AGPL-3.0 — see `LICENSE` for full terms.
-Commercial licensing available on request.
+## Licensing & Commercial Use
+
+QERRA-v2 Classical operates under a dual-licensing architecture:
+
+- **Layer 1 (QERRA-HSR Physical Reflex):** Licensed under the **[Apache License 2.0](hsr/LICENSE)** (with attribution notice in [`hsr/NOTICE`](hsr/NOTICE)). Permissive, zero-friction integration for chassis-local ROS 2 packages and robot OEMs.
+- **Deliberation Layers (SEMEV-12 & QERRA-THRIVE):** Licensed under the **[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE)**. Requires full network transparency and source disclosure for networked and cloud deployments.
+- **Commercial Licensing:** A commercial license is required for proprietary, closed-source deployments, or cloud robotics platforms that cannot comply with AGPL-3.0 copyleft requirements. See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md) for terms and contact details.
+
+### Regulatory Notice
+*QERRA-v2 Classical is an early research prototype and an unrated supervisory execution guard. Under EU Machinery Regulation (EU) 2023/1230 and the EU AI Act (Regulation (EU) 2024/1689), QERRA does not replace certified hardware emergency stops, SIL/PL safety controllers, or redundant physical interlocks.*
 
 *QERRA-v2 Classical — ethical conscience as the foundation of every decision.*
