@@ -1,9 +1,9 @@
 # =====================================================
 # QERRA-v2 Classical Edition — Main API
-# Version: 2.0.0 (Hardened & Watchdog-Protected)
+# Version: 2.0.2 (Hardened & Watchdog-Protected)
 # Three-layer architecture:
 #   Layer 1 — QERRA-HSR v0.1 (physical safety, pure Python)
-#   Layer 2 — SEMEV-12 v1.9.1 (moral deliberation, semantic batch)
+#   Layer 2 — SEMEV-12 v1.9.2 (moral deliberation, semantic batch)
 #   Layer 3 — QERRA-THRIVE v2.0.0 (values companion, action ranker)
 #
 # Unified Pipeline (Filter-First Architecture with 800ms Fail-Closed Watchdog):
@@ -40,7 +40,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="QERRA-v2 Classical",
     description="Three-layer ethical, physical, and value-based safety middleware for robotics.",
-    version="2.0.0"
+    version="2.0.2"
 )
 
 app.state.limiter = limiter
@@ -294,7 +294,10 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
                 "recommendation": "halt_safety_response",
                 "chosen_action": None,
                 "task_context": data.task_context,
+                # Canonical layer architecture + backward-compatibility aliases
+                "layer_1_hsr": hsr_payload,
                 "layer_2_hsr": hsr_payload,
+                "layer_2_filtered_candidates": [],
                 "layer_1_filtered_candidates": [],
                 "layer_3_thrive": None,
                 "note": "QERRA-HSR returned CRITICAL. Higher-layer deliberation suspended."
@@ -325,7 +328,10 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
             "recommendation": "ask_human",
             "chosen_action": None,
             "task_context": data.task_context,
+            # Canonical layer architecture + backward-compatibility aliases
+            "layer_1_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
             "layer_2_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
+            "layer_2_blocked_candidates": blocked_candidates,
             "layer_1_blocked_candidates": blocked_candidates,
             "layer_3_thrive": None,
             "note": "All candidate actions violated SEMEV-12 moral/harm constraints. Action blocked."
@@ -350,18 +356,23 @@ def _execute_pipeline_core(data: PipelineRequest) -> dict:
         pipeline_status = "APPROVED"
         recommendation = "choose"
 
+    moral_filter_summary = {
+        "total_candidates": len(data.candidates),
+        "survivors_count": len(safe_survivors),
+        "blocked_count": len(blocked_candidates),
+        "blocked_details": blocked_candidates,
+    }
+
     return {
         "pipeline_status": pipeline_status,
         "recommendation": recommendation,
         "chosen_action": winning_action if recommendation == "choose" else None,
         "task_context": data.task_context,
+        # Canonical layer architecture + backward-compatibility aliases
+        "layer_1_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
         "layer_2_hsr": hsr_payload or {"status": "NOT_EVALUATED"},
-        "layer_1_moral_filter": {
-            "total_candidates": len(data.candidates),
-            "survivors_count": len(safe_survivors),
-            "blocked_count": len(blocked_candidates),
-            "blocked_details": blocked_candidates,
-        },
+        "layer_2_moral_filter": moral_filter_summary,
+        "layer_1_moral_filter": moral_filter_summary,
         "layer_3_thrive": {
             "vector": data.vector_name,
             "winner": winning_action,
@@ -395,11 +406,13 @@ async def evaluate_pipeline(request: Request, data: PipelineRequest):
         return api_response(result)
     except asyncio.TimeoutError:
         return api_response({
-            "pipeline_status": "ABORTED_PHYSICAL_SAFETY",
+            "pipeline_status": "ABORTED_WATCHDOG_TIMEOUT",
             "recommendation": "halt_safety_response",
             "chosen_action": None,
             "task_context": data.task_context,
+            "layer_1_hsr": {"status": "WATCHDOG_TIMEOUT_EXCEEDED", "timeout_ms": 800},
             "layer_2_hsr": {"status": "WATCHDOG_TIMEOUT_EXCEEDED", "timeout_ms": 800},
+            "layer_2_moral_filter": None,
             "layer_1_moral_filter": None,
             "layer_3_thrive": None,
             "note": "Pipeline execution exceeded 800ms fail-closed budget. Emergency safety halt."
@@ -417,7 +430,7 @@ def home():
         "message": "Three-layer ethical, physical, and value-based safety middleware",
         "layers": {
             "qerra_hsr": "Layer 1 — Physical safety reflex — v0.1 — 3 vectors pure Python",
-            "semev12": "Layer 2 — Moral deliberation — v1.9.1 — 12 vectors semantic batch",
+            "semev12": "Layer 2 — Moral deliberation — v1.9.2 — 12 vectors semantic batch",
             "qerra_thrive": "Layer 3 — Value action ranker — v2.0.0 — 12 vectors hybrid"
         },
         "endpoints": {
@@ -436,7 +449,7 @@ def health():
         "semev12_vectors_loaded": len(vectors),
         "thrive_vectors_loaded": len(values.ALL_THRIVE_VECTORS),
         "framework": "QERRA-v2 Classical Edition",
-        "semev12_version": "1.9.1",
+        "semev12_version": "1.9.2",
         "qerra_hsr_version": "0.1",
         "qerra_thrive_version": "2.0.0",
         "watchdog_timeout_ms": 800
