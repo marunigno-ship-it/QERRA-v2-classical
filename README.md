@@ -427,6 +427,22 @@ This 1-minute 05-second simulation demonstrates Layer 1 (QERRA-HSR v0.1) executi
 *   **Stage 5: Supervisor Confirmation & Safe Standby (0:56 – 1:05)** — The shift supervisor inspects the battery tray and confirms load integrity. TIAGo re-centers its head, switches its status LED to Green, and maintains safe standby on site while medical teams clear the bay.
 
  [![QERRA-v2 Classical Simulation Demo 6](https://img.youtube.com/vi/tOrM5KbZWBw/hqdefault.jpg)](https://youtu.be/tOrM5KbZWBw)
+
+ ## Simulation Demo 7: Actuator Authority Separation & Supervisory Gate in Webots
+
+This 38-second simulation demonstrates deterministic actuator authority separation on a PAL Robotics TIAGo mobile base in Webots (R2025a), decoupling high-level deliberation from motor actuators via a fail-closed Supervisory Gate:
+
+*   **Stage 1: Startup Fail-Closed Latch & Operator Reset (0:00 – 0:05)** — The Supervisory Gate boots in `TRIPPED` mode (`TRIP_PROPOSER_DEAD`). An untrusted external proposer process connects over UDP port 5005. After a continuous 1.0-second clear dwell window, the gate transitions to `AWAITING_RESET`. An edge-triggered operator reset (Key R) is accepted at t = 4.38s (`RESET_ACCEPTED`), transitioning the gate to `RUN` at cruise speed (2.0 rad/s / ~0.196 m/s).
+*   **Stage 2: Corridor Transit & Kinematic Stop Envelope (0:05 – 0:31)** — TIAGo cruises down the transport corridor. Forward ranges from the onboard Hokuyo lidar (240° FOV, 667 samples) are filtered across a 0.64m swept corridor matching the base width plus safety margin. The gate dynamically computes the stopping envelope: $d_{stop} = \lceil v^2 / (2 \cdot a_{design}) \rceil + margin$ (339 mm at 2.0 rad/s with $a_{design} = 0.5\text{ m/s}^2$ and a 300 mm margin).
+*   **Stage 3: Deterministic Fail-Closed Trip (0:31 – 0:34)** — At t = 31.52s, corridor clearance breaches the 339 mm bound. Within a single 32 ms simulation tick, the gate overrides the proposer, cuts wheel velocity to 0.0 rad/s, and latches in `TRIPPED` (`TRIP_OBSTACLE`). The trip command fires at 337 mm clearance; final standstill is reached at 301 mm without displacing the cart at X = 2.8m.
+*   **Stage 4: Guarded Recovery Contract Check (0:34 – 0:38)** — While stationary facing the cart, an operator reset is attempted. The gate inspects corridor clearance, detects the active hazard, and strictly rejects the reset (`RESET_REJECTED_HAZARD: 1`), keeping motors locked at 0.0 rad/s.
+*   **Stage 5: Cryptographic Flight Recorder Seal (0:38)** — Every control decision is appended to a canonical JSONL flight recorder with a SHA-256 hash chain linking each tick to the preceding record. All 1,485 discrete control cycles verify offline with zero discrepancies (`verify_log.py`, Head Seal: `ae37ae62227c4fdca51233b7e4189607898ae2c27eca5bf0847414d1f0d4c191`).
+
+*Note on Simulation Physics: From t = 5.76s to 14.40s, wheel position sensors record 2.0 rad/s rotation while lidar distance stays flat (~3818 mm), showing initial caster wheel drag/slip on the runway before steady translation begins at ~15s. In this baseline run (n=1), the obstacle cart was positioned at t = 3.5s via script.*
+
+[![QERRA-v2 Supervisory Gate Webots Demo 7](https://img.youtube.com/vi/sZxwLtu5YWQ/hqdefault.jpg)](https://youtu.be/sZxwLtu5YWQ)
+
+Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.com/cyberbotics/webots/discussions/7050) · [Open Robotics Discourse](https://discourse.openrobotics.org/)
   
 
 
