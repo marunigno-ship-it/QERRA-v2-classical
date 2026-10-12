@@ -29,9 +29,20 @@ jobs:
           python -c "import sentence_transformers; print('OK')"
           python -c "from vectors import get_semev12_vectors; print('OK')"
           python -c "import app; import values; print('OK')"
+          python -c "import hsr; import gate; print('OK')"
 
-      - name: Run SEMEV-12 regression suite
+      - name: Run Layer 1 (QERRA-HSR) physical reflex test suite
+        run: python -m unittest discover -s hsr -t . -v
+
+      - name: Run Layer 2 (SEMEV-12) regression benchmarks
         run: python -m tests.test_cases
+
+      - name: Run Supervisory Gate (Demo 7) test suite
+        run: |
+          python -m unittest tests.test_gate_core tests.test_gate_ipc tests.test_gate_lidar tests.test_gate_link tests.test_gate_log -v
+
+      - name: Run Fail-Closed Safety Bridge Tests
+        run: python -m unittest tests.test_bridge_fail_closed -v
 
       - name: Run Unified 3-Layer Pipeline Integration Tests
         run: python test_pipeline_integration.py
