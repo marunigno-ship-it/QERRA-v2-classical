@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (c) 2026 Marussa Metocharaki
 """
-QERRA Supervisory Gate -- pure-function core (Demo 7, SAFETY_CONCEPT.md v0.1).
+QERRA Supervisory Gate -- pure-function core (Demo 7, SAFETY_CONCEPT.md v0.2).
 
     step(state, params, inputs) -> StepResult
 
@@ -23,13 +23,13 @@ Units are integers everywhere that is logged:
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Sequence, Tuple
 
 from hsr.qerra_hsr import HSRInput, HSRStatus, evaluate_hsr
 
-GATE_CORE_VERSION = "0.1"
+GATE_CORE_VERSION = "0.2"
 
 # Reset sources. Only the exact string "operator" is ever accepted (AR-4).
 RESET_SOURCE_OPERATOR = "operator"
@@ -78,19 +78,19 @@ class GateParams:
     # REQUIRED: number of lidar samples in the forward cone the shell must pass.
     lidar_n_expected: int
 
-    dt_us: int = 32_000                 # Webots basicTimeStep (D-5)
-    t_watch_us: int = 100_000           # proposer freshness limit (D-5)
-    proposer_period_us: int = 33_000    # proposer send period; D-5 requires <= t_watch/3
-    lidar_period_us: int = 64_000       # PLACEHOLDER: read the real value from the TIAGo PROTO
-    t_stale_us: int = 160_000           # lidar freshness limit; D-5: >= 2*lidar_period + dt
-    t_dwell_us: int = 1_000_000         # continuous-clear time before reset is possible
+    dt_us: int = 32_000                 # Webots basicTimeStep (32 ms)
+    t_watch_us: int = 150_000           # proposer freshness limit (150 ms, accommodating Windows thread jitter)
+    proposer_period_us: int = 33_000    # proposer send period; <= t_watch/3
+    lidar_period_us: int = 32_000       # Hokuyo sampling period matching dt
+    t_stale_us: int = 96_000            # lidar freshness limit (3 * dt)
+    t_dwell_us: int = 1_000_000         # continuous-clear time before reset is possible (1.0 s)
     max_tick_gap_us: int = 64_000       # gap between ticks that still counts as continuous
 
-    wheel_radius_mm: int = 100          # PLACEHOLDER: read the real value from the TIAGo PROTO
+    wheel_radius_mm: int = 98           # TIAGo base wheel radius (98 mm)
     w_min_urad_s: int = 0               # no reverse (no rear sensor)
-    w_max_urad_s: int = 3_000_000       # PLACEHOLDER envelope: 3 rad/s per wheel
-    a_design_mmps2: int = 250           # PLACEHOLDER: a_design = 0.5 * a_stop after T-12
-    margin_mm: int = 300                # PLACEHOLDER: fixed after calibration
+    w_max_urad_s: int = 3_000_000       # envelope cap: 3.0 rad/s per wheel
+    a_design_mmps2: int = 500           # design deceleration: 500 mm/s² (0.5 m/s²)
+    margin_mm: int = 300                # safety standoff margin: 300 mm
 
     def __post_init__(self) -> None:
         for name in (
@@ -108,9 +108,9 @@ class GateParams:
         if self.w_min_urad_s > self.w_max_urad_s:
             raise ValueError("GateParams: w_min_urad_s must be <= w_max_urad_s")
         if self.t_stale_us < 2 * self.lidar_period_us + self.dt_us:
-            raise ValueError("GateParams: t_stale_us must be >= 2*lidar_period_us + dt_us (D-5)")
+            raise ValueError("GateParams: t_stale_us must be >= 2*lidar_period_us + dt_us")
         if 3 * self.proposer_period_us > self.t_watch_us:
-            raise ValueError("GateParams: proposer_period_us must be <= t_watch_us/3 (D-5)")
+            raise ValueError("GateParams: proposer_period_us must be <= t_watch_us/3")
 
 
 # ----------------------------------------------------------------------------
@@ -242,7 +242,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     if not _is_int(now) or now < 0:
         raise TypeError(f"sim_time_us must be a non-negative int, got {now!r}")
 
-    # --- strictly monotonic sim time (log requirement) ------------------------------
+    # strictly monotonic sim time (log requirement)
     if state.last_tick_us is not None and now <= state.last_tick_us:
         new_state = GateState(
             mode=Mode.TRIPPED, last_tick_us=now, clear_since_us=None,
@@ -254,7 +254,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
 
     events = []
 
-    # --- 1. proposal acceptance (R-06 semantic checks) ------------------------------
+    # 1. proposal acceptance (R-06 semantic checks)
     held, last_seq = state.held, state.last_seq
     cand = inp.proposal
     if cand is not None:
@@ -267,17 +267,17 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         else:
             held, last_seq = cand, cand.seq
 
-    # --- 2. clamp the newest accepted proposal into the envelope (AR-2, R-05) -------
+    # 2. clamp the newest accepted proposal into the envelope (AR-2, R-05)
     clamped = clamp_to_envelope(params, held.left_urad_s, held.right_urad_s) if held else (0, 0)
 
-    # --- 3. speed bound and stop distance -------------------------------------------
+    # 3. speed bound and stop distance
     v_ref = max(
         wheel_to_mmps(params, max(state.last_cmd)),
         wheel_to_mmps(params, max(clamped)),
     )
     stop_mm = d_stop_mm(params, v_ref)
 
-    # --- 4. lidar validity and hazard via QERRA-HSR (R-01, R-04) --------------------
+    # 4. lidar validity and hazard via QERRA-HSR (R-01, R-04, AR-9)
     lidar_ok, min_mm = _validate_lidar(params, now, inp.ranges_m, inp.lidar_stamp_us)
     hazard = False
     hsr_status = None
@@ -292,7 +292,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         hsr_status = hsr.status.value
         hazard = hsr.status == HSRStatus.CRITICAL
 
-    # --- 5. proposer freshness (R-02) -----------------------------------------------
+    # 5. proposer freshness (R-02)
     age_us = None
     proposer_dead = held is None
     proposer_stale = False
@@ -300,7 +300,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         age_us = now - held.sim_stamp_us
         proposer_stale = age_us >= params.t_watch_us
 
-    # --- 6. one primary trip reason, fixed priority ---------------------------------
+    # 6. one primary trip reason, fixed priority
     trip_reason = None
     if inp.log_write_failed:
         trip_reason = Reason.TRIP_LOG_FAILURE
@@ -313,7 +313,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     elif proposer_stale:
         trip_reason = Reason.TRIP_PROPOSER_STALE
 
-    # --- 7. mode transitions ---------------------------------------------------------
+    # 7. mode transitions
     mode = state.mode
     clear_since = state.clear_since_us
     cmd = (0, 0)
@@ -331,7 +331,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
                 mode = Mode.AWAITING_RESET
         reason = Reason.LATCHED_AWAIT_RESET if mode == Mode.AWAITING_RESET else Reason.LATCHED_DWELL
 
-    # --- 8. reset handling (AR-4, R-07) ----------------------------------------------
+    # 8. reset handling (AR-4, R-07)
     if inp.reset_source is not None:
         if inp.reset_source != RESET_SOURCE_OPERATOR:
             events.append(Event.RESET_REJECTED_CHANNEL)
