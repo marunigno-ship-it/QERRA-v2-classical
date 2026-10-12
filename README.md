@@ -297,7 +297,7 @@ values/
 - **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors that rank candidate actions for human courtesy (such as quiet "whisper mode" in corridors or avoiding outdoor lawns).
 - **Behavior Tree & ROS 2 Ready:** Native PyTrees Condition node and non-blocking ROS 2 Action Server bridge with an 800ms fail-closed watchdog budget.
 - **Auditable Deliberation:** Transparent scoring gates. Every response outputs the exact active vectors, human-readable reasoning strings, and raw similarity metrics.
-- **Test-Verified:** 29 out of 29 automated regression tests passing across physical reflex, hysteresis dwell, and semantic vector suites.
+- **Test-Verified:** Over 100 automated unit and regression tests passing across physical reflex (QERRA-HSR), supervisory gate (Demo 7), and semantic moral vector suites (SEMEV-12).
 ---
 
 ## Calibrated Benchmarks
