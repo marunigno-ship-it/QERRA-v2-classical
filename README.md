@@ -5,8 +5,26 @@ Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranke
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
-[![Version](https://img.shields.io/badge/version-2.0.2-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
+---
+
+## The Idea in One Sentence
+
+Values and ethics can screen and rank what a robot wants to do, but only a deterministic gate decides what the wheels do.
+
+The setting this is built for: a transport cobot in a hospital corridor yields and slows near people, stops safely if its software fails, and leaves a record a safety officer can audit.
+
+| Layer | Role | Evidence today |
+|-------|------|----------------|
+| **Layer 1: Supervisory Gate (`gate/`) + QERRA-HSR (`hsr/`)** | The only component that owns the wheel commands. Stops the robot if the planner goes silent or stale, a sensor is invalid, or an obstacle is inside the stopping distance. Writes every decision to a hash-chained log. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 78 gate-side unit tests across six test files, log verified with `verify_log.py`. Limits: simulation only, non-real-time host, anchor stored in this repository. |
+| **Layer 2: SEMEV-12** | Advisory screening of text task instructions. Not part of the safety function. | Built, unit-tested and benchmarked. The adversarial benchmark documents known gaps. |
+| **Layer 3: QERRA-THRIVE** | Advisory ranking of actions that are already safe (pacing, personal space, clear signalling). | Built and unit-tested. Not yet evaluated with human participants. |
+
+**Where to start:**
+- Safety and robotics engineers: [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, and the Demo 7 section below.
+- Ethics, human-robot interaction and standards readers: the SEMEV-12 and QERRA-THRIVE sections below, and the two benchmark files.
+
 ---
 
 ## What QERRA Does
@@ -36,6 +54,7 @@ All safety decisions are deterministic, inspectable, and auditable. Every result
 **QERRA-v2 Classical** is designed and developed by **Marussa Metocharaki**.
 
 - **Layer 1 (`hsr/`):** [Apache License 2.0](hsr/LICENSE) (with attribution in [`hsr/NOTICE`](hsr/NOTICE)). Permissive for chassis-local ROS 2 integration.
+- **Supervisory Gate (`gate/`):** [GNU AGPL-3.0](LICENSE) (AGPL-3.0-only). Open-source copyleft.
 - **Layers 2 & 3 (SEMEV-12 & QERRA-THRIVE):** [GNU AGPL-3.0](LICENSE). Open-source copyleft.
 - **Commercial Licensing:** Closed-source enterprise integration available under a commercial license. See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md).
 - **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are timestamped and permanently archived on Zenodo.
@@ -430,15 +449,15 @@ This 1-minute 05-second simulation demonstrates Layer 1 (QERRA-HSR v0.1) executi
 
  ## Simulation Demo 7: Actuator Authority Separation & Supervisory Gate in Webots
 
-This 38-second simulation demonstrates deterministic actuator authority separation on a PAL Robotics TIAGo mobile base in Webots (R2025a), decoupling high-level deliberation from motor actuators via a fail-closed Supervisory Gate:
+This simulation (video length 38 s; the full logged run is 47.52 s, 1,485 ticks) demonstrates deterministic actuator authority separation on a PAL Robotics TIAGo mobile base in Webots (R2025a), decoupling high-level deliberation from motor actuators via a fail-closed Supervisory Gate:
 
 *   **Stage 1: Startup Fail-Closed Latch & Operator Reset (0:00 – 0:05)** — The Supervisory Gate boots in `TRIPPED` mode (`TRIP_PROPOSER_DEAD`). An untrusted external proposer process connects over UDP port 5005. After a continuous 1.0-second clear dwell window, the gate transitions to `AWAITING_RESET`. An edge-triggered operator reset (Key R) is accepted at t = 4.38s (`RESET_ACCEPTED`), transitioning the gate to `RUN` at cruise speed (2.0 rad/s / ~0.196 m/s).
 *   **Stage 2: Corridor Transit & Kinematic Stop Envelope (0:05 – 0:31)** — TIAGo cruises down the transport corridor. Forward ranges from the onboard Hokuyo lidar (240° FOV, 667 samples) are filtered across a 0.64m swept corridor matching the base width plus safety margin. The gate dynamically computes the stopping envelope: $d_{stop} = \lceil v^2 / (2 \cdot a_{design}) \rceil + margin$ (339 mm at 2.0 rad/s with $a_{design} = 0.5\text{ m/s}^2$ and a 300 mm margin).
 *   **Stage 3: Deterministic Fail-Closed Trip (0:31 – 0:34)** — At t = 31.52s, corridor clearance breaches the 339 mm bound. Within a single 32 ms simulation tick, the gate overrides the proposer, cuts wheel velocity to 0.0 rad/s, and latches in `TRIPPED` (`TRIP_OBSTACLE`). The trip command fires at 337 mm clearance; final standstill is reached at 301 mm without displacing the cart at X = 2.8m.
 *   **Stage 4: Guarded Recovery Contract Check (0:34 – 0:38)** — While stationary facing the cart, an operator reset is attempted. The gate inspects corridor clearance, detects the active hazard, and strictly rejects the reset (`RESET_REJECTED_HAZARD: 1`), keeping motors locked at 0.0 rad/s.
-*   **Stage 5: Cryptographic Flight Recorder Seal (0:38)** — Every control decision is appended to a canonical JSONL flight recorder with a SHA-256 hash chain linking each tick to the preceding record. All 1,485 discrete control cycles verify offline with zero discrepancies (`verify_log.py`, Head Seal: `ae37ae62227c4fdca51233b7e4189607898ae2c27eca5bf0847414d1f0d4c191`).
+*   **Stage 5: Tamper-Evident Flight Recorder Seal (0:38)** — Every control decision is appended to a canonical JSONL flight recorder with a SHA-256 hash chain linking each tick to the preceding record. All 1,485 discrete control cycles verify offline with zero discrepancies (`verify_log.py`, Head Seal: `ae37ae62227c4fdca51233b7e4189607898ae2c27eca5bf0847414d1f0d4c191`). The chain is tamper-evident, not unforgeable: the head hash is anchored in `results/RUN_1791713619/ANCHOR.txt` inside this same repository, so stronger assurance would need an independent anchor.
 
-*Note on Simulation Physics: From t = 5.76s to 14.40s, wheel position sensors record 2.0 rad/s rotation while lidar distance stays flat (~3818 mm), showing initial caster wheel drag/slip on the runway before steady translation begins at ~15s. In this baseline run (n=1), the obstacle cart was positioned at t = 3.5s via script.*
+*Note on Simulation Physics: From t = 5.76s to 14.40s, wheel position sensors record 2.0 rad/s rotation while lidar distance stays near 3.8 m until about t = 13.6s, consistent with initial caster wheel drag/slip on the runway (an attribution, not isolated by a separate experiment); steady translation follows. In this baseline run (n=1), the obstacle cart was positioned at t = 3.5s via script.*
 
 [![QERRA-v2 Supervisory Gate Webots Demo 7](https://img.youtube.com/vi/sZxwLtu5YWQ/hqdefault.jpg)](https://youtu.be/sZxwLtu5YWQ)
 
@@ -452,7 +471,13 @@ Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.c
 
 ```
 ├── hsr/                                     # Layer 1: QERRA-HSR v0.1 physical safety reflex (3 vectors)
-├── ethical_core.py                          # Layer 2: SEMEV-12 scoring engine (v1.9.1)
+├── gate/                                    # Layer 1: supervisory gate (pure-function core, IPC, lidar corridor, hash-chained log)
+├── controllers/tiago_supervisory_gate/      # Webots controller for Demo 7
+├── worlds/demo7_supervisory_gate.wbt        # Webots world for Demo 7
+├── scripts/untrusted_proposer.py            # Scripted untrusted proposer (2.0 rad/s) used in Demo 7
+├── verify_log.py                            # Offline hash-chain verifier for the gate log
+├── results/RUN_1791713619/                  # Demo 7 audit log and ANCHOR.txt
+├── ethical_core.py                          # Layer 2: SEMEV-12 scoring engine (v1.9.2)
 ├── vectors.py                               # SEMEV-12 vector definitions and weights
 ├── values/                                  # Layer 3: QERRA-THRIVE v2.0.0 values ranker (12 vectors)
 ├── adversarial_lab.py                       # Adversarial diagnostic runner (8 verified empirical cases)
@@ -463,12 +488,16 @@ Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.c
 ├── ros2_bridge.py                           # ROS 2 bridge (standalone + rclpy node)
 ├── tests/
 │   ├── test_cases.py                        # Regression test suite
-│   └── test_vectors.py                      # Vector unit tests
+│   ├── test_vectors.py                      # Vector unit tests
+│   └── test_gate_*.py                       # Supervisory gate tests (core, IPC, lidar, link, log)
 ├── SEMEV-12_Benchmark_Run_01.md             # Baseline benchmark — 80 verified test cases
 ├── SEMEV-12_Adversarial_Benchmark_Run_01.md # Active adversarial red-teaming benchmark
 ├── CURRENT_ARCHITECTURE.md                  # Canonical three-layer architecture documentation
 ├── SEMEV-12_Framework_Documentation.md      # Full framework documentation
 ├── QERRA_FOR_ROBOTICS.md                    # Technical brief for the robotics community
+├── SAFETY_CONCEPT.md                        # Supervisory gate safety concept: claims, hazards, parameters
+├── LIMITATIONS.md                           # Known limitations
+├── COMMERCIAL-LICENSE.md                    # Commercial licensing terms
 ├── CHANGELOG.md                             # Version history
 └── README.md
 ```
@@ -483,12 +512,24 @@ python -m tests.test_cases
 
 All canonical benchmarks must pass before any commit.
 
+Supervisory gate tests (standard library only):
+
+```bash
+python -m unittest tests.test_gate_core tests.test_gate_ipc tests.test_gate_lidar tests.test_gate_link tests.test_gate_log tests.test_license_boundary
+```
+
+Verify the Demo 7 flight-recorder log against its anchored head hash:
+
+```bash
+python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 --anchor-hash ae37ae62227c4fdca51233b7e4189607898ae2c27eca5bf0847414d1f0d4c191
+```
+
 ---
 
 ## Project Status
 
-**Version:** `2.0.2` (Layer 3 Negation Hardening & Webots Demo 6)  
-**Engine:** SEMEV-12 `v1.9.1` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`  
+**Version:** `2.1.0` (Demo 7 Actuator Authority Separation Baseline)
+**Engine:** SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`  
 
 The three-layer pipeline is fully implemented, verified, and active:
 - **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex latency measured in Webots R2025a simulation (<1 cm physical stop at 0.33 m/s). Pure Python standard library only, under Apache-2.0. Human-in-the-Loop recovery directives active.
@@ -554,9 +595,8 @@ Input from researchers, developers, robotics engineers, and practitioners
 is welcome at any stage.
 
 **Marussa Metocharaki**
-Independent researcher. Greece.
-Focused on classical ethical frameworks for robotics and high-stakes
-decision systems.
+Independent solo developer based in Greece, building deterministic
+supervisory software and classical ethical frameworks for mobile robots.
 
 Issues, pull requests, and integration experiments welcome.
 
@@ -593,13 +633,14 @@ All design decisions, framework logic, vector definitions, and final implementat
 
 The SEMEV-12 framework, its 12 vectors, their semantic descriptions, scoring architecture, and nuance logic are the original intellectual creation of **Marussa Metocharaki**.
 
-## License
+
 
 ## Licensing & Commercial Use
 
 QERRA-v2 Classical operates under a dual-licensing architecture:
 
 - **Layer 1 (QERRA-HSR Physical Reflex):** Licensed under the **[Apache License 2.0](hsr/LICENSE)** (with attribution notice in [`hsr/NOTICE`](hsr/NOTICE)). Permissive, zero-friction integration for chassis-local ROS 2 packages and robot OEMs.
+- **Supervisory Gate (`gate/`):** Licensed under the **[GNU Affero General Public License v3.0 (AGPL-3.0-only)](LICENSE)**.
 - **Deliberation Layers (SEMEV-12 & QERRA-THRIVE):** Licensed under the **[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE)**. Requires full network transparency and source disclosure for networked and cloud deployments.
 - **Commercial Licensing:** A commercial license is required for proprietary, closed-source deployments, or cloud robotics platforms that cannot comply with AGPL-3.0 copyleft requirements. See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md) for terms and contact details.
 
