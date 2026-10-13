@@ -228,7 +228,7 @@ def main():
 
     if result.is_valid:
         print("=" * 70)
-        print("[AUDIT PASSED] Log is mathematically intact and unforgeable.")
+        print("[AUDIT PASSED] Log is mathematically intact and tamper-evident against anchored head hash.")
         print(f"  • Verified Records : {result.total_records}")
         print(f"  • Sequence Range   : {result.first_seq} -> {result.last_seq}")
         print(f"  • Head Hash (Seal) : {result.head_hash}")
