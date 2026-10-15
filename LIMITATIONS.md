@@ -76,7 +76,23 @@ from v0.1 and remains a candidate for future research after v0.1 is validated.
 
 ---
 
-## 3. System Architecture Limitations
+## 3. Supervisory Gate (Layer 1A) Empirical Limitations
+
+**Commanded vs. measured velocity in stopping envelope.**
+The dynamic stopping distance $d_{stop}(v) = \lceil v^2 / (2 \cdot a_{design}) \rceil + margin$ calculates deceleration requirements using the commanded velocity proposal, not measured wheel encoder odometry. In Demo 7 telemetry (`RUN_1791713619`), wheel encoders recorded slip and caster drag between $t = 5.76\text{ s}$ and $t = 14.40\text{ s}$ where commanded speed was 2.0 rad/s but physical displacement was delayed. If a robot is skidding with momentum while the planner commands zero speed, $d_{stop}$ evaluates strictly to the static margin ($300\text{ mm}$), underestimating true physical stopping distance.
+
+**Rotational sweep is unmodeled.**
+The corridor filter (`gate_lidar.CorridorFilter`) projects laser returns across a forward translation corridor matching base half-width ($0.32\text{ m}$). It does not compute swept polygonal volumes during pivot-in-place turns. A differential pivot command (e.g., left wheel forward, right wheel reverse) with an obstacle immediately adjacent to the chassis flank evaluates as clear (`PASS`), because lateral beams outside the forward corridor are discarded.
+
+**Blinded sensor boundary (+inf scans parsed as clear).**
+In `gate_core._validate_lidar()`, a scan containing all $+inf$ values returns `(True, None)`, which `step()` interprets as an unobstructed forward field. If a physical lidar disconnects, suffers optical saturation, or is blinded/covered such that it emits uniform infinity, the gate treats the corridor as clear rather than tripping `TRIP_SENSOR_INVALID`.
+
+**Simulation-only baseline ($n=1$) on non-RTOS host.**
+Empirical actuator authority claims rest on a single verified baseline run (`RUN_1791713619`, 1,485 control cycles, 47.52 s sim time) in Webots R2025a using a PAL Robotics TIAGo base. The host environment was Windows 11 with a non-real-time OS thread scheduler, requiring the proposer freshness watchdog to be set to $150\text{ ms}$ (`t_watch_us = 150_000`) to tolerate thread jitter. Physical multi-run distributions across varying friction surfaces and battery levels have not been evaluated.
+
+---
+
+## 4. System Architecture Limitations
 
 **Single-author bus factor.**
 QERRA-v2 Classical is developed and maintained by one independent
@@ -105,7 +121,7 @@ infrastructure resource constraint, not an engine algorithmic delay.
 
 ---
 
-## 4. Scope, Human Agency, and Regulatory Boundaries
+## 5. Scope, Human Agency, and Regulatory Boundaries
 
 **Deterministic Execution Boundary, Not an Autonomous Moral Authority.**
 QERRA-v2 is an inspectable execution firewall and deliberation middleware.
@@ -137,7 +153,7 @@ EU AI Act (Regulation (EU) 2024/1689):
 
 ---
 
-## 5. Known Technical Notes
+## 6. Known Technical Notes
 
 **v001 detection scope.**
 The `coherence_protection` vector detects emotional distress signals
