@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (c) 2026 Marussa Metocharaki
 """
-QERRA Supervisory Gate -- pure-function core (Demo 7, SAFETY_CONCEPT.md v0.2).
+QERRA Supervisory Gate -- pure-function core (SAFETY_CONCEPT.md v0.2).
 
     step(state, params, inputs) -> StepResult
 
@@ -10,10 +10,11 @@ Rules this module follows (see SAFETY_CONCEPT.md):
   AR-3  Parameters live in an immutable GateParams. No input can change them.
   AR-7  Lidar data is validated before use. Invalid data is a trip, never a default.
   AR-8  This module is a pure function. No sockets, no files, no Webots, no clock,
-        no randomness. Time arrives as `inputs.sim_time_us`. It uses only the
-        Python standard library plus `hsr/` (Apache-2.0, standard library only).
-  AR-9  The hazard classification goes through `hsr.qerra_hsr.evaluate_hsr`.
-        The latch, dwell and reset logic below is new gate code, not part of hsr/.
+        no randomness. Time arrives as `inputs.sim_time_us`. It uses strictly the
+        Python standard library with zero external dependencies.
+  AR-9  Obstacle hazard evaluation is a deterministic stopping envelope check:
+        hazard = (min_range <= d_stop).
+        The latch, dwell, and reset logic below enforces fail-closed recovery.
 
 Units are integers everywhere that is logged:
   time        microseconds (sim time)
@@ -27,9 +28,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Sequence, Tuple
 
-from hsr.qerra_hsr import HSRInput, HSRStatus, evaluate_hsr
-
-GATE_CORE_VERSION = "0.2"
+GATE_CORE_VERSION = "0.3"
 
 # Reset sources. Only the exact string "operator" is ever accepted (AR-4).
 RESET_SOURCE_OPERATOR = "operator"
@@ -249,7 +248,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
             held=None, last_seq=state.last_seq, last_cmd=(0, 0),
         )
         record = _record(now, new_state.mode, Reason.TRIP_CLOCK_ANOMALY, (), None, None,
-                         False, None, None, None, (0, 0))
+                         False, None, None, False, (0, 0))
         return StepResult(new_state, 0, 0, Reason.TRIP_CLOCK_ANOMALY, (), record)
 
     events = []
@@ -277,20 +276,11 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     )
     stop_mm = d_stop_mm(params, v_ref)
 
-    # 4. lidar validity and hazard via QERRA-HSR (R-01, R-04, AR-9)
+    # 4. lidar validity and obstacle hazard (R-01, R-04, AR-9)
     lidar_ok, min_mm = _validate_lidar(params, now, inp.ranges_m, inp.lidar_stamp_us)
     hazard = False
-    hsr_status = None
     if lidar_ok:
-        breach = min_mm is not None and min_mm <= stop_mm
-        hsr = evaluate_hsr(HSRInput(
-            distress_confidence=0.0,
-            persons_nearby_count=2,
-            hazard_proximity_flag=breach,
-            robot_task_interruptible=True,
-        ))
-        hsr_status = hsr.status.value
-        hazard = hsr.status == HSRStatus.CRITICAL
+        hazard = min_mm is not None and min_mm <= stop_mm
 
     # 5. proposer freshness (R-02)
     age_us = None
@@ -349,11 +339,11 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         held=held, last_seq=last_seq, last_cmd=cmd,
     )
     record = _record(now, mode, reason, tuple(events), held, age_us, lidar_ok, min_mm,
-                     stop_mm, hsr_status, cmd)
+                     stop_mm, hazard, cmd)
     return StepResult(new_state, cmd[0], cmd[1], reason, tuple(events), record)
 
 
-def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, hsr_status, cmd) -> dict:
+def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, hazard, cmd) -> dict:
     return {
         "sim_time_us": now,
         "state": mode.value,
@@ -364,7 +354,8 @@ def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, 
         "lidar_valid": lidar_ok,
         "lidar_min_mm": min_mm,
         "d_stop_mm": stop_mm,
-        "hsr_status": hsr_status,
+        "obstacle_breach": hazard,
+        "hsr_status": None,
         "cmd_left_urad_s": cmd[0],
         "cmd_right_urad_s": cmd[1],
     }
