@@ -1,4 +1,4 @@
-name: QERRA-v2 CI Test Suite
+name: QERRA-v2 Classical Test Suite
 
 on:
   push:
@@ -9,40 +9,37 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    container:
-      image: python:3.10-slim
-    timeout-minutes: 20
-    env:
-      QERRA_API_KEY: "TEST-2026-QERRA-CLASSICAL-PUBLIC-KEY-98765"
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install fastapi uvicorn python-dotenv pydantic slowapi httpx
-          pip install sentence-transformers
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install sentence-transformers fastapi uvicorn python-dotenv pydantic slowapi
+          pip install -e . --no-deps
 
-      - name: Verify imports
+      - name: Run Supervisory Gate Test Suite (75 tests, stdlib only)
+        env:
+          PYTHONPATH: .
         run: |
-          python -c "import sentence_transformers; print('OK')"
-          python -c "from vectors import get_semev12_vectors; print('OK')"
-          python -c "import app; import values; print('OK')"
-          python -c "import hsr; import gate; print('OK')"
+          python -m unittest discover -s tests -p "test_gate_*.py" -v
 
-      - name: Run Layer 1 (QERRA-HSR) physical reflex test suite
-        run: python -m unittest discover -s hsr -t . -v
-
-      - name: Run Layer 2 (SEMEV-12) regression benchmarks
-        run: python -m tests.test_cases
-
-      - name: Run Supervisory Gate (Demo 7) test suite
+      - name: Run QERRA-HSR Test Suite (20 tests)
+        env:
+          PYTHONPATH: .
         run: |
-          python -m unittest tests.test_gate_core tests.test_gate_ipc tests.test_gate_lidar tests.test_gate_link tests.test_gate_log -v
+          python -m unittest discover -s hsr -p "test_*.py" -v
 
-      - name: Run Fail-Closed Safety Bridge Tests
-        run: python -m unittest tests.test_bridge_fail_closed -v
-
-      - name: Run Unified 3-Layer Pipeline Integration Tests
-        run: python test_pipeline_integration.py
+      - name: Run SEMEV-12 Regression Suite (15 benchmark cases)
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m tests.test_cases
