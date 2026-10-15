@@ -5,8 +5,8 @@
 
 | | |
 |---|---|
-| Document version | 0.2 (Empirical evidence attached from Demo 7 run) |
-| Date | 2026-10-12 |
+| Document version | 0.3 (Decoupled pure stdlib core, verified against RUN_1791713619) |
+| Date | 2026-10-15 |
 | Author | Marussa Metocharaki |
 | System under demonstration | QERRA Supervisory Gate, simulated PAL Robotics TIAGo in Webots R2025a, Windows 11 |
 | Status vocabulary | **SPECIFIED** (written, nothing built) → **IMPLEMENTED** (code exists, not yet evidenced) → **VERIFIED** (test passed; evidence = test ID + commit hash / Run ID + log head hash) |
@@ -78,8 +78,8 @@ At cruise speed $0.196\text{ m/s}$, the kinematic braking term is $\sim 39\text{
 - **AR-5** The gate never blocks on IPC (`recvfrom` non-blocking, bounded drain $\le 256$ datagrams/tick).
 - **AR-6** IPC messages are capped at 2048 bytes, strictly parsed (no NaN/Inf), strictly typed integer values.
 - **AR-7** Lidar scan ($667$ samples, $240^\circ$ FOV) is filtered through a $0.64\text{ m}$ swept corridor. Invalid data causes an immediate trip.
-- **AR-8** Gate core is a pure function `step(state, params, inputs) -> StepResult`.
-- **AR-9** Hazard proximity classification routes through QERRA-HSR (`hsr.qerra_hsr.evaluate_hsr`).
+- **AR-8** Gate core is a pure function `step(state, params, inputs) -> StepResult` using strictly the Python standard library with zero external dependencies (verified via AST unit testing).
+- **AR-9** Obstacle hazard classification is a direct deterministic stopping envelope check: `hazard = (min_range <= d_stop)`. It is decoupled from high-level or assistive reflex layers (`hsr/`).
 
 ---
 
@@ -102,7 +102,8 @@ Every evaluation writes one canonical JSON line to `results/<run_id>/gate_audit.
 | `lidar_valid` | bool | Scan integrity flag |
 | `lidar_min_mm` | int or null | Minimum corridor obstacle distance |
 | `d_stop_mm` | int | Commanded stopping distance envelope |
-| `hsr_status` | string or null | Layer 1 QERRA-HSR reflex status (`CRITICAL`, `CLEAR`) |
+| `obstacle_breach` | bool | Direct stopping envelope breach flag (`True` if `lidar_min_mm <= d_stop_mm`) |
+| `hsr_status` | string or null | Decoupled in v0.3 (`null`); reserved for external assistive reflex telemetry |
 | `cmd_left_urad_s` | int | Output command to left wheel ($\mu\text{rad/s}$) |
 | `cmd_right_urad_s` | int | Output command to right wheel ($\mu\text{rad/s}$) |
 | `gate_version` | string | Controller software release |
@@ -117,3 +118,4 @@ Every evaluation writes one canonical JSON line to `results/<run_id>/gate_audit.
 |---|---|---|
 | 0.1 | 2026-10-10 | Initial specification. All items SPECIFIED. |
 | 0.2 | 2026-10-12 | Evidenced run `RUN_1791713619` attached. Claims C-1, C-2, C-3, C-4, C-6 raised to VERIFIED with exact test IDs and hash seals. Claim C-2 refined to report $337\text{ mm}$ trip vs $301\text{ mm}$ physical standstill ($36\text{ mm}$ coasting). High-speed reaction time term documented. Parameter defaults synchronized to $150\text{ ms}$ and $500\text{ mm/s}^2$. |
+| 0.3 | 2026-10-15 | Decoupled `hsr/` from `gate_core.py`. Enforced AR-8 (pure standard library, AST verified in test suite). Updated AR-9 to direct deterministic envelope check (`min_mm <= stop_mm`). Added `obstacle_breach` to record schema. All 75 gate unit tests verified passing. |
