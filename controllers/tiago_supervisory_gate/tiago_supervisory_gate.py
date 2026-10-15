@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (c) 2026 Marussa Metocharaki
 """
-QERRA Supervisory Gate -- Webots robot controller (Demo 7), version 0.2.
-SAFETY_CONCEPT.md v0.1: AR-1, AR-4, AR-5, AR-7, C-1, C-2, C-3, C-6, D-2, D-5.
+QERRA Supervisory Gate -- Webots robot controller (Demo 7), version 0.3.
+SAFETY_CONCEPT.md v0.2: AR-1, AR-4, AR-5, AR-7, C-1, C-2, C-3, C-6, D-2, D-5.
 
 The only process that writes wheel velocities. The untrusted proposer runs as a separate
 OS process and can only send datagrams.
@@ -12,7 +12,7 @@ sim-time watchdog is valid only when Webots runs at about 1x real time (use the 
 button). Reproducible sweeps (T-03) need the lockstep harness, which is a later step.
 
 Optional environment variables:
-  QERRA_ROOT               repository root (fallback to PyCharm project)
+  QERRA_ROOT               repository root (override directory discovery)
   QERRA_RUN_ID             run identifier (default RUN_<epoch seconds>)
   QERRA_PROPOSER_FAULT     none | hang | die | nan | oversized      (default none)
   QERRA_FAULT_SIM_S        sim time of the fault in seconds          (default 3.0)
@@ -21,41 +21,34 @@ Optional environment variables:
   QERRA_SMOKE_OBSTACLE     "1" = moves DEF OBSTACLE itself (default "1" for smoke test)
   QERRA_SKIP_PROPOSER      "1" = do not spawn the proposer (start it by hand)
 """
-import logging
+from __future__ import annotations
+
 import math
 import os
 import subprocess
 import sys
 import time
 
-logging.getLogger("hsr").setLevel(logging.WARNING)
-logging.getLogger("hsr.qerra_hsr").setLevel(logging.WARNING)
 
-
-def find_project_root():
-    """Locates the QERRA-v2-classical repository root containing gate/ and hsr/."""
+def find_project_root() -> str:
+    """Locates the QERRA-v2-classical repository root containing gate/ portably."""
     env = os.environ.get("QERRA_ROOT")
     if env and os.path.isdir(os.path.join(env, "gate")):
         return os.path.abspath(env)
 
-    # 1. Try walking up from this controller file
+    # Walk up from this controller file to find the directory containing gate/
     cur = os.path.dirname(os.path.abspath(__file__))
     for _ in range(8):
-        if os.path.isdir(os.path.join(cur, "gate")) and os.path.isdir(os.path.join(cur, "hsr")):
+        if os.path.isdir(os.path.join(cur, "gate")):
             return cur
         parent = os.path.dirname(cur)
         if parent == cur:
             break
         cur = parent
 
-    # 2. Local development fallback to PyCharm repository
-    fallback = r"C:\Users\marun\PycharmProjects\QERRA-v2-classical"
-    if os.path.isdir(os.path.join(fallback, "gate")) and os.path.isdir(os.path.join(fallback, "hsr")):
-        return fallback
-
     raise RuntimeError(
-        "Cannot find the repository root (the folder that contains gate/ and hsr/). "
-        "Set the QERRA_ROOT environment variable to it."
+        "Cannot find repository root containing gate/. "
+        "Set the QERRA_ROOT environment variable to the repository root."
     )
 
 
@@ -66,9 +59,16 @@ if PROJECT_ROOT not in sys.path:
 # Defaults to "1" so smoke obstacle functions directly in Webots GUI
 SMOKE_OBSTACLE = os.environ.get("QERRA_SMOKE_OBSTACLE", "1") == "1"
 if SMOKE_OBSTACLE:
-    from controller import Supervisor as RobotClass
+    try:
+        from controller import Supervisor as RobotClass
+    except ImportError:
+        # Standalone lint/test fallback when executed outside Webots runtime
+        RobotClass = object
 else:
-    from controller import Robot as RobotClass
+    try:
+        from controller import Robot as RobotClass
+    except ImportError:
+        RobotClass = object
 
 from gate.gate_core import (                                # noqa: E402
     GateInputs, GateParams, Mode, Reason, RESET_SOURCE_OPERATOR, initial_state, step,
@@ -94,7 +94,7 @@ PROPOSAL_PORT = 5005
 OPERATOR_PORT = 5006
 
 
-def env_int(name):
+def env_int(name: str):
     raw = os.environ.get(name)
     return int(raw) if raw not in (None, "") else None
 
@@ -217,7 +217,7 @@ def main():
     log_path = os.path.join(run_dir, "gate_audit.jsonl")
     telemetry_path = os.path.join(run_dir, "wheel_telemetry.csv")
 
-    logger = GateLogger(log_path, run_id=run_id, gate_version="0.2")
+    logger = GateLogger(log_path, run_id=run_id, gate_version="0.3")
 
     telemetry_file = open(telemetry_path, "w", encoding="utf-8", newline="\n")
     telemetry_file.write("sim_time_sec,cmd_left_rad_s,cmd_right_rad_s,meas_left_rad_s,meas_right_rad_s,lidar_min_mm\n")
@@ -289,7 +289,7 @@ def main():
             # Drain incoming speed proposals
             proposal, _ = drain_proposals(prop_sock)
 
-            # Operator Reset (D5 fix: strictly edge-triggered on initial key-down)
+            # Operator Reset (strictly edge-triggered on initial key-down)
             current_key_r_down = False
             k = keyboard.getKey()
             while k != -1:
