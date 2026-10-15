@@ -17,9 +17,10 @@ The setting this is built for: a transport cobot in a hospital corridor yields a
 
 | Layer | Role | Evidence today |
 |-------|------|----------------|
-| **Layer 1: Supervisory Gate (`gate/`) + QERRA-HSR (`hsr/`)** | The only component that owns the wheel commands. Stops the robot if the planner goes silent or stale, a sensor is invalid, or an obstacle is inside the stopping distance. Writes every decision to a hash-chained log. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 78 gate-side unit tests across six test files, log verified with `verify_log.py`. Limits: simulation only, non-real-time host, anchor stored in this repository. |
-| **Layer 2: SEMEV-12** | Advisory screening of text task instructions. Not part of the safety function. | Built, unit-tested and benchmarked. The adversarial benchmark documents known gaps. |
-| **Layer 3: QERRA-THRIVE** | Advisory ranking of actions that are already safe (pacing, personal space, clear signalling). | Built and unit-tested. Not yet evaluated with human participants. |
+| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 75 unit tests passing (0.21s), verified offline with `verify_log.py` against anchored head hash `ae37ae62...`. Limits: Webots R2025a simulation only, Windows non-real-time host, anchor stored in repo. |
+| **Layer 1B: QERRA-HSR (`hsr/`)** | Advisory 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. Pure Python, Apache-2.0. | Built and unit-tested (20 tests passing). Evaluated in Webots Demo 6 with stabilized 1.0s dwell and Property HSR-5 recovery directives. |
+| **Layer 2: SEMEV-12** | Advisory screening of text task instructions against 12 moral and coercion vectors. MiniLM embeddings with deterministic scoring gates and negation pre-filtering. Not part of the physical safety function. | Built, unit-tested and benchmarked (15 regression cases, 80-case baseline, active adversarial suite). The adversarial benchmark documents known evasion vectors. |
+| **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
 
 **Where to start:**
 - Safety and robotics engineers: [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, and the Demo 7 section below.
@@ -35,8 +36,9 @@ A mobile robot should never rely on an unpredictable neural network to make life
 
 QERRA solves this by splitting safety into three separate, accountable jobs that run in a strict sequence:
 
-1. **The Physical Reflex (QERRA-HSR):**  
-   Pure Python, zero-ML threshold logic that protects human life and machine hardware. It monitors distress telemetry, human isolation, and physical hazards. If someone is in danger, it clamps wheel motors with sub-millisecond software reflex latency (<1ms compute budget, stopping in ~0.9 cm at 0.33 m/s in Webots R2025a simulation). Once conditions clear across a 1.0-second cooldown, routine tasks resume automatically, while delicate tasks hold still until a human confirms it is safe to continue.
+1. **The Deterministic Gate & Assistive Reflex (Layer 1A & 1B):**  
+   - **Layer 1A — The Supervisory Gate (`gate/`):** Pure-function, standard-library-only integer state machine that holds exclusive authority over motor velocity commands. It evaluates velocity proposals from untrusted planners against dynamic kinematic stopping envelopes ($d_{stop} = \lceil v^2 / (2a) \rceil + margin$), trips fail-closed on obstacle breach, clock anomalies, invalid sensor scans, or proposer stalls ($\ge 150\text{ ms}$), and enforces a 1.0 s continuous-clear dwell and manual operator reset before recovery. In verified simulation (TIAGo base in Webots R2025a, `RUN_1791713619`), commanded cruise was halted with $36\text{ mm}$ physical coasting upon a 337 mm trip.
+   - **Layer 1B — QERRA-HSR Reflex (`hsr/`):** Pure Python threshold reflex under ISO 13482 for assistive and healthcare mobile cobots. Evaluates distress telemetry, human isolation, and proximity hazards to issue advisory reflex states (`CLEAR`, `MONITOR`, `CRITICAL`) and Property HSR-5 human-in-the-loop recovery directives.
 
 2. **The Moral Conscience (SEMEV-12):**  
    A 12-dimensional ethical filter that evaluates text instructions before the robot moves. If someone orders the robot to do something abusive, deceptive, or coercive (such as forcing a worker through a break or falsifying safety records), the robot refuses the command, illuminates an amber LED, logs the refusal reason, and **physically shakes its head "No"** in simulation.
@@ -306,17 +308,19 @@ values/
 ```
 ---
 
+
+
 ## Features
 
-- **Sub-Millisecond Physical Reflex (QERRA-HSR):** Pure Python threshold logic that commands zero velocity within a single simulation control step (<1 cm physical stopping distance at 0.33 m/s in simulation).
-- **Human-in-the-Loop Recovery Directive:** Routine tasks resume automatically when clear, while delicate or high-consequence tasks physically hold still until a human confirms it is safe to continue.
-- **12-Vector Semantic Moral Filtering (SEMEV-12):** Evaluates workplace coercion, deception, and autonomy violations using lightweight sentence embeddings bounded by deterministic scoring gates.
-- **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical order, avoiding silent or ambiguous failures.
-- **Resilience vs. Coercion Nuance:** Distinguishes between someone actively being coerced versus a committed professional pushing through a tough environment, preventing false alarms.
-- **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors that rank candidate actions for human courtesy (such as quiet "whisper mode" in corridors or avoiding outdoor lawns).
-- **Behavior Tree & ROS 2 Ready:** Native PyTrees Condition node and non-blocking ROS 2 Action Server bridge with an 800ms fail-closed watchdog budget.
-- **Auditable Deliberation:** Transparent scoring gates. Every response outputs the exact active vectors, human-readable reasoning strings, and raw similarity metrics.
-- **Test-Verified:** Over 100 automated unit and regression tests passing across physical reflex (QERRA-HSR), supervisory gate (Demo 7), and semantic moral vector suites (SEMEV-12).
+- **Deterministic Supervisory Gate (Layer 1A):** Pure-function integer state machine owning exclusive actuator authority. Clamps wheel velocities into a kinematic stopping envelope ($d_{stop} = \lceil v^2 / (2a) \rceil + margin$), trips fail-closed upon sensor faults or corridor obstruction, and enforces latched recovery with operator reset. Measured in Webots R2025a (Demo 7, TIAGo) halting cruise at 301 mm clearance ($36\text{ mm}$ physical coasting).
+- **Tamper-Evident SHA-256 Flight Recorder:** Every discrete control decision is appended to a canonical JSONL flight log chained via rolling SHA-256 digests ($hash = \text{SHA256}(prev\_hash + canonical\_bytes)$) for offline auditing via `verify_log.py`.
+- **Assistive Safety Reflex (Layer 1B / QERRA-HSR):** Pure Python, standard-library reflex under ISO 13482 evaluating distress, isolation, and environmental proximity for assistive cobots, with Property HSR-5 human-in-the-loop recovery directives.
+- **Dual-Tier Watchdog Architecture:** Strict 150 ms proposal freshness watchdog at the wheel-level execution gate; 800 ms fail-closed network timeout on high-level semantic and API bridges.
+- **12-Vector Semantic Moral Filtering (SEMEV-12):** Evaluates workplace coercion, deception, and autonomy violations using sentence embeddings bounded by deterministic scoring gates and negation pre-filtering.
+- **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical directive, preventing ambiguous failure states.
+- **Resilience vs. Coercion Nuance:** Distinguishes between active workplace coercion versus a committed professional voluntarily pushing through a demanding environment.
+- **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors ranking candidate actions for human courtesy (quiet "whisper mode" in corridors, lawn/flora protection) with native PyTrees integration.
+- **Test-Verified (110 Tests Passing in CI):** 75 Supervisory Gate unit tests (verified pure standard library), 20 QERRA-HSR unit tests, and 15 SEMEV-12 benchmark regression cases executing cleanly in automated CI.
 ---
 
 ## Calibrated Benchmarks
@@ -512,6 +516,12 @@ python -m tests.test_cases
 
 All canonical benchmarks must pass before any commit.
 
+Physical-reflex (QERRA-HSR) tests (standard library only):
+
+```bash
+python -m unittest discover -s hsr -t . -v
+```
+
 Supervisory gate tests (standard library only):
 
 ```bash
@@ -529,21 +539,23 @@ python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 -
 ## Project Status
 
 **Version:** `2.1.0` (Demo 7 Actuator Authority Separation Baseline)
-**Engine:** SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`  
+**Engine:** Supervisory Gate `v0.2` · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
 
-The three-layer pipeline is fully implemented, verified, and active:
-- **Layer 1 — Physical Reflex (QERRA-HSR v0.1):** Sub-millisecond software reflex latency measured in Webots R2025a simulation (<1 cm physical stop at 0.33 m/s). Pure Python standard library only, under Apache-2.0. Human-in-the-Loop recovery directives active.
-- **Layer 2 — Moral Gate (SEMEV-12 v1.9.2):** All 12 ethical vectors active and scoring under AGPL-3.0. 80-case baseline benchmark documented in `SEMEV-12_Benchmark_Run_01.md`. Active adversarial red-teaming suite documented in `SEMEV-12_Adversarial_Benchmark_Run_01.md`.
-- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0):** 12 value vectors active across human-centered and ecological suites under AGPL-3.0. All 12 vectors hardened with 40-character look-back negation guards.
-- **Live Reference API:** Live on Hugging Face Spaces with an 800ms fail-closed watchdog.
+All three layers are implemented. The evidence level differs by layer and is stated for each:
+
+- **Layer 1 — Supervisory Gate (`gate/`, AGPL-3.0-only):** Implemented and demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo, Windows 11, non-real-time host). Demo 7 (`RUN_1791713619`): 1,485 control ticks; trip command issued at 337 mm clearance; standstill reached at 301 mm at ~0.196 m/s cruise. The decision log is verified with `verify_log.py` against a head hash anchored in this repository. This is a single run (n=1).
+- **Layer 1 — QERRA-HSR (`hsr/`, Apache-2.0):** Implemented and unit-tested. Pure Python standard library only. Activation thresholds are design estimates and have not been calibrated against physical sensor streams. Human-in-the-Loop recovery directives are implemented.
+- **Layer 2 — Moral Gate (SEMEV-12 v1.9.2, AGPL-3.0):** Advisory, not part of the safety function. All 12 ethical vectors implemented and scoring. The 80-case baseline is documented in `SEMEV-12_Benchmark_Run_01.md`. The adversarial red-teaming suite in `SEMEV-12_Adversarial_Benchmark_Run_01.md` documents known bypasses and false positives.
+- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0, AGPL-3.0):** Advisory. 12 value vectors across the human-centered and ecological suites, with bounded look-back negation guards. Not yet evaluated with human participants.
+- **Live Reference API:** Hosted on the Hugging Face Spaces free tier; the first request after inactivity can take 30–60 seconds (cold start). The ROS 2 bridge uses an 800 ms remote-call timeout with a local fallback.
 
 **Known limitations & honesty boundaries:**
 
 - **Semantic detection limits:** Highly implicit, metaphorical, or indirect phrasing can fall below semantic thresholds.
-- **Hardware boundary:** The physical safety reflex is verified in physics simulation (Webots R2025a); real-world deployment on physical hardware requires integration with certified industrial e-stop loops and hardware watchdogs.
+- **Hardware boundary:** The supervisory gate and physical reflex are verified in physics simulation only (Webots R2025a). Real-world deployment on physical hardware requires integration with certified industrial e-stop loops, certified safety laser scanners, and hardware watchdogs.
 - **Research status:** This is an open-source research and middleware tool, not a certified commercial safety system. See `LIMITATIONS.md` for full technical detail.
----
 
+---
 ## Development Reality: Constraints and Transparency
 
 This section is included deliberately. Clarity about real conditions is part
