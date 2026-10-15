@@ -5,6 +5,38 @@ across versions.
 
 ---
 
+## [2.1.0] - 2026-10-15 — Actuator Authority Separation, Decoupled Supervisory Gate, & Verified Multi-Suite CI
+
+### Added
+- **Supervisory Gate (`gate/` v0.3):**
+  - Pure-function deterministic integer state machine (`gate_core.py`) holding exclusive motor actuator authority.
+  - Enforced kinematic stopping envelope $d_{stop}(v) = \lceil v^2 / (2 \cdot a_{design}) \rceil + margin$ ($a=500\text{ mm/s}^2, margin=300\text{ mm}$).
+  - Enforced 150 ms proposer freshness watchdog (`t_watch_us = 150_000`) and fail-closed latched recovery requiring continuous 1.0 s clear dwell and operator reset.
+  - Implemented tamper-evident SHA-256 rolling block chain flight recorder (`gate_log.py`) and standalone auditor (`verify_log.py`).
+- **Simulation Demo 7 (Webots R2025a, PAL Robotics TIAGo base, `RUN_1791713619`):**
+  - Demonstrated authority separation over 1,485 discrete control cycles (47.52 s sim time) with zero defects verified offline against anchored head hash `ae37ae62...c191`.
+  - Commanded cruise at 2.0 rad/s (0.196 m/s); dynamic envelope bound at 339 mm; trip fired at 337 mm; standstill reached at 301 mm (36 mm coasting); cart displacement 0.0 mm.
+  - Empirically verified `RESET_REJECTED_HAZARD` rejection when operator reset was attempted facing the cart.
+- **Packaging & Portability:**
+  - Registered `gate` in `setup.py` packages and `verify_log` in `py_modules`, aligned with `package.xml` at v2.1.0.
+  - Implemented portable dynamic repository root discovery in `tiago_supervisory_gate.py`.
+
+### Refactored
+- **Decoupled Supervisory Gate from QERRA-HSR (`gate_core.py`):**
+  - Removed `from hsr.qerra_hsr import ...` import and eliminated runtime root logging side-effects.
+  - Enforced Rule AR-8 (pure standard library with zero external dependencies) and updated Rule AR-9 to direct deterministic envelope calculation ($min\_range \le d_{stop}$).
+  - Added `obstacle_breach: bool` to the log record schema.
+
+### Testing & Verification
+- **Automated CI Expansion (110 Tests Passing):**
+  - Upgraded GitHub Actions workflow (`tests.yml`) to test all three layers in automated CI on `ubuntu-latest`.
+  - Added AST inspection test (`test_gate_core_imports_stdlib_only`) proving zero non-stdlib imports.
+  - 75 Supervisory Gate unit tests passing (0.21s).
+  - 20 QERRA-HSR unit tests passing (1.21s).
+  - 15 SEMEV-12 benchmark regression tests passing.
+
+---
+
 ## [2.0.2] - 2026-09-28 — Layer 3 (QERRA-THRIVE) Negation Hardening & Webots Demo 6
 
 ### Added
