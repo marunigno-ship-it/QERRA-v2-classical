@@ -1,15 +1,17 @@
 # QERRA-v2 Classical for Robotics Integration
 
-QERRA-v2 Classical is an open-source execution guard and ethical safety layer for robot Behavior Trees and ROS 2 pipelines. It evaluates physical telemetry and prospective commands before a robot commits to an action.
+QERRA-v2 Classical is an open-source autonomous execution firewall and supervisory guard for robot Behavior Trees, ROS 2 pipelines, and motor actuators.
 
-It pairs a pure Python physical reflex layer (QERRA-HSR) with a bounded moral deliberation engine (SEMEV-12) and a social values ranker (QERRA-THRIVE).
+It enforces a strict separation between high-level deliberation (planners, LLMs, Behavior Trees) and low-level physical actuation:
+> *"Values and ethics can screen and rank what a robot wants to do, but only a deterministic gate decides what the wheels do."*
 
-**Key strengths for robotics:**
-- **Sub-Millisecond Physical Reflex (QERRA-HSR):** Pure Python threshold logic running at 0.0 ms command delay (<1 cm physical stop in simulation). Enforces an active recovery contract: routine tasks auto-resume when clear, while delicate tasks hold still until a human confirms it is safe to continue.
-- **Deterministic Moral Refusal (SEMEV-12):** Evaluates 12 ethical dimensions on local CPU (~25ms). If a command is coercive or abusive, the robot halts and physically shakes its head "No" in simulation.
-- **ROS 2 & Behavior Tree Native:** Non-blocking Action Server (`/qerra/evaluate`, type `qerra_msgs/action/QerraEvaluate`) and PyTrees Condition leaf nodes.
-- **Simulation Validated:** Tested across 6 published PAL Robotics TIAGo AMR scenarios in Webots.
-- **Zero Generative Hallucination:** No generative models in the decision loop. Every evaluation outputs exact triggered vectors, human-readable reasoning strings, and raw similarity metrics.
+**Key strengths for robotics engineering:**
+- **Deterministic Actuator Gate (Layer 1A):** Pure-function integer state machine owning exclusive motor authority. Enforces dynamic stopping envelope $d_{stop}(v) = \lceil v^2 / (2a) \rceil + margin$ ($a=500\text{ mm/s}^2, margin=300\text{ mm}$), 150 ms proposer freshness watchdog, and fail-closed latched recovery with operator reset.
+- **Tamper-Evident SHA-256 Flight Recorder:** Appends every discrete control cycle to an offline-verifiable rolling hash chain (`verify_log.py`).
+- **Assistive Safety Reflex (Layer 1B / QERRA-HSR):** Pure Python reflex under ISO 13482 for personal care cobots (distress, isolation, proximity) with Property HSR-5 recovery hold contracts.
+- **Deterministic Moral Refusal (Layer 2 / SEMEV-12):** Evaluates 12 ethical dimensions on local CPU (~25ms). Coercive commands trigger fail-closed stops and a physical head-shake "No" in simulation.
+- **Values Action Selection (Layer 3 / QERRA-THRIVE):** PyTrees Action Ranker selecting courteous motions (whisper transit, lawn avoidance) among already-safe actions.
+- **Simulation Validated & 110 CI Tests:** Validated across 7 PAL Robotics TIAGo AMR scenarios in Webots R2025a (Demo 7 baseline: `RUN_1791713619`).
 ---
 
 ## Behaviour Tree Integration Pattern
@@ -112,7 +114,7 @@ Please reply on ROS Discourse, open a GitHub issue, or email me directly.
    depth) would be appropriate for a safety-critical ethical check in your
    pipeline? The bridge currently uses the ROS 2 default (reliable, depth 10).
 
-3. **Latency and real-time budgets** — Physical safety (QERRA-HSR) runs on-device in under 1 millisecond (0.0 ms delay). The moral evaluation (SEMEV-12) takes about 25 ms on a standard CPU, or runs over HTTP with an 800ms timeout that halts if the network drops. In Behavior Trees, the condition node returns `RUNNING` in the background so the robot's control loops never freeze. What latency limits do you typically aim for between instant physical stops and high-level deliberation in your own pipelines?
+3. **Latency and real-time budgets** — The wheel-level Supervisory Gate evaluates within sub-millisecond compute budgets on a 32 ms tick loop with a strict 150 ms proposal freshness limit. High-level moral evaluation (SEMEV-12) takes ~25 ms on CPU, or runs over HTTP with an 800 ms timeout. In Behavior Trees, condition nodes evaluate asynchronously without blocking motor control loops. What latency budgets and watchdog timeouts do you typically enforce between wheel-level kinematic safety gates and high-level learned planners in your own stacks?
 
 4. **Integration patterns** — Would worked examples using Nav2, MoveIt 2, or
    specific Behaviour Tree libraries (PyTrees, BehaviorTree.CPP) be helpful
