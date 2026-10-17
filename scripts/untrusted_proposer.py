@@ -1,17 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (c) 2026 Marussa Metocharaki
 """
-QERRA Supervisory Gate -- Untrusted Deliberation Proposer (Demo 7), version 0.2.
+QERRA Supervisory Gate -- Untrusted Deliberation Proposer (Demo 7), version 0.3.
 SAFETY_CONCEPT.md v0.1: AR-2, AR-6, C-1, C-4.
 
 Runs as an independent OS process. Proposes wheel speeds to the gate over localhost UDP.
 
-WHAT CHANGED FROM 0.1
-  0.1 stamped proposals with its own WALL clock (seconds since the proposer started). The gate
-  compares proposal stamps with SIM time, so the age check compared two unrelated clocks.
-  0.2 listens to the gate's state channel (gate/gate_link.py, port 5007) and echoes the newest
-  SIM time it has heard as `sim_stamp_us`. If it has heard nothing yet it sends nothing, so the
-  gate fails closed (TRIP_PROPOSER_DEAD).
+WHAT CHANGED FROM 0.2
+  Adds `session_id` generated from monotonic timestamp at process startup to prevent
+  proposer restart lockout (F3 fix).
 
 FAULTS (all triggered by SIM time, as echoed by the gate, not by wall time)
   hang       stop sending for --hang-ms of sim time, keep listening, then resume
@@ -66,6 +63,8 @@ def run_proposer(
     send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     gate_addr = ("127.0.0.1", gate_port)
 
+    # Monotonic incarnation session ID across restarts (F3 fix)
+    session_id = int(time.time() * 1000)
     seq = 0
     latest_sim_us = None
     fault_triggered = False
@@ -73,8 +72,8 @@ def run_proposer(
     wall_started = time.monotonic()
     wall_last_state = None
 
-    print(f"[PROPOSER] started. gate=127.0.0.1:{gate_port} state-in=127.0.0.1:{state_port} "
-          f"speed={target_speed} urad/s", flush=True)
+    print(f"[PROPOSER] started (session_id={session_id}). gate=127.0.0.1:{gate_port} "
+          f"state-in=127.0.0.1:{state_port} speed={target_speed} urad/s", flush=True)
     if fault != "none":
         print(f"[PROPOSER] fault '{fault}' scheduled at sim t={fault_sim_s:.2f}s", flush=True)
 
@@ -122,6 +121,7 @@ def run_proposer(
 
                 if not hanging:
                     payload = {
+                        "session_id": session_id,
                         "seq": seq,
                         "sim_stamp_us": latest_sim_us,       # echo of the gate's sim time (not wall time)
                         "left_urad_s": target_speed,
