@@ -5,8 +5,10 @@ Unit tests for gate/gate_core.py (SAFETY_CONCEPT.md v0.2).
 
 Covers: T-01, T-04, T-07, T-08, T-10, plus early core-level parts of
 T-09 (message semantics), T-14 (log-write failure), the clock-anomaly rule,
-and pure standard-library boundary verification (AR-8).
-No Webots, no sockets, no files, standard library only.
+pure standard-library boundary verification (AR-8), documentation evidence alignment (F6),
+stopping kinematics physics & rotation modeling (F4), availability latch contracts (F7),
+and gate self-supervision / clock synchronization (F8).
+No Webots, no sockets, no files in core, standard library only.
 
 Run from the repository root:
     python -m unittest tests.test_gate_core -v
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import math
+import os
 import sys
 import unittest
 
@@ -39,6 +42,7 @@ def make_params(**overrides) -> GateParams:
         lidar_period_us=32_000, t_stale_us=100_000, t_dwell_us=1_000_000,
         max_tick_gap_us=64_000, wheel_radius_mm=100, w_min_urad_s=0,
         w_max_urad_s=3_000_000, a_design_mmps2=500, margin_mm=300,
+        min_raw_lidar_returns=5, t_react_us=0,
     )
     base.update(overrides)
     return GateParams(**base)
@@ -55,16 +59,19 @@ class Harness:
         self.results = []
 
     def tick(self, *, ranges=FAR, proposal=AUTO, lidar_stamp=AUTO, reset=None,
-             log_failed=False, advance=None, wheels=(W, W)):
+             log_failed=False, advance=None, wheels=(W, W), raw_valid=AUTO):
         self.now += self.p.dt_us if advance is None else advance
         if proposal is AUTO:
             proposal = Proposal(self.seq, self.now, wheels[0], wheels[1])
             self.seq += 1
         if lidar_stamp is AUTO:
             lidar_stamp = self.now
+        if raw_valid is AUTO:
+            raw_valid = self.p.min_raw_lidar_returns
         res = step(self.state, self.p, GateInputs(
             sim_time_us=self.now, proposal=proposal, ranges_m=ranges,
-            lidar_stamp_us=lidar_stamp, reset_source=reset, log_write_failed=log_failed))
+            lidar_stamp_us=lidar_stamp, reset_source=reset, log_write_failed=log_failed,
+            raw_valid_points=raw_valid))
         self.state = res.state
         self.results.append(res)
         return res
@@ -100,6 +107,26 @@ class TestParams(unittest.TestCase):
         with self.assertRaises(Exception):
             p.w_max_urad_s = 10 ** 9
 
+    def test_min_raw_lidar_returns_param_validation(self):
+        with self.assertRaises(ValueError):
+            make_params(min_raw_lidar_returns=-1)
+        with self.assertRaises(ValueError):
+            make_params(min_raw_lidar_returns=1.5)
+        with self.assertRaises(ValueError):
+            make_params(min_raw_lidar_returns=True)
+        p = make_params(min_raw_lidar_returns=0)
+        self.assertEqual(p.min_raw_lidar_returns, 0)
+
+    def test_t_react_us_param_validation(self):
+        with self.assertRaises(ValueError):
+            make_params(t_react_us=-1)
+        with self.assertRaises(ValueError):
+            make_params(t_react_us=1.5)
+        with self.assertRaises(ValueError):
+            make_params(t_react_us=True)
+        p = make_params(t_react_us=32_000)
+        self.assertEqual(p.t_react_us, 32_000)
+
 
 # ----------------------------------------------------------------------------
 class TestT01ObstacleStop(unittest.TestCase):
@@ -113,6 +140,17 @@ class TestT01ObstacleStop(unittest.TestCase):
         self.assertEqual(d_stop_mm(p, 0), 300)               # margin only
         self.assertEqual(d_stop_mm(p, -5), 300)              # never negative speed
         self.assertEqual(d_stop_mm(p, 201), 341)             # rounds UP: ceil(40401/1000)=41
+
+    def test_d_stop_reaction_time_term_f4(self):
+        """F4 defect: d_stop must account for reaction time distance when t_react_us is configured."""
+        p = make_params(t_react_us=32_000)
+        # v = 200 mm/s:
+        # Braking: ceil(200^2 / (2 * 500)) = 40 mm
+        # Reaction: ceil(200 * 32_000 / 1_000_000) = ceil(6.4) = 7 mm
+        # Margin: 300 mm
+        # Total d_stop = 40 + 7 + 300 = 347 mm
+        self.assertEqual(d_stop_mm(p, 200), 347)
+        self.assertEqual(d_stop_mm(p, 0), 300)
 
     def test_far_obstacle_passes_proposal(self):
         h = Harness()
@@ -255,6 +293,23 @@ class TestT07LidarValidity(unittest.TestCase):
             with self.subTest(case=name):
                 self._expect_sensor_trip(**kwargs)
 
+    def test_blind_raw_lidar_trips(self):
+        h = Harness()
+        h.to_run()
+        res = h.tick(raw_valid=0)
+        self.assertEqual(res.reason, Reason.TRIP_SENSOR_INVALID)
+        self.assertFalse(res.record["lidar_valid"])
+        self.assertEqual((res.cmd_left_urad_s, res.cmd_right_urad_s), (0, 0))
+
+    def test_invalid_raw_valid_points_type_trips(self):
+        for bad_val in (-1, 1.5, "5", True):
+            with self.subTest(raw_valid=bad_val):
+                h = Harness()
+                h.to_run()
+                res = h.tick(raw_valid=bad_val)
+                self.assertEqual(res.reason, Reason.TRIP_SENSOR_INVALID)
+                self.assertFalse(res.record["lidar_valid"])
+
     def test_stale_boundary(self):
         # t_stale = 100_000: age == t_stale is still valid, age == t_stale + 1 is stale.
         h = Harness()
@@ -364,6 +419,10 @@ class TestT08Envelope(unittest.TestCase):
             Proposal(-1, 0, 1, 1),                                # negative seq
             Proposal(99, -5, 1, 1),                               # negative stamp
             Proposal(99, 1.0, 1, 1),                              # float stamp
+            Proposal(99, 0, 1, 1, session_id=-1),                 # negative session_id
+            Proposal(99, 0, 1, 1, session_id=1.5),                # float session_id
+            Proposal(99, 0, 1, 1, session_id=True),               # bool session_id
+            Proposal(99, 0, 1, 1, session_id="1"),                # str session_id
         ]
         for i, b in enumerate(bad):
             with self.subTest(case=i):
@@ -512,9 +571,23 @@ class TestEarlyCoreParts(unittest.TestCase):
         held = h.state.held
         for seq in (held.seq, held.seq - 1, 0):
             with self.subTest(seq=seq):
-                r = h.tick(proposal=Proposal(seq, h.now + DT, 1, 1))
+                r = h.tick(proposal=Proposal(seq, h.now + DT, 1, 1, session_id=held.session_id))
                 self.assertIn(Event.MSG_REJECTED_SEQ, r.events)
                 self.assertEqual(r.state.held, held)
+
+    def test_t09_obsolete_session_rejected(self):
+        h = Harness()
+        h.to_run()
+        # Advance with a proposal in session 2
+        r = h.tick(proposal=Proposal(0, h.now + DT, 1, 1, session_id=2))
+        self.assertEqual(r.state.last_session_id, 2)
+        held = r.state.held
+
+        # Older session proposal arrives (session 1, even with high seq)
+        r_old = h.tick(proposal=Proposal(999, h.now + DT, 1, 1, session_id=1))
+        self.assertIn(Event.MSG_REJECTED_SEQ, r_old.events)
+        self.assertEqual(r_old.state.held, held)
+        self.assertEqual(r_old.state.last_session_id, 2)
 
     def test_t09_future_stamp_rejected(self):
         h = Harness()
@@ -523,6 +596,30 @@ class TestEarlyCoreParts(unittest.TestCase):
         r = h.tick(proposal=Proposal(h.seq, h.now + DT + 1, 1, 1))
         self.assertIn(Event.MSG_REJECTED_FUTURE, r.events)
         self.assertEqual(r.state.held, held)
+
+    def test_t09_proposer_restart_new_session_accepted_without_lockout(self):
+        """F3 defect: proposer restart at seq 0 must be accepted under a new session, not locked out."""
+        h = Harness()
+        h.to_run()
+
+        # Advance 10 ticks in RUN mode
+        for _ in range(10):
+            r = h.tick()
+            self.assertEqual(r.reason, Reason.PASS)
+        seq_before = h.state.held.seq
+        self.assertGreater(seq_before, 0)
+        self.assertEqual(h.state.last_seq, seq_before)
+
+        # Proposer restarts: seq resets to 0 with a new session_id = 1
+        restart_cand = Proposal(seq=0, sim_stamp_us=h.now + DT, left_urad_s=W, right_urad_s=W, session_id=1)
+        res = h.tick(proposal=restart_cand)
+
+        self.assertNotIn(Event.MSG_REJECTED_SEQ, res.events)
+        self.assertEqual(res.state.last_seq, 0)
+        self.assertEqual(res.state.held.seq, 0)
+        self.assertEqual(res.state.last_session_id, 1)
+        self.assertEqual(res.reason, Reason.PASS)
+        self.assertEqual((res.cmd_left_urad_s, res.cmd_right_urad_s), (W, W))
 
     def test_t14_log_failure_trips_and_latches(self):
         h = Harness()
@@ -596,6 +693,115 @@ class TestEarlyCoreParts(unittest.TestCase):
                     stdlib_names,
                     f"Non-standard library module '{mod}' imported in gate_core.py",
                 )
+
+    def test_safety_concept_evidence_alignment_f6(self):
+        """F6 defect: safety_concept.md must not overclaim live run evidence or misattribute versions."""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        concept_path = os.path.join(project_root, "safety_concept.md")
+        if not os.path.isfile(concept_path):
+            concept_path = os.path.join(project_root, "SAFETY_CONCEPT.md")
+
+        with open(concept_path, "r", encoding="utf-8") as f:
+            text = f.read()
+
+        # Find Claim C-2 in the claims table
+        c2_row = [
+            line for line in text.splitlines()
+            if "C-2 Fail-closed command" in line and not line.strip().startswith("<!--")
+        ]
+        self.assertTrue(c2_row, "Claim C-2 not found in safety_concept.md")
+        row_text = c2_row[0]
+
+        # F6 Defect: C-2 claims all 4 conditions are VERIFIED by RUN_1791713619,
+        # but RUN_1791713619 only evidenced the obstacle stop (at 337 mm).
+        # The composite row must not claim | **VERIFIED** | across all conditions without distinction.
+        self.assertNotIn(
+            "| **VERIFIED** |",
+            row_text,
+            "F6 defect: Claim C-2 overclaims all 4 fault modes as VERIFIED by RUN_1791713619"
+        )
+
+    def test_limitations_doc_alignment_f4(self):
+        """F4 defect: LIMITATIONS.md must accurately document arc-about-stationary-wheel and reaction time."""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        lim_path = os.path.join(project_root, "LIMITATIONS.md")
+        with open(lim_path, "r", encoding="utf-8") as f:
+            text = f.read()
+
+        # Must explicitly document that reverse is clamped to zero, creating an arc about the stationary wheel
+        self.assertIn(
+            "arc about the stationary wheel",
+            text.lower(),
+            "F4 defect: LIMITATIONS.md must document arc about stationary wheel turning kinematics"
+        )
+        # Must explicitly document the reaction time parameter
+        self.assertIn(
+            "t_react_us",
+            text,
+            "F4 defect: LIMITATIONS.md must document t_react_us reaction time allowance"
+        )
+
+    def test_availability_latch_contract_documented_f7(self):
+        """F7 defect: LIMITATIONS.md and safety_concept.md must document single-sample latch availability cost."""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        lim_path = os.path.join(project_root, "LIMITATIONS.md")
+        concept_path = os.path.join(project_root, "safety_concept.md")
+        if not os.path.isfile(concept_path):
+            concept_path = os.path.join(project_root, "SAFETY_CONCEPT.md")
+
+        with open(lim_path, "r", encoding="utf-8") as f:
+            lim_text = f.read().lower()
+        with open(concept_path, "r", encoding="utf-8") as f:
+            concept_text = f.read().lower()
+
+        # F7 Defect: LIMITATIONS.md must document that any single invalid sensor sample trips and latches
+        self.assertIn(
+            "single invalid lidar sample",
+            lim_text,
+            "F7 defect: LIMITATIONS.md must document that a single invalid sensor sample trips and latches"
+        )
+        self.assertIn(
+            "operator reset",
+            lim_text,
+            "F7 defect: LIMITATIONS.md must document that sensor trips require manual operator reset"
+        )
+
+        # In safety_concept.md, Claim C-7 must explicitly acknowledge sensor glitch latching under availability cost
+        self.assertIn(
+            "single-sample sensor glitch",
+            concept_text,
+            "F7 defect: safety_concept.md Claim C-7 must document sensor glitch latching under availability cost"
+        )
+
+    def test_process_supervision_and_clock_sync_f8(self):
+        """F8 defect: LIMITATIONS.md must document gate self-supervision/STO, and shell must check clock sync."""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        lim_path = os.path.join(project_root, "LIMITATIONS.md")
+        shell_path = os.path.join(project_root, "controllers", "tiago_supervisory_gate", "tiago_supervisory_gate.py")
+
+        with open(lim_path, "r", encoding="utf-8") as f:
+            lim_text = f.read().lower()
+        with open(shell_path, "r", encoding="utf-8") as f:
+            shell_text = f.read()
+
+        # 1. LIMITATIONS.md must document gate process self-supervision and hardware STO watchdog boundary
+        self.assertIn(
+            "gate process self-supervision",
+            lim_text,
+            "F8 defect: LIMITATIONS.md must document gate process self-supervision limitation"
+        )
+        self.assertIn(
+            "safe torque off",
+            lim_text,
+            "F8 defect: LIMITATIONS.md must document requirement for hardware Safe Torque Off (STO) watchdog"
+        )
+
+        # 2. Shell must cross-check tick-derived sim_time_us against robot.getTime()
+        self.assertIn(
+            "robot.getTime()",
+            shell_text,
+            "F8 defect: tiago_supervisory_gate must synchronize tick counter with robot.getTime() clock"
+        )
 
 
 if __name__ == "__main__":
