@@ -67,11 +67,16 @@ def parse_proposal_datagram(raw_bytes: bytes) -> Optional[Proposal]:
         if not isinstance(val, int) or isinstance(val, bool):
             return None
 
+    session_id = data.get("session_id", 0)
+    if not isinstance(session_id, int) or isinstance(session_id, bool) or session_id < 0:
+        return None
+
     return Proposal(
         seq=data["seq"],
         sim_stamp_us=data["sim_stamp_us"],
         left_urad_s=data["left_urad_s"],
         right_urad_s=data["right_urad_s"],
+        session_id=session_id,
     )
 
 
@@ -79,6 +84,7 @@ def drain_proposals(sock: socket.socket) -> Tuple[Optional[Proposal], int]:
     """
     AR-5: Drains pending datagrams with zero blocking, bounded by MAX_DRAIN_PER_CALL.
     Returns (newest_valid_proposal, total_packets_drained).
+    Arbitrates across process restarts using session_id (F3).
     """
     newest_proposal: Optional[Proposal] = None
     count = 0
@@ -102,7 +108,14 @@ def drain_proposals(sock: socket.socket) -> Tuple[Optional[Proposal], int]:
 
         proposal = parse_proposal_datagram(data)
         if proposal is not None:
-            if newest_proposal is None or proposal.seq > newest_proposal.seq:
+            if newest_proposal is None:
+                newest_proposal = proposal
+            elif proposal.session_id > newest_proposal.session_id:
+                newest_proposal = proposal
+            elif (
+                proposal.session_id == newest_proposal.session_id
+                and proposal.seq > newest_proposal.seq
+            ):
                 newest_proposal = proposal
 
     return newest_proposal, count
