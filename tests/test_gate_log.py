@@ -3,9 +3,11 @@
 """
 Unit tests for gate/gate_log.py and verify_log.py (SAFETY_CONCEPT.md v0.1).
 Covers: T-13 (Log mutation tests: edits, deletion, insertion, reorder, CRLF, truncation),
-        T-14 (Log write failure trip & latch).
+        T-14 (Log write failure trip & latch),
+        F5 (obstacle_breach persistence, fsync crash resilience, deterministic replay inputs).
 Standard library only.
 """
+import json
 import os
 import tempfile
 import unittest
@@ -43,6 +45,7 @@ class TestGateLogMutation(unittest.TestCase):
                     "lidar_valid": True,
                     "lidar_min_mm": 2500,
                     "d_stop_mm": 350,
+                    "obstacle_breach": False,
                     "hsr_status": "CLEAR",
                     "cmd_left_urad_s": 2_000_000,
                     "cmd_right_urad_s": 2_000_000,
@@ -188,6 +191,107 @@ class TestT14LogWriteFailure(unittest.TestCase):
         self.assertEqual(res.reason, Reason.TRIP_LOG_FAILURE)
         self.assertEqual((res.cmd_left_urad_s, res.cmd_right_urad_s), (0, 0))
         self.assertEqual(res.state.mode, Mode.TRIPPED)
+
+
+class TestF5RecorderDefects(unittest.TestCase):
+    """F5 defect reproductions: missing obstacle_breach, missing fsync, missing inputs for replay."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.log_path = os.path.join(self.temp_dir.name, "test_f5_audit.jsonl")
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_obstacle_breach_written_to_log(self):
+        """F5 defect: obstacle_breach is documented in schema but gate_log.py omits it from disk."""
+        with GateLogger(self.log_path, run_id="RUN_F5_BREACH") as logger:
+            fake_record = {
+                "sim_time_us": 1_000_000,
+                "state": "TRIPPED",
+                "reason": "TRIP_OBSTACLE",
+                "events": [],
+                "proposal_seq": 1,
+                "proposal_age_us": 10_000,
+                "lidar_valid": True,
+                "lidar_min_mm": 250,
+                "d_stop_mm": 350,
+                "obstacle_breach": True,
+                "hsr_status": None,
+                "cmd_left_urad_s": 0,
+                "cmd_right_urad_s": 0,
+            }
+            logger.append(fake_record, wall_ns=1000)
+
+        with open(self.log_path, "r", encoding="utf-8") as f:
+            line_data = json.loads(f.readline())
+
+        # Fails on current code: obstacle_breach is missing
+        self.assertIn("obstacle_breach", line_data, "F5 defect: obstacle_breach omitted by GateLogger.append")
+        self.assertTrue(line_data["obstacle_breach"])
+
+    def test_fsync_called_on_append(self):
+        """F5 defect: append() flushes Python buffer but omits os.fsync, risking crash data loss."""
+        fsync_called = []
+        real_fsync = os.fsync
+        try:
+            def mock_fsync(fd):
+                fsync_called.append(fd)
+
+            os.fsync = mock_fsync
+            with GateLogger(self.log_path, run_id="RUN_F5_FSYNC") as logger:
+                fake_record = {
+                    "sim_time_us": 1_000_000,
+                    "state": "RUN",
+                    "reason": "PASS",
+                    "events": [],
+                    "proposal_seq": 1,
+                    "proposal_age_us": 10_000,
+                    "lidar_valid": True,
+                    "lidar_min_mm": 2500,
+                    "d_stop_mm": 350,
+                    "obstacle_breach": False,
+                    "hsr_status": None,
+                    "cmd_left_urad_s": 2_000_000,
+                    "cmd_right_urad_s": 2_000_000,
+                }
+                logger.append(fake_record, wall_ns=1000)
+                # Fails on current code: os.fsync was never called
+                self.assertTrue(fsync_called, "F5 defect: os.fsync was never called after log write")
+        finally:
+            os.fsync = real_fsync
+
+    def test_inputs_logged_for_deterministic_replay(self):
+        """F5 defect: inputs are not logged, so offline replay cannot verify step()."""
+        with GateLogger(self.log_path, run_id="RUN_F5_REPLAY") as logger:
+            fake_record = {
+                "sim_time_us": 1_000_000,
+                "state": "RUN",
+                "reason": "PASS",
+                "events": [],
+                "proposal_seq": 1,
+                "proposal_age_us": 10_000,
+                "lidar_valid": True,
+                "lidar_min_mm": 2500,
+                "d_stop_mm": 350,
+                "obstacle_breach": False,
+                "hsr_status": None,
+                "cmd_left_urad_s": 2_000_000,
+                "cmd_right_urad_s": 2_000_000,
+                "inputs": {
+                    "raw_valid_points": 500,
+                    "lidar_stamp_us": 1_000_000,
+                    "reset_source": None,
+                    "log_write_failed": False,
+                },
+            }
+            logger.append(fake_record, wall_ns=1000)
+
+        with open(self.log_path, "r", encoding="utf-8") as f:
+            line_data = json.loads(f.readline())
+
+        # Fails on current code: inputs is omitted
+        self.assertIn("inputs", line_data, "F5 defect: inputs omitted from log; cannot replay pure core")
 
 
 if __name__ == "__main__":
