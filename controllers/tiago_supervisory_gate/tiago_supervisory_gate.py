@@ -17,6 +17,8 @@ Optional environment variables:
   QERRA_PROPOSER_FAULT     none | hang | die | nan | oversized      (default none)
   QERRA_FAULT_SIM_S        sim time of the fault in seconds          (default 3.0)
   QERRA_HANG_MS            hang length in ms of sim time             (default 800)
+  QERRA_LIDAR_FAULT        none | freeze | stale                     (default none)
+  QERRA_LIDAR_FAULT_SIM_S  sim time of lidar fault in seconds        (default 3.0)
   QERRA_AUTO_RESET_AT_US   harness only: inject an "operator" reset from this sim time on
   QERRA_SMOKE_OBSTACLE     "1" = moves DEF OBSTACLE itself (default "1" for smoke test)
   QERRA_SKIP_PROPOSER      "1" = do not spawn the proposer (start it by hand)
@@ -74,7 +76,7 @@ from gate.gate_core import (                                # noqa: E402
     GateInputs, GateParams, Mode, Reason, RESET_SOURCE_OPERATOR, initial_state, step,
 )
 from gate.gate_ipc import create_udp_receiver, drain_proposals, poll_operator_reset   # noqa: E402
-from gate.gate_lidar import CorridorFilter                  # noqa: E402
+from gate.gate_lidar import CorridorFilter, LidarPipeline  # noqa: E402
 from gate.gate_link import DEFAULT_STATE_PORT, create_state_sender, send_state   # noqa: E402
 from gate.gate_log import GateLogger                        # noqa: E402
 
@@ -86,9 +88,13 @@ ROBOT_HALF_WIDTH_M = 0.27 + 0.05     # half of ~0.54 m base width + 5 cm margin 
 W_MAX_URAD_S = 3_000_000             # 3.0 rad/s velocity envelope cap
 A_DESIGN_MMPS2 = 500                 # 0.5 m/s² design deceleration
 MARGIN_MM = 300                      # 300 mm safety standoff margin
+MIN_RAW_LIDAR_RETURNS = 5            # Minimum valid raw returns required for sensor liveness
 PROPOSER_SPEED_URAD_S = 2_000_000    # 2.0 rad/s proposed cruise speed (approx 0.20 m/s)
 OBSTACLE_AT_S = 3.5                  # Smoke test: cart moves into lane at t = 3.5s
 OBSTACLE_POS = [2.8, 0.0, 0.0]       # Cart position: flat on the floor (Z = 0.0)
+
+LIDAR_FAULT = os.environ.get("QERRA_LIDAR_FAULT", "none")
+LIDAR_FAULT_SIM_S = float(os.environ.get("QERRA_LIDAR_FAULT_SIM_S", "3.0"))
 
 PROPOSAL_PORT = 5005
 OPERATOR_PORT = 5006
@@ -177,13 +183,16 @@ def main():
         obstacle_trans = node.getField("translation") if node else None
         print("[GATE] Obstacle injection enabled (DEF OBSTACLE will move at t = 3.5s).")
 
-    # 3. Lidar & Corridor Filter
+    # 3. Lidar & Corridor Filter Pipeline (F1 & F2)
     lidar = find_lidar(robot)
     lidar.enable(timestep)
     resolution = lidar.getHorizontalResolution()
     fov = lidar.getFov()
     corridor = CorridorFilter(resolution, fov, ROBOT_HALF_WIDTH_M)
+    lidar_pipeline = LidarPipeline(corridor=corridor)
     print(f"[GATE SENSORS] Lidar resolution={resolution}, FOV={math.degrees(fov):.0f}°, Corridor width={ROBOT_HALF_WIDTH_M * 2:.2f}m")
+    if LIDAR_FAULT != "none":
+        print(f"[GATE SENSORS] Lidar fault '{LIDAR_FAULT}' scheduled at sim t={LIDAR_FAULT_SIM_S:.2f}s")
 
     # 4. Inputs & Non-blocking Sockets
     keyboard = robot.getKeyboard()
@@ -207,6 +216,7 @@ def main():
         w_max_urad_s=w_max_urad_s,
         a_design_mmps2=A_DESIGN_MMPS2,
         margin_mm=MARGIN_MM,
+        min_raw_lidar_returns=MIN_RAW_LIDAR_RETURNS,
     )
     state = initial_state()
 
@@ -252,6 +262,7 @@ def main():
 
     tick = 0
     log_failed_prev = False
+    lidar_fault_triggered = False
     last_mode, last_reason = None, None
     compute_ns = []
 
@@ -265,6 +276,15 @@ def main():
             sim_time_us = tick * dt_us
             sim_time_sec = sim_time_us / 1_000_000.0
             t0 = time.perf_counter_ns()
+
+            # Master clock drift invariant check against robot.getTime() (F8)
+            try:
+                clock_time_us = int(round(robot.getTime() * 1_000_000))
+                if abs(sim_time_us - clock_time_us) > dt_us:
+                    # Simulation clock drift detected: force clock anomaly fail-closed trip
+                    sim_time_us = state.last_tick_us if state.last_tick_us is not None else 0
+            except Exception:
+                pass
 
             # Dynamic obstacle: moves into lane at t = 3.5s
             if obstacle_trans is not None and sim_time_sec >= OBSTACLE_AT_S and not obstacle_injected:
@@ -306,15 +326,28 @@ def main():
                     and sim_time_us >= auto_reset_at_us:
                 reset_source = RESET_SOURCE_OPERATOR
 
-            # Filter lidar scan across the swept corridor
-            scan = corridor.apply(lidar.getRangeImage())
+            # Simulated lidar fault (F2 verification)
+            lidar_stalled = False
+            if LIDAR_FAULT in ("freeze", "stale") and sim_time_sec >= LIDAR_FAULT_SIM_S:
+                if not lidar_fault_triggered:
+                    lidar_fault_triggered = True
+                    print(f"[{sim_time_sec:6.2f}s][LIDAR FAULT] Lidar acquisition stalled (simulating hardware freeze).")
+                lidar_stalled = True
+
+            # Ingest and process lidar scan through pipeline (F1 & F2)
+            raw_ranges = lidar.getRangeImage()
+            scan, lidar_stamp_us, raw_valid_points = lidar_pipeline.process(
+                raw_ranges, sim_time_us, stalled=lidar_stalled
+            )
+
             inputs = GateInputs(
                 sim_time_us=sim_time_us,
                 proposal=proposal,
                 ranges_m=scan,
-                lidar_stamp_us=sim_time_us if scan is not None else None,
+                lidar_stamp_us=lidar_stamp_us,
                 reset_source=reset_source,
                 log_write_failed=log_failed_prev,
+                raw_valid_points=raw_valid_points,
             )
             log_failed_prev = False
 
