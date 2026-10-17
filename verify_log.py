@@ -10,12 +10,13 @@ Verifies:
   3. No Windows CRLF (\r\n) line corruptions.
   4. Genesis hash equals 64 zeros.
   5. SHA-256 hash chain continuity: hash == SHA256(prev_hash + canonical_bytes).
-  6. Truncation detection against externally anchored head hash & final sequence number.
+  6. Truncation and rewrite detection against externally anchored head hash & final sequence number.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -31,6 +32,7 @@ class VerificationResult:
     last_seq: Optional[int]
     head_hash: Optional[str]
     error_message: str
+    is_anchored: bool = False
 
 
 def verify_log_file(
@@ -176,32 +178,37 @@ def verify_log_file(
         current_hash = recorded_hash
         expected_prev_hash = current_hash
 
-    # 5. External Anchor Verification (Truncation detection)
-    if expected_head_seq is not None and last_seq != expected_head_seq:
-        return VerificationResult(
-            is_valid=False,
-            total_records=total_records,
-            first_seq=first_seq,
-            last_seq=last_seq,
-            head_hash=current_hash,
-            error_message=(
-                f"Truncation detected! Anchor expected seq={expected_head_seq}, "
-                f"but log ends at seq={last_seq}"
-            ),
-        )
+    # 5. External Anchor Verification (Truncation and rewrite detection)
+    is_anchored = False
+    if expected_head_seq is not None or expected_head_hash is not None:
+        is_anchored = True
+        if expected_head_seq is not None and last_seq != expected_head_seq:
+            return VerificationResult(
+                is_valid=False,
+                total_records=total_records,
+                first_seq=first_seq,
+                last_seq=last_seq,
+                head_hash=current_hash,
+                error_message=(
+                    f"Truncation detected! Anchor expected seq={expected_head_seq}, "
+                    f"but log ends at seq={last_seq}"
+                ),
+                is_anchored=True,
+            )
 
-    if expected_head_hash is not None and current_hash != expected_head_hash:
-        return VerificationResult(
-            is_valid=False,
-            total_records=total_records,
-            first_seq=first_seq,
-            last_seq=last_seq,
-            head_hash=current_hash,
-            error_message=(
-                f"Head hash mismatch! Anchor expected {expected_head_hash}, "
-                f"but log ends with {current_hash}"
-            ),
-        )
+        if expected_head_hash is not None and current_hash != expected_head_hash:
+            return VerificationResult(
+                is_valid=False,
+                total_records=total_records,
+                first_seq=first_seq,
+                last_seq=last_seq,
+                head_hash=current_hash,
+                error_message=(
+                    f"Head hash mismatch! Anchor expected {expected_head_hash}, "
+                    f"but log ends with {current_hash}"
+                ),
+                is_anchored=True,
+            )
 
     return VerificationResult(
         is_valid=True,
@@ -210,7 +217,28 @@ def verify_log_file(
         last_seq=last_seq,
         head_hash=current_hash,
         error_message="",
+        is_anchored=is_anchored,
     )
+
+
+def parse_anchor_file(anchor_filepath: str) -> Tuple[Optional[int], Optional[str]]:
+    """Parses expected head hash and sequence number from an ANCHOR.txt file."""
+    if not os.path.isfile(anchor_filepath):
+        raise FileNotFoundError(f"Anchor file not found: {anchor_filepath}")
+    head_hash = None
+    head_seq = None
+    with open(anchor_filepath, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if len(line) == 64 and all(c in "0123456789abcdefABCDEF" for c in line):
+                head_hash = line.lower()
+            elif line.startswith("head_hash="):
+                head_hash = line.split("=", 1)[1].strip().lower()
+            elif line.startswith("last_seq=") or line.startswith("head_seq="):
+                head_seq = int(line.split("=", 1)[1].strip())
+    return head_seq, head_hash
 
 
 def main():
@@ -218,20 +246,36 @@ def main():
     parser.add_argument("log_path", help="Path to the JSONL log file")
     parser.add_argument("--anchor-seq", type=int, default=None, help="Expected final sequence number")
     parser.add_argument("--anchor-hash", type=str, default=None, help="Expected final SHA-256 head hash")
+    parser.add_argument("--anchor-file", type=str, default=None, help="Path to ANCHOR.txt containing head hash")
     args = parser.parse_args()
+
+    expected_seq = args.anchor_seq
+    expected_hash = args.anchor_hash
+
+    if args.anchor_file:
+        file_seq, file_hash = parse_anchor_file(args.anchor_file)
+        if expected_seq is None:
+            expected_seq = file_seq
+        if expected_hash is None:
+            expected_hash = file_hash
 
     result = verify_log_file(
         args.log_path,
-        expected_head_seq=args.anchor_seq,
-        expected_head_hash=args.anchor_hash,
+        expected_head_seq=expected_seq,
+        expected_head_hash=expected_hash,
     )
 
     if result.is_valid:
         print("=" * 70)
-        print("[AUDIT PASSED] Log is mathematically intact and tamper-evident against anchored head hash.")
+        if result.is_anchored:
+            print("[AUDIT PASSED: ANCHORED] Log is mathematically intact and verified against external head seal.")
+        else:
+            print("[AUDIT WARNING: UNANCHORED] Hash chain is internally consistent,")
+            print("  but WITHOUT an external anchor, offline log rewriting cannot be excluded.")
         print(f"  • Verified Records : {result.total_records}")
         print(f"  • Sequence Range   : {result.first_seq} -> {result.last_seq}")
         print(f"  • Head Hash (Seal) : {result.head_hash}")
+        print(f"  • Anchor Status    : {'VERIFIED' if result.is_anchored else 'UNANCHORED'}")
         print("=" * 70)
         sys.exit(0)
     else:
