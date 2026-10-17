@@ -26,7 +26,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Sequence, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
 GATE_CORE_VERSION = "0.3"
 
@@ -90,6 +90,8 @@ class GateParams:
     w_max_urad_s: int = 3_000_000       # envelope cap: 3.0 rad/s per wheel
     a_design_mmps2: int = 500           # design deceleration: 500 mm/s² (0.5 m/s²)
     margin_mm: int = 300                # safety standoff margin: 300 mm
+    min_raw_lidar_returns: int = 5      # minimum valid raw returns required for sensor liveness
+    t_react_us: int = 0                 # reaction time allowance; defaults to 0 for backward-compatibility (F4)
 
     def __post_init__(self) -> None:
         for name in (
@@ -100,7 +102,7 @@ class GateParams:
             value = getattr(self, name)
             if not _is_int(value) or value <= 0:
                 raise ValueError(f"GateParams.{name} must be a positive int, got {value!r}")
-        for name in ("w_min_urad_s", "margin_mm"):
+        for name in ("w_min_urad_s", "margin_mm", "min_raw_lidar_returns", "t_react_us"):
             value = getattr(self, name)
             if not _is_int(value) or value < 0:
                 raise ValueError(f"GateParams.{name} must be a non-negative int, got {value!r}")
@@ -122,6 +124,7 @@ class Proposal:
     sim_stamp_us: int       # sim time of the gate snapshot the proposal was computed from
     left_urad_s: int
     right_urad_s: int
+    session_id: int = 0     # process incarnation ID across restarts (F3 fix)
 
 
 @dataclass(frozen=True)
@@ -132,6 +135,7 @@ class GateInputs:
     lidar_stamp_us: Optional[int] = None           # sim time at which the scan was taken
     reset_source: Optional[str] = None             # None, "operator" or "proposer"
     log_write_failed: bool = False                 # shell reports a failed log write (R-10)
+    raw_valid_points: Optional[int] = None         # count of valid finite returns across raw scan
 
 
 @dataclass(frozen=True)
@@ -142,6 +146,7 @@ class GateState:
     held: Optional[Proposal] = None                # newest accepted proposal
     last_seq: int = -1                             # highest accepted sequence number
     last_cmd: Tuple[int, int] = (0, 0)
+    last_session_id: int = -1                      # session ID of highest accepted proposal
 
 
 @dataclass(frozen=True)
@@ -177,9 +182,11 @@ def wheel_to_mmps(params: GateParams, w_urad_s: int) -> int:
 
 
 def d_stop_mm(params: GateParams, v_mmps: int) -> int:
-    """d_stop = ceil(v^2 / (2*a_design)) + margin, in integer millimetres."""
+    """d_stop = ceil(v^2 / (2*a_design)) + ceil(v * t_react / 1e6) + margin, in integer millimetres."""
     v = max(0, v_mmps)
-    return _ceil_div(v * v, 2 * params.a_design_mmps2) + params.margin_mm
+    braking_mm = _ceil_div(v * v, 2 * params.a_design_mmps2)
+    react_mm = _ceil_div(v * params.t_react_us, 1_000_000) if params.t_react_us > 0 else 0
+    return braking_mm + react_mm + params.margin_mm
 
 
 def clamp_to_envelope(params: GateParams, left: int, right: int) -> Tuple[int, int]:
@@ -191,19 +198,19 @@ def clamp_to_envelope(params: GateParams, left: int, right: int) -> Tuple[int, i
 def _validate_proposal(p) -> bool:
     if not isinstance(p, Proposal):
         return False
-    for v in (p.seq, p.sim_stamp_us, p.left_urad_s, p.right_urad_s):
+    for v in (p.seq, p.sim_stamp_us, p.left_urad_s, p.right_urad_s, p.session_id):
         if not _is_int(v):
             return False
-    if p.seq < 0 or p.sim_stamp_us < 0:
+    if p.seq < 0 or p.sim_stamp_us < 0 or p.session_id < 0:
         return False
     if abs(p.left_urad_s) > _WHEEL_SANITY_LIMIT or abs(p.right_urad_s) > _WHEEL_SANITY_LIMIT:
         return False
     return True
 
 
-def _validate_lidar(params: GateParams, now: int, ranges_m, stamp_us):
+def _validate_lidar(params: GateParams, now: int, ranges_m, stamp_us, raw_valid_points: Optional[int] = None):
     """
-    R-04 / D-6. Returns (ok, min_range_mm).
+    R-04 / D-6 / F1. Returns (ok, min_range_mm).
     min_range_mm is None when the scan is valid but contains no return (all +inf).
     """
     if ranges_m is None or stamp_us is None or not _is_int(stamp_us):
@@ -219,17 +226,41 @@ def _validate_lidar(params: GateParams, now: int, ranges_m, stamp_us):
     age = now - stamp_us
     if age < 0 or age > params.t_stale_us:
         return False, None
+
+    if raw_valid_points is not None:
+        if not _is_int(raw_valid_points) or raw_valid_points < 0:
+            return False, None
+
     smallest = math.inf
+    finite_count = 0
     for x in ranges_m:
         if isinstance(x, bool) or not isinstance(x, (int, float)):
             return False, None
         if math.isnan(x) or x <= 0.0:
             return False, None
-        if x < smallest:
-            smallest = x
+        if math.isfinite(x):
+            finite_count += 1
+            if x < smallest:
+                smallest = x
+
+    effective_raw = raw_valid_points if raw_valid_points is not None else finite_count
+    if effective_raw < params.min_raw_lidar_returns:
+        return False, None
+
     if math.isinf(smallest):
         return True, None
     return True, int(math.floor(smallest * 1000.0))
+
+
+def _json_safe_val(x: Any) -> Any:
+    """Converts NaNs, infinities, and arbitrary non-JSON types into compliant primitives."""
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        return str(x)[:256]
+    if math.isnan(x):
+        return "nan"
+    if math.isinf(x):
+        return "+inf" if x > 0 else "-inf"
+    return x
 
 
 # ----------------------------------------------------------------------------
@@ -246,38 +277,41 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         new_state = GateState(
             mode=Mode.TRIPPED, last_tick_us=now, clear_since_us=None,
             held=None, last_seq=state.last_seq, last_cmd=(0, 0),
+            last_session_id=state.last_session_id,
         )
         record = _record(now, new_state.mode, Reason.TRIP_CLOCK_ANOMALY, (), None, None,
-                         False, None, None, False, (0, 0))
+                         False, None, None, False, (0, 0), inp=inp)
         return StepResult(new_state, 0, 0, Reason.TRIP_CLOCK_ANOMALY, (), record)
 
     events = []
 
-    # 1. proposal acceptance (R-06 semantic checks)
-    held, last_seq = state.held, state.last_seq
+    # 1. proposal acceptance (R-06 semantic checks, F3 session restart handling)
+    held, last_seq, last_session_id = state.held, state.last_seq, state.last_session_id
     cand = inp.proposal
     if cand is not None:
         if not _validate_proposal(cand):
             events.append(Event.MSG_REJECTED_INVALID)
-        elif cand.seq <= last_seq:
-            events.append(Event.MSG_REJECTED_SEQ)
         elif cand.sim_stamp_us > now:
             events.append(Event.MSG_REJECTED_FUTURE)
+        elif cand.session_id < last_session_id:
+            events.append(Event.MSG_REJECTED_SEQ)
+        elif cand.session_id == last_session_id and cand.seq <= last_seq:
+            events.append(Event.MSG_REJECTED_SEQ)
         else:
-            held, last_seq = cand, cand.seq
+            held, last_seq, last_session_id = cand, cand.seq, cand.session_id
 
     # 2. clamp the newest accepted proposal into the envelope (AR-2, R-05)
     clamped = clamp_to_envelope(params, held.left_urad_s, held.right_urad_s) if held else (0, 0)
 
-    # 3. speed bound and stop distance
+    # 3. speed bound and stop distance (F4 reaction-time inclusion)
     v_ref = max(
         wheel_to_mmps(params, max(state.last_cmd)),
         wheel_to_mmps(params, max(clamped)),
     )
     stop_mm = d_stop_mm(params, v_ref)
 
-    # 4. lidar validity and obstacle hazard (R-01, R-04, AR-9)
-    lidar_ok, min_mm = _validate_lidar(params, now, inp.ranges_m, inp.lidar_stamp_us)
+    # 4. lidar validity and obstacle hazard (R-01, R-04, AR-9, F1)
+    lidar_ok, min_mm = _validate_lidar(params, now, inp.ranges_m, inp.lidar_stamp_us, inp.raw_valid_points)
     hazard = False
     if lidar_ok:
         hazard = min_mm is not None and min_mm <= stop_mm
@@ -337,14 +371,15 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     new_state = GateState(
         mode=mode, last_tick_us=now, clear_since_us=clear_since,
         held=held, last_seq=last_seq, last_cmd=cmd,
+        last_session_id=last_session_id,
     )
     record = _record(now, mode, reason, tuple(events), held, age_us, lidar_ok, min_mm,
-                     stop_mm, hazard, cmd)
+                     stop_mm, hazard, cmd, inp=inp)
     return StepResult(new_state, cmd[0], cmd[1], reason, tuple(events), record)
 
 
-def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, hazard, cmd) -> dict:
-    return {
+def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, hazard, cmd, inp: Optional[GateInputs] = None) -> dict:
+    rec = {
         "sim_time_us": now,
         "state": mode.value,
         "reason": reason,
@@ -359,3 +394,34 @@ def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, 
         "cmd_left_urad_s": cmd[0],
         "cmd_right_urad_s": cmd[1],
     }
+    if inp is not None:
+        proposal_logged = None
+        if isinstance(inp.proposal, Proposal):
+            proposal_logged = {
+                "seq": inp.proposal.seq,
+                "sim_stamp_us": inp.proposal.sim_stamp_us,
+                "left_urad_s": inp.proposal.left_urad_s,
+                "right_urad_s": inp.proposal.right_urad_s,
+                "session_id": inp.proposal.session_id,
+            }
+        elif inp.proposal is not None:
+            proposal_logged = str(inp.proposal)[:256]
+
+        ranges_logged = None
+        if isinstance(inp.ranges_m, (list, tuple)):
+            ranges_logged = [_json_safe_val(x) for x in inp.ranges_m]
+        elif inp.ranges_m is not None:
+            ranges_logged = _json_safe_val(inp.ranges_m)
+
+        rec["inputs"] = {
+            "raw_valid_points": inp.raw_valid_points,
+            "lidar_stamp_us": inp.lidar_stamp_us,
+            "reset_source": (
+                inp.reset_source if isinstance(inp.reset_source, (str, type(None)))
+                else str(inp.reset_source)[:64]
+            ),
+            "log_write_failed": bool(inp.log_write_failed),
+            "proposal": proposal_logged,
+            "ranges_m": ranges_logged,
+        }
+    return rec
