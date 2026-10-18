@@ -11,7 +11,7 @@ Rules:
   - Binary disk writes with b"\\n" to prevent Windows CRLF translation.
   - Fsync after flush to guarantee durability on crash/power-loss.
   - Reconstructs GateInputs from log for deterministic replay.
-  - Captures and seals harness manifest (V8).
+  - Captures harness manifest chained into record 0 (V8).
   - Standard library only.
 """
 from __future__ import annotations
