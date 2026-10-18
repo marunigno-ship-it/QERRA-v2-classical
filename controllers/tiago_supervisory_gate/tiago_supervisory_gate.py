@@ -336,14 +336,19 @@ def main():
 
             # Simulated lidar fault (F2 verification)
             lidar_stalled = False
+            raw_ranges = lidar.getRangeImage()
             if LIDAR_FAULT in ("freeze", "stale") and sim_time_sec >= LIDAR_FAULT_SIM_S:
                 if not lidar_fault_triggered:
                     lidar_fault_triggered = True
-                    print(f"[{sim_time_sec:6.2f}s][LIDAR FAULT] Lidar acquisition stalled (simulating hardware freeze).")
+                    print(
+                        f"[{sim_time_sec:6.2f}s][LIDAR FAULT] Lidar acquisition stalled (simulating hardware freeze).")
                 lidar_stalled = True
-
-            # Ingest and process lidar scan through pipeline (F1 & F2)
-            raw_ranges = lidar.getRangeImage()
+            elif LIDAR_FAULT == "blind" and sim_time_sec >= LIDAR_FAULT_SIM_S:
+                if not lidar_fault_triggered:
+                    lidar_fault_triggered = True
+                    print(
+                        f"[{sim_time_sec:6.2f}s][LIDAR FAULT] Lidar completely blinded (simulating taped/disconnected sensor: all +inf).")
+                raw_ranges = [float("inf")] * resolution
             scan, lidar_stamp_us, raw_valid_points = lidar_pipeline.process(
                 raw_ranges, sim_time_us, stalled=lidar_stalled
             )
