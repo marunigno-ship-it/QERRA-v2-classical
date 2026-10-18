@@ -3,9 +3,12 @@
 """
 Unit tests for gate/gate_ipc.py (SAFETY_CONCEPT.md v0.1).
 Covers: UDP non-blocking drain, message flooding (newest retained),
-        size limits, NaN rejection, and operator reset isolation.
+        size limits, NaN rejection, session arbitration (F3),
+        and operator reset isolation.
 Standard library only.
 """
+from __future__ import annotations
+
 import json
 import socket
 import unittest
@@ -115,6 +118,114 @@ class TestGateIPC(unittest.TestCase):
             self.assertEqual(res, "operator")
         finally:
             op_sock.close()
+
+    # --- F3 Session Arbitration Tests ---
+
+    def test_session_id_missing_defaults_to_zero(self):
+        payload = {
+            "seq": 1,
+            "sim_stamp_us": 1_000_000,
+            "left_urad_s": 100,
+            "right_urad_s": 100,
+        }
+        res = parse_proposal_datagram(json.dumps(payload).encode("utf-8"))
+        self.assertIsNotNone(res)
+        self.assertEqual(res.session_id, 0)
+
+    def test_session_id_invalid_types_and_negative_rejected(self):
+        base = {
+            "seq": 1,
+            "sim_stamp_us": 1_000_000,
+            "left_urad_s": 100,
+            "right_urad_s": 100,
+        }
+        bad_session_ids = [-1, -100, True, False, 1.5, "1", [1], {"id": 1}, None]
+        for bad_id in bad_session_ids:
+            item = dict(base)
+            item["session_id"] = bad_id
+            raw = json.dumps(item).encode("utf-8")
+            res = parse_proposal_datagram(raw)
+            self.assertIsNone(res, f"Expected None for session_id={bad_id!r}")
+
+    def test_session_arbitration_newer_session_replaces_older_regardless_of_seq(self):
+        # Proposer incarnation 10 was at seq 500 when it terminated
+        msg_old_session = {
+            "session_id": 10,
+            "seq": 500,
+            "sim_stamp_us": 1_000_000,
+            "left_urad_s": 100,
+            "right_urad_s": 100,
+        }
+        # Proposer restarts with incarnation 11, starting at seq 0
+        msg_new_session = {
+            "session_id": 11,
+            "seq": 0,
+            "sim_stamp_us": 1_032_000,
+            "left_urad_s": 200,
+            "right_urad_s": 200,
+        }
+        self._send(json.dumps(msg_old_session).encode("utf-8"))
+        self._send(json.dumps(msg_new_session).encode("utf-8"))
+
+        proposal, count = drain_proposals(self.recv_sock)
+        self.assertEqual(count, 2)
+        self.assertIsNotNone(proposal)
+        self.assertEqual(proposal.session_id, 11)
+        self.assertEqual(proposal.seq, 0)
+        self.assertEqual(proposal.left_urad_s, 200)
+
+    def test_session_arbitration_older_session_after_newer_rejected(self):
+        # Newer session proposal arrives first
+        msg_new_session = {
+            "session_id": 20,
+            "seq": 2,
+            "sim_stamp_us": 1_032_000,
+            "left_urad_s": 200,
+            "right_urad_s": 200,
+        }
+        # Delayed/stale packet from old session arrives later with higher seq
+        msg_old_session = {
+            "session_id": 19,
+            "seq": 999,
+            "sim_stamp_us": 1_000_000,
+            "left_urad_s": 100,
+            "right_urad_s": 100,
+        }
+        self._send(json.dumps(msg_new_session).encode("utf-8"))
+        self._send(json.dumps(msg_old_session).encode("utf-8"))
+
+        proposal, count = drain_proposals(self.recv_sock)
+        self.assertEqual(count, 2)
+        self.assertIsNotNone(proposal)
+        self.assertEqual(proposal.session_id, 20)
+        self.assertEqual(proposal.seq, 2)
+        self.assertEqual(proposal.left_urad_s, 200)
+
+    def test_session_arbitration_same_session_lower_seq_rejected(self):
+        # Within the same session, out-of-order packet with lower seq must not overwrite newer seq
+        msg_newer_seq = {
+            "session_id": 5,
+            "seq": 10,
+            "sim_stamp_us": 1_320_000,
+            "left_urad_s": 300,
+            "right_urad_s": 300,
+        }
+        msg_older_seq = {
+            "session_id": 5,
+            "seq": 4,
+            "sim_stamp_us": 1_128_000,
+            "left_urad_s": 150,
+            "right_urad_s": 150,
+        }
+        self._send(json.dumps(msg_newer_seq).encode("utf-8"))
+        self._send(json.dumps(msg_older_seq).encode("utf-8"))
+
+        proposal, count = drain_proposals(self.recv_sock)
+        self.assertEqual(count, 2)
+        self.assertIsNotNone(proposal)
+        self.assertEqual(proposal.session_id, 5)
+        self.assertEqual(proposal.seq, 10)
+        self.assertEqual(proposal.left_urad_s, 300)
 
 
 if __name__ == "__main__":
