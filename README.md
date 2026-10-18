@@ -5,7 +5,7 @@ Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranke
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![Version](https://img.shields.io/badge/version-2.1.1-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
 ---
 
@@ -17,7 +17,7 @@ The setting this is built for: a transport cobot in a hospital corridor yields a
 
 | Layer | Role | Evidence today |
 |-------|------|----------------|
-| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 75 unit tests passing (0.21s), verified offline with `verify_log.py` against anchored head hash `ae37ae62...`. Limits: Webots R2025a simulation only, Windows non-real-time host, anchor stored in repo. |
+| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 103 unit tests passing, verified offline with `verify_log.py` against anchored head hash `ae37ae62...` with deterministic replay (`--replay`). Limits: Webots R2025a simulation only, Windows non-real-time host, anchor stored in repo. |
 | **Layer 1B: QERRA-HSR (`hsr/`)** | Advisory 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. Pure Python, Apache-2.0. | Built and unit-tested (20 tests passing). Evaluated in Webots Demo 6 with stabilized 1.0s dwell and Property HSR-5 recovery directives. |
 | **Layer 2: SEMEV-12** | Advisory screening of text task instructions against 12 moral and coercion vectors. MiniLM embeddings with deterministic scoring gates and negation pre-filtering. Not part of the physical safety function. | Built, unit-tested and benchmarked (15 regression cases, 80-case baseline, active adversarial suite). The adversarial benchmark documents known evasion vectors. |
 | **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
@@ -320,7 +320,7 @@ values/
 - **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical directive, preventing ambiguous failure states.
 - **Resilience vs. Coercion Nuance:** Distinguishes between active workplace coercion versus a committed professional voluntarily pushing through a demanding environment.
 - **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors ranking candidate actions for human courtesy (quiet "whisper mode" in corridors, lawn/flora protection) with native PyTrees integration.
-- **Test-Verified (110 Tests Passing in CI):** 75 Supervisory Gate unit tests (verified pure standard library), 20 QERRA-HSR unit tests, and 15 SEMEV-12 benchmark regression cases executing cleanly in automated CI.
+- **Test-Verified (127 Unit Tests Passing in CI):** 103 Supervisory Gate unit tests (verified pure standard library), 20 QERRA-HSR unit tests, 4 License Boundary Guard unit tests, and 15 SEMEV-12 benchmark regression cases executing cleanly in automated CI.
 ---
 
 ## Calibrated Benchmarks
@@ -525,25 +525,25 @@ python -m unittest discover -s hsr -t . -v
 Supervisory gate tests (standard library only):
 
 ```bash
-python -m unittest tests.test_gate_core tests.test_gate_ipc tests.test_gate_lidar tests.test_gate_link tests.test_gate_log tests.test_license_boundary
+python -m unittest discover -s tests -p "test_gate_*.py" -v
 ```
 
 Verify the Demo 7 flight-recorder log against its anchored head hash:
 
 ```bash
-python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 --anchor-hash ae37ae62227c4fdca51233b7e4189607898ae2c27eca5bf0847414d1f0d4c191
+python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 --anchor-hash ae37ae62227c4fdca51233b7e4189607898ae2c27eca5bf0847414d1f0d4c191 --replay
 ```
 
 ---
 
 ## Project Status
 
-**Version:** `2.1.0` (Demo 7 Actuator Authority Separation Baseline)
-**Engine:** Supervisory Gate `v0.2` · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
+**Version:** `2.1.1`  
+**Engine:** Supervisory Gate `v0.3` (F1-F8 hardened) · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
 
 All three layers are implemented. The evidence level differs by layer and is stated for each:
 
-- **Layer 1 — Supervisory Gate (`gate/`, AGPL-3.0-only):** Implemented and demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo, Windows 11, non-real-time host). Demo 7 (`RUN_1791713619`): 1,485 control ticks; trip command issued at 337 mm clearance; standstill reached at 301 mm at ~0.196 m/s cruise. The decision log is verified with `verify_log.py` against a head hash anchored in this repository. This is a single run (n=1).
+- **Layer 1A — Supervisory Gate (`gate/`, AGPL-3.0-only):** Pure Python standard library only. 103 unit tests. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Baseline run `RUN_1791713619` (Gate v0.2) evidenced obstacle trip at 337 mm; standstill at 301 mm. Replayable offline via `verify_log.py --replay`.
 - **Layer 1 — QERRA-HSR (`hsr/`, Apache-2.0):** Implemented and unit-tested. Pure Python standard library only. Activation thresholds are design estimates and have not been calibrated against physical sensor streams. Human-in-the-Loop recovery directives are implemented.
 - **Layer 2 — Moral Gate (SEMEV-12 v1.9.2, AGPL-3.0):** Advisory, not part of the safety function. All 12 ethical vectors implemented and scoring. The 80-case baseline is documented in `SEMEV-12_Benchmark_Run_01.md`. The adversarial red-teaming suite in `SEMEV-12_Adversarial_Benchmark_Run_01.md` documents known bypasses and false positives.
 - **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0, AGPL-3.0):** Advisory. 12 value vectors across the human-centered and ecological suites, with bounded look-back negation guards. Not yet evaluated with human participants.
