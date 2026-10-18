@@ -320,7 +320,7 @@ values/
 - **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical directive, preventing ambiguous failure states.
 - **Resilience vs. Coercion Nuance:** Distinguishes between active workplace coercion versus a committed professional voluntarily pushing through a demanding environment.
 - **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors ranking candidate actions for human courtesy (quiet "whisper mode" in corridors, lawn/flora protection) with native PyTrees integration.
-- **Test-Verified (127 Unit Tests Passing in CI):** 103 Supervisory Gate unit tests (verified pure standard library), 20 QERRA-HSR unit tests, 4 License Boundary Guard unit tests, and 15 SEMEV-12 benchmark regression cases executing cleanly in automated CI.
+- **Test-Verified (142 Total Tests Passing in CI):** 127 pure standard-library unit tests (103 Supervisory Gate, 20 QERRA-HSR, 4 License Boundary Guard) plus 15 SEMEV-12 benchmark regression cases executing cleanly in automated CI.
 ---
 
 ## Calibrated Benchmarks
