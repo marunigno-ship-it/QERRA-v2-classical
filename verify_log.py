@@ -7,10 +7,11 @@ SAFETY_CONCEPT.md v0.1: R-09, Section 9.
 Verifies:
   1. Monotonic sequence numbers starting at 0 with no gaps.
   2. Strictly increasing simulation time (sim_time_us).
-  3. No Windows CRLF (\r\n) line corruptions.
+  3. No Windows CRLF (\\r\\n) line corruptions.
   4. Genesis hash equals 64 zeros.
   5. SHA-256 hash chain continuity: hash == SHA256(prev_hash + canonical_bytes).
   6. Truncation and rewrite detection against externally anchored head hash & final sequence number.
+  7. Deterministic offline replay through pure gate_core.step() (--replay).
 """
 from __future__ import annotations
 
@@ -21,7 +22,14 @@ import sys
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from gate.gate_log import GENESIS_HASH, compute_record_hash, serialize_canonical
+from gate.gate_config import get_live_gate_params
+from gate.gate_core import GateParams, initial_state, step
+from gate.gate_log import (
+    GENESIS_HASH,
+    compute_record_hash,
+    reconstruct_inputs,
+    serialize_canonical,
+)
 
 
 @dataclass
@@ -221,6 +229,68 @@ def verify_log_file(
     )
 
 
+def replay_log_file(filepath: str, params: GateParams) -> Tuple[bool, int, str]:
+    """
+    Replays a JSONL audit log file tick-by-tick through pure gate_core.step().
+    Verifies that every recorded command, reason, state, and event list matches
+    the recomputed pure core output exactly.
+    Returns (success, records_replayed, error_message).
+    """
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        return False, 0, f"Cannot open log file: {e}"
+
+    if not lines:
+        return False, 0, "Log file is empty"
+
+    state = initial_state()
+
+    for idx, line in enumerate(lines):
+        try:
+            record = json.loads(line)
+        except Exception as e:
+            return False, idx, f"Line {idx}: JSON parse error: {e}"
+
+        try:
+            inp = reconstruct_inputs(record)
+        except Exception as e:
+            return False, idx, f"Line {idx}: Failed to reconstruct GateInputs: {e}"
+
+        res = step(state, params, inp)
+        state = res.state
+
+        # Verify exact match against recorded decisions
+        cmd_recomputed = (res.cmd_left_urad_s, res.cmd_right_urad_s)
+        cmd_recorded = (record["cmd_left_urad_s"], record["cmd_right_urad_s"])
+        if cmd_recomputed != cmd_recorded:
+            return False, idx, (
+                f"Line {idx}: Actuator command mismatch! "
+                f"Recorded {cmd_recorded} != Recomputed {cmd_recomputed}"
+            )
+
+        if res.reason != record["reason"]:
+            return False, idx, (
+                f"Line {idx}: Reason mismatch! "
+                f"Recorded '{record['reason']}' != Recomputed '{res.reason}'"
+            )
+
+        if res.state.mode.value != record["state"]:
+            return False, idx, (
+                f"Line {idx}: Mode mismatch! "
+                f"Recorded '{record['state']}' != Recomputed '{res.state.mode.value}'"
+            )
+
+        if list(res.events) != record["events"]:
+            return False, idx, (
+                f"Line {idx}: Events mismatch! "
+                f"Recorded {record['events']} != Recomputed {list(res.events)}"
+            )
+
+    return True, len(lines), ""
+
+
 def parse_anchor_file(anchor_filepath: str) -> Tuple[Optional[int], Optional[str]]:
     """Parses expected head hash and sequence number from an ANCHOR.txt file."""
     if not os.path.isfile(anchor_filepath):
@@ -247,6 +317,8 @@ def main():
     parser.add_argument("--anchor-seq", type=int, default=None, help="Expected final sequence number")
     parser.add_argument("--anchor-hash", type=str, default=None, help="Expected final SHA-256 head hash")
     parser.add_argument("--anchor-file", type=str, default=None, help="Path to ANCHOR.txt containing head hash")
+    parser.add_argument("--replay", action="store_true", help="Replay inputs through pure gate_core.step() and verify bit-for-bit output match")
+    parser.add_argument("--lidar-n", type=int, default=None, help="Expected LiDAR samples count for replay")
     args = parser.parse_args()
 
     expected_seq = args.anchor_seq
@@ -259,31 +331,58 @@ def main():
         if expected_hash is None:
             expected_hash = file_hash
 
+    # 1. Cryptographic and format audit
     result = verify_log_file(
         args.log_path,
         expected_head_seq=expected_seq,
         expected_head_hash=expected_hash,
     )
 
-    if result.is_valid:
-        print("=" * 70)
-        if result.is_anchored:
-            print("[AUDIT PASSED: ANCHORED] Log is mathematically intact and verified against external head seal.")
-        else:
-            print("[AUDIT WARNING: UNANCHORED] Hash chain is internally consistent,")
-            print("  but WITHOUT an external anchor, offline log rewriting cannot be excluded.")
-        print(f"  • Verified Records : {result.total_records}")
-        print(f"  • Sequence Range   : {result.first_seq} -> {result.last_seq}")
-        print(f"  • Head Hash (Seal) : {result.head_hash}")
-        print(f"  • Anchor Status    : {'VERIFIED' if result.is_anchored else 'UNANCHORED'}")
-        print("=" * 70)
-        sys.exit(0)
-    else:
+    if not result.is_valid:
         print("!" * 70)
         print("[AUDIT FAILED] Tampering or corruption detected!")
         print(f"  • Reason           : {result.error_message}")
         print("!" * 70)
         sys.exit(1)
+
+    print("=" * 70)
+    if result.is_anchored:
+        print("[AUDIT PASSED: ANCHORED] Log is mathematically intact and verified against external head seal.")
+    else:
+        print("[AUDIT WARNING: UNANCHORED] Hash chain is internally consistent,")
+        print("  but WITHOUT an external anchor, offline log rewriting cannot be excluded.")
+    print(f"  • Verified Records : {result.total_records}")
+    print(f"  • Sequence Range   : {result.first_seq} -> {result.last_seq}")
+    print(f"  • Head Hash (Seal) : {result.head_hash}")
+    print(f"  • Anchor Status    : {'VERIFIED' if result.is_anchored else 'UNANCHORED'}")
+
+    # 2. Replay audit if requested
+    if args.replay:
+        # Infer lidar_n from first record with ranges_m if not explicitly specified
+        lidar_n = args.lidar_n
+        if lidar_n is None:
+            with open(args.log_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    rec = json.loads(line)
+                    inp = rec.get("inputs")
+                    if inp and isinstance(inp.get("ranges_m"), list):
+                        lidar_n = len(inp["ranges_m"])
+                        break
+        if lidar_n is None:
+            lidar_n = 5  # fallback test default
+
+        replay_params = get_live_gate_params(lidar_n_expected=lidar_n)
+        ok, replayed_count, err = replay_log_file(args.log_path, replay_params)
+        if ok:
+            print(f"[REPLAY AUDIT PASSED] All {replayed_count} control cycles reproduced bit-for-bit through pure core step().")
+        else:
+            print("!" * 70)
+            print(f"[REPLAY AUDIT FAILED] Replay diverged from recorded decision: {err}")
+            print("!" * 70)
+            sys.exit(2)
+
+    print("=" * 70)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
