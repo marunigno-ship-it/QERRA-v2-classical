@@ -5,6 +5,35 @@ across versions.
 
 ---
 
+## [2.1.1] - 2026-10-18 — Supervisory Gate Hardening (F1–F8) & Evidence Alignment
+
+### Added
+- **F3 IPC Session Arbitration Unit Tests (`tests/test_gate_ipc.py`):**
+  - Landed 5 missing unit tests verifying session arbitration: default `session_id=0`, rejection of invalid types/negatives, newer session superseding older regardless of `seq`, rejection of older sessions arriving after newer, and sequence ordering within the same session. Verified sensitivity via 5 deliberate mutations.
+- **F4 Live Reaction Time Factory (`gate/gate_config.py`):**
+  - Added Webots-free parameter factory (`get_live_gate_params`) configuring justified 1-tick reaction latency ($t_{react} = 32\,000\ \mu\text{s}$).
+  - Live controller (`tiago_supervisory_gate.py`) updated to use the factory, expanding the live stopping envelope at cruise speed from $339\text{ mm}$ to $346\text{ mm}$ ($+7\text{ mm}$).
+  - Added `tests/test_gate_config.py` (4 tests) verifying parameter values and envelope expansion.
+- **F5 True Deterministic Replay (`gate/gate_log.py`, `verify_log.py`):**
+  - Added `reconstruct_inputs(record)` to deserialize logged JSON inputs, properly converting JSON string infinities (`"+inf"`, `"-inf"`, `"nan"`) back to IEEE 754 floats.
+  - Added `replay_log_file()` and `--replay` CLI flag to `verify_log.py` to audit that recorded outputs reproduce bit-for-bit through `gate_core.step()`.
+  - Added 2 unit tests in `tests/test_gate_log.py` verifying multi-tick lifecycle replay and detection of execution divergence on tampered logs.
+- **V8 Harness Manifest Capture & Sealing:**
+  - Added `capture_harness_manifest()` and `write_run_manifest()`.
+  - Live controller writes `results/<run_id>/manifest.json` recording all injected fault switches (`QERRA_LIDAR_FAULT`, `QERRA_PROPOSER_FAULT`, fault times, `QERRA_AUTO_RESET_AT_US`, `QERRA_SMOKE_OBSTACLE`).
+  - Manifest is cryptographically sealed into record 0 of the flight recorder hash chain.
+- **CI Workflow Hardening (`.github/workflows/tests.yml`):**
+  - Removed stale hardcoded test counts from workflow step names.
+  - Added `tests/test_license_boundary.py` (4 tests) to automated CI, enforcing the Apache-2.0 / AGPL-3.0 boundary on every pull request.
+
+### Fixed & Aligned
+- **V4 Documentation:** Documented proposer wall-clock non-monotonicity, DoS integer surfaces, and trust boundary limits in `LIMITATIONS.md`.
+- **V5 Documentation:** Documented in `LIMITATIONS.md` and `safety_concept.md` that the LiDAR stale watchdog is exercised exclusively by simulated fault injection and does not track physical hardware timestamps.
+- **V6 Documentation:** Documented that `min_raw_lidar_returns >= 5` checks the entire 240° scan, leaving dead forward arcs with live side walls as an acknowledged boundary.
+- **V7 Test Count Alignment:** Synchronized `README.md:323` and CI documentation to the exact verified count of **127 Unit Tests** (103 Supervisory Gate + 20 QERRA-HSR + 4 License Boundary).
+
+---
+
 ## [2.1.0] - 2026-10-15 — Actuator Authority Separation, Decoupled Supervisory Gate, & Verified Multi-Suite CI
 
 ### Added
@@ -28,12 +57,9 @@ across versions.
   - Added `obstacle_breach: bool` to the log record schema.
 
 ### Testing & Verification
-- **Automated CI Expansion (110 Tests Passing):**
+- **Automated CI Expansion:**
   - Upgraded GitHub Actions workflow (`tests.yml`) to test all three layers in automated CI on `ubuntu-latest`.
   - Added AST inspection test (`test_gate_core_imports_stdlib_only`) proving zero non-stdlib imports.
-  - 75 Supervisory Gate unit tests passing (0.21s).
-  - 20 QERRA-HSR unit tests passing (1.21s).
-  - 15 SEMEV-12 benchmark regression tests passing.
 
 ---
 
@@ -55,19 +81,6 @@ across versions.
   - Resolved ranking inversion defects where honest disclosures (e.g. *"not fully qualified"* in `transparent_disclosure`), accommodating pacings (e.g. *"will not maintain current pace"* in `balanced_pacing`), rule adaptations (`stated_preference_respect`), empowering non-takeovers (`sovereign_independence`), anti-bias disclaimers (`unbiased_perception`, `constructive_empathy`), threshold pauses (`spatial_discretion`), privacy protections (`observational_consent`), and proactive notices (`proactive_clarity`) were erroneously penalized by unnegated regex patterns.
 - **Conjunction Leak in `balanced_pacing` (`PACE_REFUSAL_PATTERN`):**
   - Clause-bounded regex quantifiers using `[^,.;\s]+` to prevent the refusal pattern from leaping across commas or contrastive conjunctions (e.g. bridging *"will not [X], but will slow down"* into a false refusal to slow).
-
-### Testing & Verification
-- Expanded test suites across all 12 THRIVE vectors with contrastive Negative Twin scenarios, verifying unpenalized scoring and positive winning margins (Delta s):
-  - `flora_boundary_protection`: Score recovered to `0.5662` (`Penalty: False`).
-  - `transparent_disclosure`: Score recovered to `0.1940` (Delta s = +0.0709).
-  - `balanced_pacing`: Score recovered to `0.3782` (Delta s = +0.4295).
-  - `stated_preference_respect`: Score recovered to `0.5140` (Delta s = +0.4249).
-  - `sovereign_independence`: Score recovered to `0.3682` (Delta s = +0.2159).
-  - `constructive_empathy`: Score recovered to `0.4594` (Delta s = +0.2377).
-  - `unbiased_perception`: Score recovered to `+0.1427` (Delta s = +0.1850).
-  - `spatial_discretion`: Score recovered to `0.6036` (Delta s = +0.1773).
-  - `observational_consent`: Score recovered to `0.6487` (Delta s = +0.1941).
-  - `proactive_clarity`: Score recovered to `0.3096` (Delta s = +0.0721).
 
 ---
 
@@ -92,15 +105,6 @@ across versions.
 - **Hysteresis Recovery Guard:**
   - Enforced that `StabilizedHSR` suppresses `recovery_directive` while actively dwelling in elevated states, preventing premature resumption cues before de-escalation officially completes.
 
-### Testing & Verification
-- Test suite expanded to **20 automated unit tests** (100% passing):
-  - `hsr/test_hsr_cases.py`: Expanded from 12 to 14 tests (added contract guarantees for `recovery_directive` under `CLEAR` and active incident states).
-  - `hsr/test_hysteresis.py`: Expanded from 5 to 6 tests (added simulated clock regression test verifying dwell timer reset upon candidate status change).
-- Preserved sub-millisecond reflex latency (<1ms, independently verified at 0.0ms delay).
-
-### API Integration
-- Updated `app.py` to expose `recovery_directive` inside the `hsr` dictionary payload for both `/analyze` and `/evaluate_pipeline` endpoints.
-
 ---
 
 ## [2.0.0] - 2026-08-20 — Unified 3-Layer Filter-First Architecture
@@ -112,173 +116,6 @@ across versions.
 - **Layer 3 Package (`values/`):**
   - Added QERRA-THRIVE package structure with `human_centered_suite_a` and `ecological_suite_b`.
   - Added standalone `/rank` endpoint and public `/thrive/vectors` catalog.
-
----
-
-## [2.0-alpha] - 2026-07-18 — HSR calibration patch
-- **v004 (moral_pressure) Semantic Calibration:** Expanded the semantic anchor to cover formal corporate coercion, bookkeeping falsification, and product safety cover-ups. One of three follow-up tests using independent wording activated correctly; two did not. Held-out validation not yet complete.
-- **v011 (autonomy_violation) Semantic Calibration:** Expanded the semantic anchor to cover clinical and medical coercion, raising similarity on the known target case (V011-T01) from 0.3970 to 0.5112 and enabling native activation. Held-out validation not yet complete.
-
----
-
-## [2.0-alpha] - 2026-06-29 — Zenodo publication
-- Official Zenodo publication of QERRA-v2 Classical.
-- Integrated QERRA-HSR v0.1 physical safety companion layer (3 vectors: Distress, Isolation, Hazards).
-- Upgraded remaining 5 vectors to use SentenceTransformer semantic similarity (all 12 vectors now semantic).
-
-## [2.0-alpha — Benchmark] — June 2026
-
-### Documentation
-- **SEMEV-12 Benchmark Run 01** completed — 80 structured test cases
-  across all 12 vectors, verified against live API (v1.9.0)
-  - Test types: calibration, true_positive, true_negative, boundary,
-    false_positive, false_negative, multi_vector, personal_scenario,
-    corporate, robotics_healthcare, robotics_elder_care, societal
-  - Results: 44 PASS · 33 FINDING · 1 NOTE · 2 PASS+FINDING
-  - Key findings documented:
-    - v004 false positive on "toxic"/"unsupportive" keywords (pressure_mention regex)
-    - Compound semantic dilution in complex multi-concept sentences
-    - v010 live API threshold discrepancy (TECH-FIND-01, ~0.35 vs documented 0.38)
-    - v009 confirmed as system's only diluting vector
-    - Corporate and professional language vocabulary gap identified
-    - Intentional scope boundary confirmed (romantic/emotional conflict = out of scope)
-  - Post-benchmark anchor expansion plan documented
-  - See [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md)
-- README.md updated — benchmark reference and repository structure entry added
-- SEMEV-12_Whitepaper.md — Section 2 and Section 5 terminology corrections
-- README.md — vector detection table corrected to "semantic" for all 12 vectors
-
----
-
-## [2.0-alpha] — June 2026
-
-### Added
-- **QERRA-HSR v0.1** — Physical Safety Response Layer (companion to SEMEV-12)
-  - Three deterministic vectors: `immediate_physical_distress`,
-    `human_isolation`, `environmental_hazard_proximity`
-  - Pure Python, zero ML, zero extra dependencies
-  - Overhead < 1ms per evaluation — Hugging Face free tier compatible
-  - Output states: `CLEAR` / `MONITOR` / `CRITICAL`
-  - `robot_task_interruptible` flag respected — affects HOW, never WHETHER
-  - Combined condition: moderate distress + isolation → CRITICAL
-  - 12 regression tests — all passing (0.006s)
-  - Lives in `hsr/` subdirectory — completely isolated from SEMEV-12 core
-- **HSR-ADR-001** — Architecture Decision Record for QERRA-HSR three-vector
-  design decision
-- **ADR-001-SEMEV-12-Core.md** — Architecture Decision Record for SEMEV-12
-  foundational design
-
-### Architecture
-- QERRA-HSR runs before SEMEV-12 on every evaluation cycle
-- CRITICAL from QERRA-HSR suspends SEMEV-12 deliberation
-- SEMEV-12 BLOCK is never overridden by QERRA-HSR CRITICAL
-- Both protections apply simultaneously and work in the same direction
-
-### Note
-- QERRA-HSR is fully implemented and tested locally
-- API integration (`app.py` unified endpoint) is planned as next step
-
----
-
-## [1.9.0] — June 2026
-
-### Upgraded
-- **v001 `coherence_protection`** — upgraded from pattern to full semantic
-  detection via `all-MiniLM-L6-v2`
-- **v002 `family_severance`** — upgraded from pattern to full semantic
-  detection
-- **v006 `family_origin_chain`** — upgraded from pattern to full semantic
-  detection
-- **v008 `shallow_remorse`** — upgraded from pattern to full semantic
-  detection
-- **v009 `ethical_severance`** — upgraded from pattern to full semantic
-  detection
-
-### Result
-- All 12 SEMEV-12 vectors now use semantic similarity detection
-- Single text encoding optimization active for all 12 vectors
-- All pre-encoded embeddings loaded once at startup
-- 8 regression tests passing
-
-### Technical
-- `cognitive_manipulation` semantic description refined for improved
-  precision on guilt-tripping and psychological pressure patterns
-- Pattern fallbacks retained as OR conditions for high-confidence
-  unambiguous phrases on v004, v005, v010, v011, v012
-
----
-
-## [1.8.8] — May/June 2026
-
-### Optimized
-- Pre-encoding of static semantic descriptions moved to startup
-- Runtime latency reduced — embeddings computed once, reused per call
-- Affects v003, v004, v005, v007, v010, v011, v012
-
----
-
-## [1.8.7] — May 2026
-
-### Added
-- **v006 `family_origin_chain`** (pattern) — detection of generational
-  trauma and inherited family patterns
-- Engine actively scoring 11 of 12 SEMEV-12 vectors
-
-### Technical
-- Full cleanup: consistent vector ordering and indentation
-- v012 `institutional_trust` prepared for activation
-
----
-
-## [1.8.6] — May 2026
-
-### Added
-- **v009 `ethical_severance`** (pattern) — conscious, chosen severance
-  from toxic contexts
-- Score contribution intentionally low (0.25) — reflects protective act,
-  not ethical risk
-
----
-
-## [1.8.5] — May 2026
-
-### Added
-- **v008 `shallow_remorse`** (pattern) — detection of dismissive or
-  manipulative apologies
-- Engine reached 9 of 12 vectors
-
----
-
-## [1.8.4] — May 2026
-
-### Added
-- **v002 `family_severance`** (pattern)
-
----
-
-## [1.8.3] — May 2026
-
-### Added
-- **v011 `autonomy_violation`** (semantic + pattern fallback)
-
----
-
-## [1.8.2] — May 2026
-
-### Added
-- **v001 `coherence_protection`** (pattern-based)
-
----
-
-## [1.8.1-restored] — May 2026
-
-### Fixed
-- v005 `harm_intent` — added explicit self-harm phrases to severe tier
-- v010 `cognitive_manipulation` — expanded with guilt-tripping fallback
-
-### Documentation
-- Added Development Reality section to README
-- Added SEMEV-12 specification documents
 
 ---
 
