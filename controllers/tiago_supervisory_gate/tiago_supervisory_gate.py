@@ -72,13 +72,16 @@ else:
     except ImportError:
         RobotClass = object
 
+from gate.gate_config import get_live_gate_params             # noqa: E402
 from gate.gate_core import (                                # noqa: E402
     GateInputs, GateParams, Mode, Reason, RESET_SOURCE_OPERATOR, initial_state, step,
 )
 from gate.gate_ipc import create_udp_receiver, drain_proposals, poll_operator_reset   # noqa: E402
 from gate.gate_lidar import CorridorFilter, LidarPipeline  # noqa: E402
 from gate.gate_link import DEFAULT_STATE_PORT, create_state_sender, send_state   # noqa: E402
-from gate.gate_log import GateLogger                        # noqa: E402
+from gate.gate_log import (                                 # noqa: E402
+    GateLogger, capture_harness_manifest, write_run_manifest,
+)
 
 # ----------------------------------------------------------------------------------------
 # PARAMETERS: TIAGo Base Physical Dimensions & Kinematics
@@ -201,33 +204,37 @@ def main():
     op_sock = create_udp_receiver(port=OPERATOR_PORT)
     state_sock = create_state_sender()
 
-    # 5. Gate Parameters (t_watch_us set to 150ms for Windows thread jitter tolerance)
-    params = GateParams(
+    # 5. Gate Parameters (F4: live parameters include justified t_react_us via factory)
+    params = get_live_gate_params(
         lidar_n_expected=resolution,
         dt_us=dt_us,
-        t_watch_us=150_000,
-        proposer_period_us=33_000,
-        lidar_period_us=dt_us,
-        t_stale_us=3 * dt_us,
-        t_dwell_us=1_000_000,
-        max_tick_gap_us=2 * dt_us,
-        wheel_radius_mm=WHEEL_RADIUS_MM,
-        w_min_urad_s=0,
         w_max_urad_s=w_max_urad_s,
-        a_design_mmps2=A_DESIGN_MMPS2,
-        margin_mm=MARGIN_MM,
-        min_raw_lidar_returns=MIN_RAW_LIDAR_RETURNS,
+        t_react_us=32_000,
     )
     state = initial_state()
 
-    # 6. Cryptographic Flight Recorder & Telemetry
+    # 6. Cryptographic Flight Recorder, Telemetry & Harness Manifest (V8)
     run_id = os.environ.get("QERRA_RUN_ID") or f"RUN_{int(time.time())}"
     run_dir = os.path.join(PROJECT_ROOT, "results", run_id)
     os.makedirs(run_dir, exist_ok=True)
+
+    # Capture and record injected conditions in run manifest
+    manifest = capture_harness_manifest()
+    manifest["run_id"] = run_id
+    manifest["gate_version"] = "0.3"
+    manifest["params"] = {
+        "t_react_us": params.t_react_us,
+        "t_watch_us": params.t_watch_us,
+        "margin_mm": params.margin_mm,
+        "a_design_mmps2": params.a_design_mmps2,
+        "t_dwell_us": params.t_dwell_us,
+    }
+    manifest_path = write_run_manifest(run_dir, manifest)
+
     log_path = os.path.join(run_dir, "gate_audit.jsonl")
     telemetry_path = os.path.join(run_dir, "wheel_telemetry.csv")
 
-    logger = GateLogger(log_path, run_id=run_id, gate_version="0.3")
+    logger = GateLogger(log_path, run_id=run_id, gate_version="0.3", manifest=manifest)
 
     telemetry_file = open(telemetry_path, "w", encoding="utf-8", newline="\n")
     telemetry_file.write("sim_time_sec,cmd_left_rad_s,cmd_right_rad_s,meas_left_rad_s,meas_right_rad_s,lidar_min_mm\n")
@@ -253,6 +260,7 @@ def main():
     print("\n" + "=" * 70)
     print("QERRA Supervisory Gate (Demo 7) -- LIVE MODE")
     print(f"  • Run ID         : {run_id}")
+    print(f"  • Manifest       : {manifest_path}")
     print(f"  • Flight Recorder: {log_path}")
     print(f"  • Telemetry CSV  : {telemetry_path}")
     print(f"  • AI Brain (PID) : {proposer_proc.pid if proposer_proc else 'Manual'}")
