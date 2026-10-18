@@ -197,7 +197,7 @@ class GateLogger:
             "prev_hash": self.prev_hash,
         }
 
-        # Cryptographically seal manifest into record 0
+        # Embed manifest into record 0 of the hash chain (tamper-evident against anchor)
         if self.seq == 0 and self.manifest is not None:
             record["manifest"] = self.manifest
 
