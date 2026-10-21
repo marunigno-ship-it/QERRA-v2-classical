@@ -11,8 +11,8 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 WorldInfo {
 }
 Viewpoint {
-  orientation -0.04870964174246894 0.029390229261697265 0.9983804811920478 2.0572296938311867
-  position 4.9343055849803905 -9.206059265946866 2.0002393052737535
+  orientation -0.06862996911208248 0.04378641308086374 0.9966808302406475 2.0088092732249474
+  position 4.711419069971142 -9.04604910257857 1.9557168512362506
 }
 TexturedBackground {
   texture "empty_office"
@@ -44,7 +44,7 @@ Solid {
 }
 Tiago {
   translation -3.84 0 0.095
-  controller "tiago_supervisory_gate"
+  controller "tiago_demo_sequence"
   supervisor TRUE
   lidarSlot [
     HokuyoUrg04lxug01 {
