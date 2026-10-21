@@ -1,0 +1,65 @@
+{
+  "code_hashes": {
+    "controller": "eec7f21b7149116656ae3b019b9de3f9b0d39d2fd30219ed131d0ffd2eddae84",
+    "gate_core": "421d7fb151cf9d3bdc2b74cb6f105d7bff7de1bcfc0fdda9e7b01bd4f63d2be9",
+    "gate_ipc": "5db54c6979c848de6ca43b814b6435bca081e9016cc122999a832261d518e6f0",
+    "gate_lidar": "078ba1667789972f09d0ed29f7f2fd3e71ea76ec50a9adf9136d8c35b50117f3",
+    "gate_log": "607ddd9c693c5de960e75eec19795f8759ddda294258a41ee03761cff381275c",
+    "proposer": "785252161a49a5eb95411167ef5f7750d77c38de9a5d6b16e8a4002f9c5c196e",
+    "verify_log": "b3905528199595849cbfa7e83044e638516d70565290259d1ff1a86fc15f4245"
+  },
+  "demo_sequencer": {
+    "enabled": true,
+    "injected_auto_reset_fallback": true,
+    "proposer_loss_mechanism": "controller_candidate_drop",
+    "schedule": [
+      "STAGE_STARTUP",
+      "STAGE_DRIVE_TO_CART",
+      "STAGE_CART_STOPPED",
+      "STAGE_WAIT_RESET_AFTER_CART",
+      "STAGE_DRIVE_BEFORE_LIDAR_FREEZE",
+      "STAGE_LIDAR_FREEZE_ACTIVE",
+      "STAGE_WAIT_RESET_AFTER_LIDAR",
+      "STAGE_DRIVE_BEFORE_PROPOSER_LOSS",
+      "STAGE_PROPOSER_LOSS_ACTIVE",
+      "STAGE_WAIT_RESET_AFTER_PROPOSER",
+      "STAGE_FINAL_DRIVE_TO_WALL",
+      "STAGE_DEMO_FINISHED"
+    ],
+    "timings_s": {
+      "auto_reset_fallback_after_cart_stop_s": 4.0,
+      "dwell_s": 1.0,
+      "lidar_freeze_duration_s": 1.0,
+      "motion_before_lidar_freeze_s": 2.0,
+      "motion_before_proposer_loss_s": 2.0,
+      "proposer_loss_duration_s": 1.0
+    }
+  },
+  "gate_version": "0.3",
+  "params": {
+    "a_design_mmps2": 500,
+    "dt_us": 32000,
+    "lidar_n_expected": 667,
+    "lidar_period_us": 32000,
+    "margin_mm": 300,
+    "max_tick_gap_us": 64000,
+    "min_raw_lidar_returns": 5,
+    "proposer_period_us": 33000,
+    "t_dwell_us": 1000000,
+    "t_react_us": 32000,
+    "t_stale_us": 96000,
+    "t_watch_us": 150000,
+    "w_max_urad_s": 3000000,
+    "w_min_urad_s": 0,
+    "wheel_radius_mm": 98
+  },
+  "qerra_auto_reset_at_us": null,
+  "qerra_fault_sim_s": 3.0,
+  "qerra_hang_ms": 800,
+  "qerra_lidar_fault": "none",
+  "qerra_lidar_fault_sim_s": 3.0,
+  "qerra_proposer_fault": "none",
+  "qerra_skip_proposer": false,
+  "qerra_smoke_obstacle": false,
+  "run_id": "DEMO8_VIDEO_1792575455"
+}
