@@ -17,13 +17,13 @@ The setting this is built for: a transport cobot in a hospital corridor yields a
 
 | Layer | Role | Evidence today |
 |-------|------|----------------|
-| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 103 unit tests passing, verified offline with `verify_log.py` against anchored head hash `ae37ae62...` with deterministic replay (`--replay`). Limits: Webots R2025a simulation only, Windows non-real-time host, anchor stored in repo. |
+| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 103 unit tests passing, verified offline with `verify_log.py` against anchored head hash `ae37ae62...` with deterministic replay (`--replay`). Limits: Webots R2025a simulation only, Windows non-real-time host, anchor stored in repo. Demo 8 (simulation): fault-injection and reset campaign, see [`docs/demo8/DEMO8_EVIDENCE.md`](./docs/demo8/DEMO8_EVIDENCE.md). |
 | **Layer 1B: QERRA-HSR (`hsr/`)** | Advisory 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. Pure Python, Apache-2.0. | Built and unit-tested (20 tests passing). Evaluated in Webots Demo 6 with stabilized 1.0s dwell and Property HSR-5 recovery directives. |
 | **Layer 2: SEMEV-12** | Advisory screening of text task instructions against 12 moral and coercion vectors. MiniLM embeddings with deterministic scoring gates and negation pre-filtering. Not part of the physical safety function. | Built, unit-tested and benchmarked (15 regression cases, 80-case baseline, active adversarial suite). The adversarial benchmark documents known evasion vectors. |
 | **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
 
 **Where to start:**
-- Safety and robotics engineers: [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, and the Demo 7 section below.
+- Safety and robotics engineers: [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, and the Demo 7 and Demo 8 sections below.
 - Ethics, human-robot interaction and standards readers: the SEMEV-12 and QERRA-THRIVE sections below, and the two benchmark files.
 
 ---
@@ -466,6 +466,27 @@ This simulation (video length 38 s; the full logged run is 47.52 s, 1,485 ticks)
 [![QERRA-v2 Supervisory Gate Webots Demo 7](https://img.youtube.com/vi/sZxwLtu5YWQ/hqdefault.jpg)](https://youtu.be/sZxwLtu5YWQ)
 
 Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.com/cyberbotics/webots/discussions/7050) · [Open Robotics Discourse](https://discourse.openrobotics.org/)
+
+## Simulation Demo 8: Fault-Injection and Reset Campaign for the Supervisory Gate in Webots
+
+Demo 8 exercises the same Supervisory Gate (v0.3) on the TIAGo base in Webots R2025a. It is simulation only and unrated. The faults are injected by the test harness, and the host is a non-real-time Windows PC. The video is one continuous 1 min 18 s take (run `DEMO8_VIDEO_1792575455`) driven by a demo sequencer controller. The separate scripted runs behind it are tabulated in [`docs/demo8/DEMO8_EVIDENCE.md`](./docs/demo8/DEMO8_EVIDENCE.md).
+
+What the take shows (every reason code is printed by the gate itself in the Webots console):
+
+*   **Startup latch and operator reset** — the gate boots `TRIPPED` (`TRIP_PROPOSER_DEAD`), reaches `AWAITING_RESET` after the 1.0 s clear dwell, and accepts the operator's R key press.
+*   **Obstacle stop** — cruise at 2.0 rad/s (about 0.196 m/s). `TRIP_OBSTACLE` fires at a lidar range of 341 mm against the 346 mm stopping envelope.
+*   **Reset refused while the hazard is present** — an operator reset with the cart still in the lane is rejected (`RESET_REJECTED_HAZARD`).
+*   **Lane cleared** — the sequencer moves the cart sideways through the Supervisor API. After the 1.0 s dwell the operator reset is accepted.
+*   **Lidar freeze** — the harness stops advancing the lidar timestamp. The gate trips `TRIP_SENSOR_INVALID` and holds the wheels at 0.0 rad/s until dwell and reset.
+*   **Proposer loss** — the controller discards incoming proposals (the proposer process keeps running). The gate trips `TRIP_PROPOSER_STALE` when the 150 ms watchdog expires.
+*   **Final stop** — the gate stops again at a lidar range of 342 mm against the 346 mm envelope.
+
+*What this does and does not show:*
+- *The 341 mm and 342 mm figures are the gate's own lidar minimum range in the swept corridor at the trip tick (`lidar_min_mm`), measured from the lidar. They are not standstill distances.*
+- *The sequencer (`controllers/tiago_demo_sequence/`) is a demo copy of the Demo 7 controller. It has no log-write-failure trip path and always starts the proposer without a fault. If R is not pressed within 4 s after the first stop, it injects an operator reset itself.*
+- *Earlier takes showed unplanned `TRIP_PROPOSER_STALE` trips roughly 14 s apart (five in one 74 s take). Later takes showed none. The cause was not isolated.*
+- *As noted for Demo 7, after the first reset the wheels report 2.0 rad/s for roughly 10 s while the lidar range stays near 3.8 m before it starts to fall. The cause was not isolated.*
+- *The gate does not use QERRA-HSR here: `hsr_status` is always `None` in these logs.*
   
 
 
@@ -477,10 +498,13 @@ Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.c
 ├── hsr/                                     # Layer 1: QERRA-HSR v0.1 physical safety reflex (3 vectors)
 ├── gate/                                    # Layer 1: supervisory gate (pure-function core, IPC, lidar corridor, hash-chained log)
 ├── controllers/tiago_supervisory_gate/      # Webots controller for Demo 7
+├── controllers/tiago_demo_sequence/         # Webots demo-sequencer controller for Demo 8 (scripted fault sequence)
 ├── worlds/demo7_supervisory_gate.wbt        # Webots world for Demo 7
 ├── scripts/untrusted_proposer.py            # Scripted untrusted proposer (2.0 rad/s) used in Demo 7
 ├── verify_log.py                            # Offline hash-chain verifier for the gate log
 ├── results/RUN_1791713619/                  # Demo 7 audit log and ANCHOR.txt
+├── results/DEMO8_*/                         # Demo 8 run folders (manifest, audit log, wheel telemetry)
+├── docs/demo8/DEMO8_EVIDENCE.md             # Demo 8 evidence table: scenarios, results, run folders
 ├── ethical_core.py                          # Layer 2: SEMEV-12 scoring engine (v1.9.2)
 ├── vectors.py                               # SEMEV-12 vector definitions and weights
 ├── values/                                  # Layer 3: QERRA-THRIVE v2.0.0 values ranker (12 vectors)
@@ -493,6 +517,7 @@ Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.c
 ├── tests/
 │   ├── test_cases.py                        # Regression test suite
 │   ├── test_vectors.py                      # Vector unit tests
+│   ├── test_verify_manifest.py              # Replay-from-manifest tests for verify_log.py
 │   └── test_gate_*.py                       # Supervisory gate tests (core, IPC, lidar, link, log)
 ├── SEMEV-12_Benchmark_Run_01.md             # Baseline benchmark — 80 verified test cases
 ├── SEMEV-12_Adversarial_Benchmark_Run_01.md # Active adversarial red-teaming benchmark
