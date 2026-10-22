@@ -7,7 +7,7 @@ package_name = "qerra_core"
 
 setup(
     name=package_name,
-    version="2.1.0",
+    version="2.1.2",
     py_modules=[
         "verify_log",
         "ros2_bridge",
