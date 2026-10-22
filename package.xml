@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>qerra_core</name>
-  <version>2.1.0</version>
+  <version>2.1.2</version>
   <description>QERRA-v2 Classical: Three-Layer Autonomous Execution Firewall and Supervisory Gate</description>
   <maintainer email="marunigno@gmail.com">Marussa Metocharaki</maintainer>
   <license>AGPL-3.0-only</license>
