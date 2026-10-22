@@ -5,7 +5,7 @@ Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranke
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
-[![Version](https://img.shields.io/badge/version-2.1.1-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![Version](https://img.shields.io/badge/version-2.1.2-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
 ---
 
@@ -17,7 +17,7 @@ The setting this is built for: a transport cobot in a hospital corridor yields a
 
 | Layer | Role | Evidence today |
 |-------|------|----------------|
-| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 103 unit tests passing, verified offline with `verify_log.py` against anchored head hash `ae37ae62...` with deterministic replay (`--replay`). Limits: Webots R2025a simulation only, Windows non-real-time host, anchor stored in repo. Demo 8 (simulation): fault-injection and reset campaign, see [`docs/demo8/DEMO8_EVIDENCE.md`](./docs/demo8/DEMO8_EVIDENCE.md). |
+| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 103 unit tests passing, verified offline with `verify_log.py` against anchored head hash `ae37ae62...` with deterministic replay (`--replay`). Limits: Webots R2025a simulation only, Windows non-real-time host, anchor stored in repo. Demo 8 (simulation): fault-injection and reset campaign, see [`docs/demo8/DEMO8_YOUTUBE_TAKE.md`](./docs/demo8/DEMO8_YOUTUBE_TAKE.md) |
 | **Layer 1B: QERRA-HSR (`hsr/`)** | Advisory 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. Pure Python, Apache-2.0. | Built and unit-tested (20 tests passing). Evaluated in Webots Demo 6 with stabilized 1.0s dwell and Property HSR-5 recovery directives. |
 | **Layer 2: SEMEV-12** | Advisory screening of text task instructions against 12 moral and coercion vectors. MiniLM embeddings with deterministic scoring gates and negation pre-filtering. Not part of the physical safety function. | Built, unit-tested and benchmarked (15 regression cases, 80-case baseline, active adversarial suite). The adversarial benchmark documents known evasion vectors. |
 | **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
@@ -469,7 +469,7 @@ Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.c
 
 ## Simulation Demo 8: Fault-Injection and Reset Campaign for the Supervisory Gate in Webots
 
-Demo 8 exercises the same Supervisory Gate (v0.3) on the TIAGo base in Webots R2025a. It is simulation only and unrated. The faults are injected by the test harness, and the host is a non-real-time Windows PC. The video is one continuous 1 min 18 s take (run `DEMO8_VIDEO_1792575455`) driven by a demo sequencer controller. The separate scripted runs behind it are tabulated in [`docs/demo8/DEMO8_EVIDENCE.md`](./docs/demo8/DEMO8_EVIDENCE.md).
+Demo 8 exercises the same Supervisory Gate (v0.3) on the TIAGo base in Webots R2025a. It is simulation only and unrated. The faults are injected by the test harness, and the host is a non-real-time Windows PC. The run is a continuous 66.46 s simulation take (run `DEMO8_VIDEO_1792575455`, 2,077 control cycles; 1 min 18 s video duration) driven by a demo sequencer controller. Run evidence and metrics are documented in [`docs/demo8/DEMO8_YOUTUBE_TAKE.md`](./docs/demo8/DEMO8_YOUTUBE_TAKE.md).
 
 What the take shows (every reason code is printed by the gate itself in the Webots console):
 
@@ -484,9 +484,11 @@ What the take shows (every reason code is printed by the gate itself in the Webo
 *What this does and does not show:*
 - *The 341 mm and 342 mm figures are the gate's own lidar minimum range in the swept corridor at the trip tick (`lidar_min_mm`), measured from the lidar. They are not standstill distances.*
 - *The sequencer (`controllers/tiago_demo_sequence/`) is a demo copy of the Demo 7 controller. It has no log-write-failure trip path and always starts the proposer without a fault. If R is not pressed within 4 s after the first stop, it injects an operator reset itself.*
-- *Earlier takes showed unplanned `TRIP_PROPOSER_STALE` trips roughly 14 s apart (five in one 74 s take). Later takes showed none. The cause was not isolated.*
-- *As noted for Demo 7, after the first reset the wheels report 2.0 rad/s for roughly 10 s while the lidar range stays near 3.8 m before it starts to fall. The cause was not isolated.*
+- *Unplanned watchdog trips: Spawning the proposer with `subprocess.ABOVE_NORMAL_PRIORITY_CLASS` mitigated UDP thread starvation from 3D rendering; zero unplanned watchdog trips occurred during the run.*
+- *LiDAR range plateau (~3.8 m): Odometry confirmed continuous forward translation at 0.197 m/s from t ~ 5 s (ruling out wheel slip). The steady ~3.8 m plateau represents floor returns caused by downward sensor pitch until the cart enters the swept corridor at t ~ 16.5 s.*
 - *The gate does not use QERRA-HSR here: `hsr_status` is always `None` in these logs.*
+
+[![QERRA-v2 Supervisory Gate Webots Demo 8](https://img.youtube.com/vi/Tar9zDvCF9k/hqdefault.jpg)](https://youtu.be/Tar9zDvCF9k)
   
 
 
@@ -504,7 +506,7 @@ What the take shows (every reason code is printed by the gate itself in the Webo
 ├── verify_log.py                            # Offline hash-chain verifier for the gate log
 ├── results/RUN_1791713619/                  # Demo 7 audit log and ANCHOR.txt
 ├── results/DEMO8_*/                         # Demo 8 run folders (manifest, audit log, wheel telemetry)
-├── docs/demo8/DEMO8_EVIDENCE.md             # Demo 8 evidence table: scenarios, results, run folders
+├── docs/demo8/DEMO8_YOUTUBE_TAKE.md         # Demo 8 YouTube take evidence and geometry proof
 ├── ethical_core.py                          # Layer 2: SEMEV-12 scoring engine (v1.9.2)
 ├── vectors.py                               # SEMEV-12 vector definitions and weights
 ├── values/                                  # Layer 3: QERRA-THRIVE v2.0.0 values ranker (12 vectors)
@@ -563,7 +565,7 @@ python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 -
 
 ## Project Status
 
-**Version:** `2.1.1`  
+**Version:** **Version:** `2.1.2`
 **Engine:** Supervisory Gate `v0.3` (F1-F8 hardened) · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
 
 All three layers are implemented. The evidence level differs by layer and is stated for each:
