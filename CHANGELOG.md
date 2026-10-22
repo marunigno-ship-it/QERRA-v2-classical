@@ -5,19 +5,31 @@ across versions.
 
 ---
 
+## [2.1.2] - 2026-10-21 — Simulation Demo 8: Multi-Fault Lifecycle & Evidence Alignment
+
+### Added
+- **Simulation Demo 8 (Webots R2025a, PAL Robotics TIAGo base, `DEMO8_VIDEO_1792575455`):**
+  - Documented multi-fault execution across 2,077 control cycles (66.46 s simulation time) with zero unplanned watchdog trips.
+  - Exercised fail-closed lifecycle: startup latch (`TRIP_PROPOSER_DEAD`), obstacle stop (341 mm clearance vs 346 mm envelope), active hazard reset rejection (`RESET_REJECTED_HAZARD`), sensor freeze trip (`TRIP_SENSOR_INVALID` within 128 ms), proposer loss watchdog trip (`TRIP_PROPOSER_STALE` within 128 ms), and final obstacle stop (342 mm clearance vs 346 mm envelope).
+  - Added sequencer controller (`controllers/tiago_demo_sequence/`) and simulation world (`worlds/demo8_supervisory_gate.wbt`).
+  - Flight recorder hash chain replayed bit-for-bit against anchored external seal (`8e67456f...61cd`) using `verify_log.py --replay`.
+  - Documented engineering explanations for proposer process priority mitigation (`ABOVE_NORMAL_PRIORITY_CLASS`) and LiDAR ground reflection geometry in `docs/demo8/DEMO8_YOUTUBE_TAKE.md`.
+
+---
+
 ## [2.1.1] - 2026-10-18 — Supervisory Gate Hardening (F1–F8) & Evidence Alignment
 
 ### Added
 - **F3 IPC Session Arbitration Unit Tests (`tests/test_gate_ipc.py`):**
-  - Landed 5 missing unit tests verifying session arbitration: default `session_id=0`, rejection of invalid types/negatives, newer session superseding older regardless of `seq`, rejection of older sessions arriving after newer, and sequence ordering within the same session. Verified sensitivity via 5 deliberate mutations.
+  - Landed 5 missing unit tests checking session arbitration: default `session_id=0`, rejection of invalid types/negatives, newer session superseding older regardless of `seq`, rejection of older sessions arriving after newer, and sequence ordering within the same session. Confirmed sensitivity via 5 deliberate mutations.
 - **F4 Live Reaction Time Factory (`gate/gate_config.py`):**
   - Added Webots-free parameter factory (`get_live_gate_params`) configuring justified 1-tick reaction latency ($t_{react} = 32\,000\ \mu\text{s}$).
   - Live controller (`tiago_supervisory_gate.py`) updated to use the factory, expanding the live stopping envelope at cruise speed from $339\text{ mm}$ to $346\text{ mm}$ ($+7\text{ mm}$).
-  - Added `tests/test_gate_config.py` (4 tests) verifying parameter values and envelope expansion.
+  - Added `tests/test_gate_config.py` (4 tests) checking parameter values and envelope expansion.
 - **F5 True Deterministic Replay (`gate/gate_log.py`, `verify_log.py`):**
   - Added `reconstruct_inputs(record)` to deserialize logged JSON inputs, properly converting JSON string infinities (`"+inf"`, `"-inf"`, `"nan"`) back to IEEE 754 floats.
   - Added `replay_log_file()` and `--replay` CLI flag to `verify_log.py` to audit that recorded outputs reproduce bit-for-bit through `gate_core.step()`.
-  - Added 2 unit tests in `tests/test_gate_log.py` verifying multi-tick lifecycle replay and detection of execution divergence on tampered logs.
+  - Added 2 unit tests in `tests/test_gate_log.py` testing multi-tick lifecycle replay and detection of execution divergence on tampered logs.
 - **V8 Harness Manifest Capture & Sealing:**
   - Added `capture_harness_manifest()` and `write_run_manifest()`.
   - Live controller writes `results/<run_id>/manifest.json` recording all injected fault switches (`QERRA_LIDAR_FAULT`, `QERRA_PROPOSER_FAULT`, fault times, `QERRA_AUTO_RESET_AT_US`, `QERRA_SMOKE_OBSTACLE`).
@@ -30,11 +42,11 @@ across versions.
 - **V4 Documentation:** Documented proposer wall-clock non-monotonicity, DoS integer surfaces, and trust boundary limits in `LIMITATIONS.md`.
 - **V5 Documentation:** Documented in `LIMITATIONS.md` and `safety_concept.md` that the LiDAR stale watchdog is exercised exclusively by simulated fault injection and does not track physical hardware timestamps.
 - **V6 Documentation:** Documented that `min_raw_lidar_returns >= 5` checks the entire 240° scan, leaving dead forward arcs with live side walls as an acknowledged boundary.
-- **V7 Test Count Alignment:** Synchronized `README.md:323` and CI documentation to the exact verified count of **127 Unit Tests** (103 Supervisory Gate + 20 QERRA-HSR + 4 License Boundary).
+- **V7 Test Count Alignment:** Synchronized `README.md:323` and CI documentation to the exact count of **127 Unit Tests** (103 Supervisory Gate + 20 QERRA-HSR + 4 License Boundary).
 
 ---
 
-## [2.1.0] - 2026-10-15 — Actuator Authority Separation, Decoupled Supervisory Gate, & Verified Multi-Suite CI
+## [2.1.0] - 2026-10-15 — Actuator Authority Separation, Decoupled Supervisory Gate, & Multi-Suite CI
 
 ### Added
 - **Supervisory Gate (`gate/` v0.3):**
@@ -43,9 +55,9 @@ across versions.
   - Enforced 150 ms proposer freshness watchdog (`t_watch_us = 150_000`) and fail-closed latched recovery requiring continuous 1.0 s clear dwell and operator reset.
   - Implemented tamper-evident SHA-256 rolling block chain flight recorder (`gate_log.py`) and standalone auditor (`verify_log.py`).
 - **Simulation Demo 7 (Webots R2025a, PAL Robotics TIAGo base, `RUN_1791713619`):**
-  - Demonstrated authority separation over 1,485 discrete control cycles (47.52 s sim time) with zero defects verified offline against anchored head hash `ae37ae62...c191`.
+  - Demonstrated authority separation over 1,485 discrete control cycles (47.52 s sim time) with zero defects audited offline against anchored head hash `ae37ae62...c191`.
   - Commanded cruise at 2.0 rad/s (0.196 m/s); dynamic envelope bound at 339 mm; trip fired at 337 mm; standstill reached at 301 mm (36 mm coasting); cart displacement 0.0 mm.
-  - Empirically verified `RESET_REJECTED_HAZARD` rejection when operator reset was attempted facing the cart.
+  - Empirically confirmed `RESET_REJECTED_HAZARD` rejection when operator reset was attempted facing the cart.
 - **Packaging & Portability:**
   - Registered `gate` in `setup.py` packages and `verify_log` in `py_modules`, aligned with `package.xml` at v2.1.0.
   - Implemented portable dynamic repository root discovery in `tiago_supervisory_gate.py`.
@@ -56,10 +68,10 @@ across versions.
   - Enforced Rule AR-8 (pure standard library with zero external dependencies) and updated Rule AR-9 to direct deterministic envelope calculation ($min\_range \le d_{stop}$).
   - Added `obstacle_breach: bool` to the log record schema.
 
-### Testing & Verification
+### Testing & Validation
 - **Automated CI Expansion:**
   - Upgraded GitHub Actions workflow (`tests.yml`) to test all three layers in automated CI on `ubuntu-latest`.
-  - Added AST inspection test (`test_gate_core_imports_stdlib_only`) proving zero non-stdlib imports.
+  - Added AST inspection test (`test_gate_core_imports_stdlib_only`) confirming zero non-stdlib imports.
 
 ---
 
@@ -68,9 +80,9 @@ across versions.
 ### Added
 - **Simulation Demo 6 (Compound Industrial Reflex in Webots):**
   - Modeled a compound catastrophic incident in an automotive battery assembly bay (`demo6_assembly.wbt`) using a PAL Robotics TIAGo humanoid AMR.
-  - Verified simultaneous activation of all three Layer 1 safety vectors (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`).
-  - Proved sub-millisecond command reflex latency (<1ms, 0.0ms delay to command `0.0 rad/s`), safe 2.9m standoff distance, and downward head inspection tilt.
-  - Verified closed-loop enforcement of Property HSR-5: holding wheel motors fail-closed for non-interruptible payloads (`robot_task_interruptible=False`) until manual shift supervisor confirmation.
+  - Recorded simultaneous activation of all three Layer 1 safety vectors (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`).
+  - Measured sub-millisecond command reflex latency (<1ms, 0.0ms delay to command `0.0 rad/s`), safe 2.9m standoff distance, and downward head inspection tilt.
+  - Confirmed closed-loop enforcement of Property HSR-5: holding wheel motors fail-closed for non-interruptible payloads (`robot_task_interruptible=False`) until manual shift supervisor confirmation.
 - **Universal Look-back Negation Guards across Layer 3 (QERRA-THRIVE):**
   - Deployed 40-character look-back negation detection (`HUMAN_NEGATION_GUARD` and `ECOLOGICAL_NEGATION_GUARD`) across all 12 Layer 3 vectors in Suite A and Suite B.
 
@@ -100,7 +112,7 @@ across versions.
 
 ### Fixed
 - **Dwell Timer De-escalation Candidate Reset (`StabilizedHSR`):**
-  - Resolved timing defect where transitioning between distinct calm levels (e.g. `CRITICAL` → `MONITOR` → `CLEAR`) retained the initial calm timestamp rather than verifying the new candidate status.
+  - Resolved timing defect where transitioning between distinct calm levels (e.g. `CRITICAL` → `MONITOR` → `CLEAR`) retained the initial calm timestamp rather than validating the new candidate status.
   - Added `_calm_candidate_status` tracking to guarantee that a step-down to a calmer state strictly holds continuous for the full `DWELL_SECONDS` (1.0s) window.
 - **Hysteresis Recovery Guard:**
   - Enforced that `StabilizedHSR` suppresses `recovery_directive` while actively dwelling in elevated states, preventing premature resumption cues before de-escalation officially completes.
