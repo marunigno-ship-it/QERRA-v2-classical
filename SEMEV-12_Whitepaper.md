@@ -123,7 +123,7 @@ QERRA-HSR is implemented in `hsr/qerra_hsr.py` and documented in `HSR-ADR-001-Th
 
 ## 6. Prior Art and Legal Notice
 
-This framework is released under the AGPL-3.0 license as a public good.
+This framework is released under the Apache License 2.0 as a public good.
 The author asserts moral rights as the sole originator of the SEMEV-12
 logic — the specific combination of 12 vectors, their names, weights,
 semantic descriptions, scoring architecture, and nuance dampening logic.
@@ -132,11 +132,10 @@ This document serves as formal prior art for that specific combination
 and implementation. The Zenodo registration provides a timestamped,
 immutable public record predating any future third-party claim.
 
-**DOI (Zenodo — Prior Art):** https://doi.org/10.5281/zenodo.20356394
+**DOI (Zenodo — Prior Art):** https://doi.org/10.5281/zenodo.23559804
 
-Commercial licensing is available on request alongside the AGPL-3.0
+Commercial engagements and consulting are available alongside the Apache-2.0
 open license. Contact: marunigno@gmail.com
-
 ---
 
 *SEMEV-12 Whitepaper v1.2 — September 2026*
