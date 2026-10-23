@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Marussa Metocharaki
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: Apache-2.0
 """
-License-boundary guard.
+License-boundary and modularity guard.
 
-`hsr/` is licensed Apache-2.0; the rest of the repository is AGPL-3.0.
-That split only stays clean if `hsr/` never depends on AGPL code.
+`hsr/` is licensed Apache-2.0 as a pure, zero-dependency reflex layer.
+This test ensures `hsr/` remains completely self-contained.
 This test fails if any file in `hsr/`:
   1. imports anything except the Python standard library or `hsr` itself, or
   2. is missing the Apache-2.0 SPDX header, or
@@ -62,7 +62,7 @@ class TestHsrLicenseBoundary(unittest.TestCase):
                 problems.append(f"{path.name}:{lineno} imports '{name}'")
         self.assertEqual(
             problems, [],
-            "hsr/ must not import non-stdlib modules (AGPL contamination risk): "
+            "hsr/ must not import non-stdlib modules (modularity boundary violation): "
             + "; ".join(problems),
         )
 
