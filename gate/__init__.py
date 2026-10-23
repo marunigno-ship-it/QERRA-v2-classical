@@ -1,3 +1,3 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
 """QERRA Supervisory Gate (Demo 7)."""
