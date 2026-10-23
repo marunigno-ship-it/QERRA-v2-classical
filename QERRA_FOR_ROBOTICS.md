@@ -126,6 +126,6 @@ the next small improvements.
 ---
 
 **Contact:** marunigno@gmail.com (subject: QERRA Robotics Feedback)  
-**License:** AGPL-3.0 (commercial licensing available on request)
+**License:** Apache-2.0
 
 *Early-stage research tool — not certified for production safety systems.*
