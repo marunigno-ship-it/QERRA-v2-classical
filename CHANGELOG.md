@@ -3,6 +3,11 @@
 All changes are additive. SEMEV-12 vectors are maintained as a stable core
 across versions.
 
+## [2.1.3] - 2026-10-23
+### Changed
+- Relicensed the entire repository (Supervisory Gate, SEMEV-12, THRIVE) under the **Apache License 2.0**.
+
+
 ---
 
 ## [2.1.2] - 2026-10-21 — Simulation Demo 8: Multi-Fault Lifecycle & Evidence Alignment
