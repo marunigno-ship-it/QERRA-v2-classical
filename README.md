@@ -6,8 +6,7 @@ Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranke
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
 [![Version](https://img.shields.io/badge/version-2.1.2-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
-[![License](https://img.shields.io/badge/license-AGPL--3.0-lightgrey)](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LICENSE)
----
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## The Idea in One Sentence
 
@@ -55,10 +54,8 @@ All safety decisions are deterministic, inspectable, and auditable. Every result
 
 **QERRA-v2 Classical** is designed and developed by **Marussa Metocharaki**.
 
-- **Layer 1 (`hsr/`):** [Apache License 2.0](hsr/LICENSE) (with attribution in [`hsr/NOTICE`](hsr/NOTICE)). Permissive for chassis-local ROS 2 integration.
-- **Supervisory Gate (`gate/`):** [GNU AGPL-3.0](LICENSE) (AGPL-3.0-only). Open-source copyleft.
-- **Layers 2 & 3 (SEMEV-12 & QERRA-THRIVE):** [GNU AGPL-3.0](LICENSE). Open-source copyleft.
-- **Commercial Licensing:** Closed-source enterprise integration available under a commercial license. See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md).
+- **Open Source License:** The entire repository is licensed under the **[Apache License 2.0](LICENSE)**.
+- **Permissive Robotics Architecture:** Permissive for chassis-local ROS 2 integration, academic research, and commercial robotics adoption.
 - **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are timestamped and permanently archived on Zenodo.
 
   **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23559804 
@@ -674,16 +671,14 @@ The SEMEV-12 framework, its 12 vectors, their semantic descriptions, scoring arc
 
 
 
-## Licensing & Commercial Use
+## Licensing
 
-QERRA-v2 Classical operates under a dual-licensing architecture:
+**QERRA-v2 Classical** is an open-source project licensed under the **[Apache License 2.0](LICENSE)**.
 
-- **Layer 1 (QERRA-HSR Physical Reflex):** Licensed under the **[Apache License 2.0](hsr/LICENSE)** (with attribution notice in [`hsr/NOTICE`](hsr/NOTICE)). Permissive, zero-friction integration for chassis-local ROS 2 packages and robot OEMs.
-- **Supervisory Gate (`gate/`):** Licensed under the **[GNU Affero General Public License v3.0 (AGPL-3.0-only)](LICENSE)**.
-- **Deliberation Layers (SEMEV-12 & QERRA-THRIVE):** Licensed under the **[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE)**. Requires full network transparency and source disclosure for networked and cloud deployments.
-- **Commercial Licensing:** A commercial license is required for proprietary, closed-source deployments, or cloud robotics platforms that cannot comply with AGPL-3.0 copyleft requirements. See [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md) for terms and contact details.
+You are free to use, modify, distribute, and integrate this software into academic, industrial, and commercial robotics systems, provided that copyright and license notices are preserved.
 
 ### Regulatory Notice
+
 *QERRA-v2 Classical is an early research prototype and an unrated supervisory execution guard. Under EU Machinery Regulation (EU) 2023/1230 and the EU AI Act (Regulation (EU) 2024/1689), QERRA does not replace certified hardware emergency stops, SIL/PL safety controllers, or redundant physical interlocks.*
 
 *QERRA-v2 Classical — ethical conscience as the foundation of every decision.*
