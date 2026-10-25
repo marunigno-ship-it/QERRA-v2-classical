@@ -137,6 +137,8 @@ def reconstruct_inputs(record: Dict[str, Any]) -> GateInputs:
         reset_source=inputs_data.get("reset_source"),
         log_write_failed=bool(inputs_data.get("log_write_failed", False)),
         raw_valid_points=inputs_data.get("raw_valid_points"),
+        hsr_status=inputs_data.get("hsr_status"),
+        hsr_stamp_us=inputs_data.get("hsr_stamp_us"),
     )
 
 
@@ -191,6 +193,7 @@ class GateLogger:
             "d_stop_mm": step_record["d_stop_mm"],
             "obstacle_breach": step_record.get("obstacle_breach", False),
             "hsr_status": step_record["hsr_status"],
+            "hsr_age_us": step_record.get("hsr_age_us"),
             "cmd_left_urad_s": step_record["cmd_left_urad_s"],
             "cmd_right_urad_s": step_record["cmd_right_urad_s"],
             "gate_version": self.gate_version,
