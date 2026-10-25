@@ -486,6 +486,29 @@ What the take shows (every reason code is printed by the gate itself in the Webo
 - *The gate does not use QERRA-HSR here: `hsr_status` is always `None` in these logs.*
 
 [![QERRA-v2 Supervisory Gate Webots Demo 8](https://img.youtube.com/vi/Tar9zDvCF9k/hqdefault.jpg)](https://youtu.be/Tar9zDvCF9k)
+
+## Simulation Demo 9: Acute Distress Reflex, Dual-Dwell Recovery & Mission Resumption in Webots
+
+This simulation demonstrates the Doer-Checker integration of the Supervisory Gate (v0.3) with the QERRA-HSR physical and social reflex layer on a PAL Robotics TIAGo mobile base in Webots (R2025a). It exercises an assistive healthcare safety lifecycle in a hospital corridor: intercepting an injected human distress signal within a single 32 ms control cycle, clamping motor commands fail-closed, strictly rejecting reset while distress persists, enforcing dual stabilization dwells to prevent spontaneous restart (Hazard H-06), and safely resuming motion upon authorized operator reset.
+
+The run is a single, continuous, unedited 14.02 s simulation take (run `DEMO9_SCENARIO_B_FINAL`, 438 discrete control cycles; 31.7 s video duration) recorded directly from the Webots window at ~0.93x–1.02x real time. Pre-registration protocols and verified evidence records are documented in [`docs/demo9/PRE_REGISTRATION_D9_B.md`](./docs/demo9/PRE_REGISTRATION_D9_B.md) and [`docs/demo9/DEMO9_EVIDENCE_SCENARIO_B.md`](./docs/demo9/DEMO9_EVIDENCE_SCENARIO_B.md).
+
+What the take shows (every reason code and event is printed by the gate itself in the Webots console):
+
+*   **Startup fail-closed dwell & reset** — Boots `TRIPPED` (`TRIP_PROPOSER_DEAD`), holds 0.0 rad/s through power-on dwell, accepts scripted operator reset at t = 1.312s (`RESET_ACCEPTED`), and transitions to `RUN` at cruise speed (2.00 rad/s / ~0.196 m/s).
+*   **Sub-32ms reflex trip on distress (t = 4.000s)** — Test harness injects human distress (confidence 0.85). HSR status transitions to `CRITICAL`. On the exact cycle boundary (cycle 125, ≤ 32 ms latency), the Supervisory Gate overrides the unprivileged proposer, trips `TRIP_HSR_CRITICAL`, and clamps wheel commands to 0.000 rad/s.
+*   **Reset refused while hazard is present (t = 5.024s)** — A scripted reset request while distress is active is strictly rejected (`RESET_REJECTED_HAZARD`), maintaining 0.000 rad/s standstill.
+*   **Dual-dwell stabilization against spontaneous restart (t = 7.008s – 9.056s)** — Injected distress clears to 0.0. To prevent chattering and spontaneous restart (Hazard H-06), `StabilizedHSR` enforces a 1.0 s hysteresis dwell (clears to `CLEAR` at t = 8.032s), followed by the Gate's own 1.0 s calm dwell. Reset requests during this window are refused (`RESET_REJECTED_NOT_READY`).
+*   **Authorized recovery & mission resumption (t = 9.056s)** — Upon dwell completion, the retried reset is accepted on the first allowed cycle (`RESET_ACCEPTED`). Cruising safely resumes at 2.00 rad/s for nearly 5 uninterrupted seconds down the corridor.
+*   **Clean exit & cryptographic seal (t = 14.016s)** — The run terminates cleanly at cycle 438. Average compute latency per cycle is 1.38 ms (p99 = 3.70 ms, max 4.50 ms). All 438 control cycles recompute bit-for-bit offline via `verify_log.py --replay` with 0 execution divergences (Head Hash: `eccb0d85416cf4a651205f34f3cc0d9275bff6e2b3baa512e4b23dbef0c2714a`).
+
+*What this does and does not show:*
+- *The distress signal is injected by the test harness (constant 0.85 confidence), not detected by a live vision pipeline.*
+- *All resets are automated by the test harness to guarantee deterministic evaluation.*
+- *The robot travels ~1.5 m; the pedestrian and platform cart at ~3.8 m remain undisturbed (> 2.0 m corridor clearance throughout).*
+- *Simulation only (Webots R2025a); not an ISO 13849-1 hardware certification claim. Independent project, not affiliated with PAL Robotics.*
+
+[![QERRA-v2 Supervisory Gate Webots Demo 9](https://img.youtube.com/vi/CC1J8FCeSgs/hqdefault.jpg)](https://youtu.be/CC1J8FCeSgs)
   
 
 
