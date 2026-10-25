@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
 """
-QERRA Supervisory Gate -- Webots robot controller (Demo 7), version 0.3.
+QERRA Supervisory Gate -- Webots robot controller (Demo 7/8/9), version 0.3.
 SAFETY_CONCEPT.md v0.2: AR-1, AR-4, AR-5, AR-7, C-1, C-2, C-3, C-6, D-2, D-5.
 
 The only process that writes wheel velocities. The untrusted proposer runs as a separate
 OS process and can only send datagrams.
+
+Integrated with QERRA-HSR assistive reflex layer.
 
 LIVE MODE ONLY. The gate listens for proposals without ever blocking. Wall-clock exchange with a
 sim-time watchdog is valid only when Webots runs at about 1x real time (use the Real-Time
@@ -17,14 +19,31 @@ Optional environment variables:
   QERRA_PROPOSER_FAULT     none | hang | die | nan | oversized      (default none)
   QERRA_FAULT_SIM_S        sim time of the fault in seconds          (default 3.0)
   QERRA_HANG_MS            hang length in ms of sim time             (default 800)
-  QERRA_LIDAR_FAULT        none | freeze | stale                     (default none)
+  QERRA_LIDAR_FAULT        none | freeze | stale | blind             (default none)
   QERRA_LIDAR_FAULT_SIM_S  sim time of lidar fault in seconds        (default 3.0)
+  QERRA_HSR_EVENT          none | distress | hazard                  (default distress)
+  QERRA_HSR_EVENT_SIM_S    sim time of HSR event in seconds          (default 4.0)
+  QERRA_HSR_EVENT_END_SIM_S harness only: sim time (s) at which the injected HSR event stops
+                           (distress drops back to 0.0 / hazard flag cleared); default: 7.0
   QERRA_AUTO_RESET_AT_US   harness only: inject an "operator" reset from this sim time on
-  QERRA_SMOKE_OBSTACLE     "1" = moves DEF OBSTACLE itself (default "1" for smoke test)
+                           (retried every tick until the gate answers RESET_ACCEPTED); default: 1200000
+  QERRA_AUTO_RESET2_AT_US  harness only: inject ONE further "operator" reset at the first tick
+                           at or after this sim time (used to test reset refusal under hazard); default: 5000000
+  QERRA_AUTO_RESET3_AT_US  harness only: inject "operator" reset requests from this sim time on,
+                           RETRIED every QERRA_AUTO_RESET3_PERIOD_US (default: every tick)
+                           until the gate answers RESET_ACCEPTED (recovery after a hazard); default: 8200000
+  QERRA_AUTO_RESET3_PERIOD_US harness only: retry period for reset 3 in microseconds
+  QERRA_END_AT_S           harness only: leave the control loop at this sim time so the audit
+                           log is closed cleanly (default: 14.0)
+  QERRA_HSR_LOG            "1" = keep the per-tick INFO logging of the HSR module (default off)
+  QERRA_SMOKE_OBSTACLE     "1" = moves DEF OBSTACLE itself (default: "0")
   QERRA_SKIP_PROPOSER      "1" = do not spawn the proposer (start it by hand)
 """
 from __future__ import annotations
 
+from dataclasses import asdict
+import hashlib
+import logging
 import math
 import os
 import subprocess
@@ -58,8 +77,8 @@ PROJECT_ROOT = find_project_root()
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# Defaults to "1" so smoke obstacle functions directly in Webots GUI
-SMOKE_OBSTACLE = os.environ.get("QERRA_SMOKE_OBSTACLE", "1") == "1"
+# Defaults to "0" so smoke obstacle does not move into the lane during Scenario B
+SMOKE_OBSTACLE = os.environ.get("QERRA_SMOKE_OBSTACLE", "0") == "1"
 if SMOKE_OBSTACLE:
     try:
         from controller import Supervisor as RobotClass
@@ -74,7 +93,7 @@ else:
 
 from gate.gate_config import get_live_gate_params             # noqa: E402
 from gate.gate_core import (                                # noqa: E402
-    GateInputs, GateParams, Mode, Reason, RESET_SOURCE_OPERATOR, initial_state, step,
+    GATE_CORE_VERSION, GateInputs, GateParams, Mode, Reason, RESET_SOURCE_OPERATOR, initial_state, step,
 )
 from gate.gate_ipc import create_udp_receiver, drain_proposals, poll_operator_reset   # noqa: E402
 from gate.gate_lidar import CorridorFilter, LidarPipeline  # noqa: E402
@@ -82,6 +101,8 @@ from gate.gate_link import DEFAULT_STATE_PORT, create_state_sender, send_state  
 from gate.gate_log import (                                 # noqa: E402
     GateLogger, capture_harness_manifest, write_run_manifest,
 )
+from hsr.hysteresis_wrapper import StabilizedHSR             # noqa: E402
+from hsr.qerra_hsr import HSRInput                          # noqa: E402
 
 # ----------------------------------------------------------------------------------------
 # PARAMETERS: TIAGo Base Physical Dimensions & Kinematics
@@ -99,6 +120,11 @@ OBSTACLE_POS = [2.8, 0.0, 0.0]       # Cart position: flat on the floor (Z = 0.0
 LIDAR_FAULT = os.environ.get("QERRA_LIDAR_FAULT", "none")
 LIDAR_FAULT_SIM_S = float(os.environ.get("QERRA_LIDAR_FAULT_SIM_S", "3.0"))
 
+HSR_EVENT = os.environ.get("QERRA_HSR_EVENT", "distress")
+HSR_EVENT_SIM_S = float(os.environ.get("QERRA_HSR_EVENT_SIM_S", "4.0"))
+_hsr_end_raw = os.environ.get("QERRA_HSR_EVENT_END_SIM_S", "7.0")
+HSR_EVENT_END_SIM_S = float(_hsr_end_raw) if _hsr_end_raw not in (None, "") else None
+
 PROPOSAL_PORT = 5005
 OPERATOR_PORT = 5006
 
@@ -106,6 +132,31 @@ OPERATOR_PORT = 5006
 def env_int(name: str):
     raw = os.environ.get(name)
     return int(raw) if raw not in (None, "") else None
+
+
+def compute_file_sha256(filepath: str) -> str:
+    h = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def get_critical_code_hashes(root: str) -> dict[str, str]:
+    critical_files = {
+        "gate_core": os.path.join(root, "gate", "gate_core.py"),
+        "gate_lidar": os.path.join(root, "gate", "gate_lidar.py"),
+        "gate_ipc": os.path.join(root, "gate", "gate_ipc.py"),
+        "gate_log": os.path.join(root, "gate", "gate_log.py"),
+        "verify_log": os.path.join(root, "verify_log.py"),
+        "proposer": os.path.join(root, "scripts", "untrusted_proposer.py"),
+        "controller": os.path.abspath(__file__),
+    }
+    hashes = {}
+    for name, path in critical_files.items():
+        if os.path.isfile(path):
+            hashes[name] = compute_file_sha256(path)
+    return hashes
 
 
 def find_lidar(robot):
@@ -142,6 +193,10 @@ def percentile(sorted_vals, q):
 
 
 def main():
+    # Silence the per-tick (32 ms) INFO output of the HSR module.
+    if os.environ.get("QERRA_HSR_LOG") != "1":
+        logging.disable(logging.INFO)
+
     robot = RobotClass()
     timestep = int(robot.getBasicTimeStep())
     dt_us = timestep * 1000
@@ -186,7 +241,7 @@ def main():
         obstacle_trans = node.getField("translation") if node else None
         print("[GATE] Obstacle injection enabled (DEF OBSTACLE will move at t = 3.5s).")
 
-    # 3. Lidar & Corridor Filter Pipeline (F1 & F2)
+    # 3. Lidar & Corridor Filter Pipeline
     lidar = find_lidar(robot)
     lidar.enable(timestep)
     resolution = lidar.getHorizontalResolution()
@@ -197,49 +252,55 @@ def main():
     if LIDAR_FAULT != "none":
         print(f"[GATE SENSORS] Lidar fault '{LIDAR_FAULT}' scheduled at sim t={LIDAR_FAULT_SIM_S:.2f}s")
 
-    # 4. Inputs & Non-blocking Sockets
+    # 4. QERRA-HSR Reflex Companion (Clock synchronized strictly to Webots simulation time)
+    sim_clock_s = 0.0
+    hsr_companion = StabilizedHSR(clock=lambda: sim_clock_s)
+    if HSR_EVENT != "none":
+        _end_txt = f", ends at sim t={HSR_EVENT_END_SIM_S:.2f}s" if HSR_EVENT_END_SIM_S is not None else ""
+        print(f"[GATE HSR] Injected HSR event '{HSR_EVENT}' scheduled at sim t={HSR_EVENT_SIM_S:.2f}s{_end_txt}")
+
+    # 5. Inputs & Non-blocking Sockets
     keyboard = robot.getKeyboard()
     keyboard.enable(timestep)
     prop_sock = create_udp_receiver(port=PROPOSAL_PORT)
     op_sock = create_udp_receiver(port=OPERATOR_PORT)
     state_sock = create_state_sender()
 
-    # 5. Gate Parameters (F4: live parameters include justified t_react_us via factory)
+    # 6. Gate Parameters (Fail-closed HSR reflex layer explicitly required)
     params = get_live_gate_params(
         lidar_n_expected=resolution,
         dt_us=dt_us,
         w_max_urad_s=w_max_urad_s,
         t_react_us=32_000,
+        hsr_required=True,
     )
     state = initial_state()
 
-    # 6. Cryptographic Flight Recorder, Telemetry & Harness Manifest (V8)
-    run_id = os.environ.get("QERRA_RUN_ID") or f"RUN_{int(time.time())}"
+    # 7. Flight Recorder, Telemetry & Harness Manifest
+    run_id = os.environ.get("QERRA_RUN_ID") or "DEMO9_SCENARIO_B_FINAL"
     run_dir = os.path.join(PROJECT_ROOT, "results", run_id)
     os.makedirs(run_dir, exist_ok=True)
 
-    # Capture and record injected conditions in run manifest
+    # Effective QERRA_* configuration as this process actually sees it
+    qerra_env = {k: v for k, v in sorted(os.environ.items()) if k.startswith("QERRA_")}
+
     manifest = capture_harness_manifest()
     manifest["run_id"] = run_id
-    manifest["gate_version"] = "0.3"
-    manifest["params"] = {
-        "t_react_us": params.t_react_us,
-        "t_watch_us": params.t_watch_us,
-        "margin_mm": params.margin_mm,
-        "a_design_mmps2": params.a_design_mmps2,
-        "t_dwell_us": params.t_dwell_us,
-    }
+    manifest["gate_version"] = GATE_CORE_VERSION
+    manifest["params"] = asdict(params)
+    manifest["code_hashes"] = get_critical_code_hashes(PROJECT_ROOT)
+    manifest["qerra_env"] = qerra_env
     manifest_path = write_run_manifest(run_dir, manifest)
 
     log_path = os.path.join(run_dir, "gate_audit.jsonl")
     telemetry_path = os.path.join(run_dir, "wheel_telemetry.csv")
 
-    logger = GateLogger(log_path, run_id=run_id, gate_version="0.3", manifest=manifest)
+    logger = GateLogger(log_path, run_id=run_id, gate_version=GATE_CORE_VERSION, manifest=manifest)
 
     telemetry_file = open(telemetry_path, "w", encoding="utf-8", newline="\n")
     telemetry_file.write("sim_time_sec,cmd_left_rad_s,cmd_right_rad_s,meas_left_rad_s,meas_right_rad_s,lidar_min_mm\n")
 
-    # 7. Untrusted Proposer
+    # 8. Untrusted Proposer
     proposer_proc = None
     proposer_warned = False
     proposer_script = os.path.join(PROJECT_ROOT, "scripts", "untrusted_proposer.py")
@@ -254,24 +315,41 @@ def main():
         ]
         proposer_proc = subprocess.Popen(cmd, cwd=PROJECT_ROOT)
 
-    auto_reset_at_us = env_int("QERRA_AUTO_RESET_AT_US")
+    auto_reset_at_us = env_int("QERRA_AUTO_RESET_AT_US") or 1_200_000
     auto_reset_done = False
+    auto_reset2_at_us = env_int("QERRA_AUTO_RESET2_AT_US") or 5_000_000
+    auto_reset2_done = False
+    auto_reset3_at_us = env_int("QERRA_AUTO_RESET3_AT_US") or 8_200_000
+    auto_reset3_period_us = env_int("QERRA_AUTO_RESET3_PERIOD_US") or dt_us
+    auto_reset3_next_us = auto_reset3_at_us
+    auto_reset3_done = False
+    end_at_raw = os.environ.get("QERRA_END_AT_S", "14.0")
+    end_at_us = int(float(end_at_raw) * 1_000_000) if end_at_raw else None
 
     print("\n" + "=" * 70)
-    print("QERRA Supervisory Gate (Demo 7) -- LIVE MODE")
+    print(f"QERRA Supervisory Gate v{GATE_CORE_VERSION} -- LIVE MODE (HSR COMPANION ACTIVE)")
     print(f"  • Run ID         : {run_id}")
     print(f"  • Manifest       : {manifest_path}")
     print(f"  • Flight Recorder: {log_path}")
     print(f"  • Telemetry CSV  : {telemetry_path}")
     print(f"  • AI Brain (PID) : {proposer_proc.pid if proposer_proc else 'Manual'}")
     print(f"  • Proposal Port  : {PROPOSAL_PORT} | Reset Port: {OPERATOR_PORT} | State Port: {DEFAULT_STATE_PORT}")
-    print("  • START SEQUENCE : Wait for AWAITING_RESET, click 3D view, press R")
+    print(f"  • Smoke obstacle : {'ENABLED' if SMOKE_OBSTACLE else 'disabled'}")
+    print("  • QERRA_* env seen by this controller:")
+    if qerra_env:
+        for k, v in qerra_env.items():
+            print(f"      {k}={v}")
+    else:
+        print("      (defaults active for Scenario B)")
+    print("  • START SEQUENCE : Auto-reset armed (hands-free)")
     print("=" * 70 + "\n")
 
     tick = 0
     log_failed_prev = False
     lidar_fault_triggered = False
     last_mode, last_reason = None, None
+    last_hsr_status = None
+    last_reset_print = None
     compute_ns = []
 
     prev_pos_left = None
@@ -283,13 +361,13 @@ def main():
             tick += 1
             sim_time_us = tick * dt_us
             sim_time_sec = sim_time_us / 1_000_000.0
+            sim_clock_s = sim_time_sec  # Drive HSR dwell timer strictly from simulation clock
             t0 = time.perf_counter_ns()
 
-            # Master clock drift invariant check against robot.getTime() (F8)
+            # Master clock drift invariant check
             try:
                 clock_time_us = int(round(robot.getTime() * 1_000_000))
                 if abs(sim_time_us - clock_time_us) > dt_us:
-                    # Simulation clock drift detected: force clock anomaly fail-closed trip
                     sim_time_us = state.last_tick_us if state.last_tick_us is not None else 0
             except Exception:
                 pass
@@ -317,7 +395,7 @@ def main():
             # Drain incoming speed proposals
             proposal, _ = drain_proposals(prop_sock)
 
-            # Operator Reset (strictly edge-triggered on initial key-down)
+            # Operator Reset
             current_key_r_down = False
             k = keyboard.getKey()
             while k != -1:
@@ -333,25 +411,57 @@ def main():
             if reset_source is None and auto_reset_at_us is not None and not auto_reset_done \
                     and sim_time_us >= auto_reset_at_us:
                 reset_source = RESET_SOURCE_OPERATOR
+            if reset_source is None and auto_reset2_at_us is not None and not auto_reset2_done \
+                    and sim_time_us >= auto_reset2_at_us:
+                reset_source = RESET_SOURCE_OPERATOR
+                auto_reset2_done = True  # one-shot
+            injected3 = False
+            if reset_source is None and auto_reset3_at_us is not None and not auto_reset3_done \
+                    and sim_time_us >= auto_reset3_next_us:
+                reset_source = RESET_SOURCE_OPERATOR
+                injected3 = True  # retried every period until RESET_ACCEPTED
+                auto_reset3_next_us = sim_time_us + auto_reset3_period_us
 
-            # Simulated lidar fault (F2 verification)
+            # Simulated lidar fault
             lidar_stalled = False
             raw_ranges = lidar.getRangeImage()
             if LIDAR_FAULT in ("freeze", "stale") and sim_time_sec >= LIDAR_FAULT_SIM_S:
                 if not lidar_fault_triggered:
                     lidar_fault_triggered = True
-                    print(
-                        f"[{sim_time_sec:6.2f}s][LIDAR FAULT] Lidar acquisition stalled (simulating hardware freeze).")
+                    print(f"[{sim_time_sec:6.2f}s][LIDAR FAULT] Lidar acquisition stalled (simulating hardware freeze).")
                 lidar_stalled = True
             elif LIDAR_FAULT == "blind" and sim_time_sec >= LIDAR_FAULT_SIM_S:
                 if not lidar_fault_triggered:
                     lidar_fault_triggered = True
-                    print(
-                        f"[{sim_time_sec:6.2f}s][LIDAR FAULT] Lidar completely blinded (simulating taped/disconnected sensor: all +inf).")
+                    print(f"[{sim_time_sec:6.2f}s][LIDAR FAULT] Lidar completely blinded (simulating taped/disconnected sensor: all +inf).")
                 raw_ranges = [float("inf")] * resolution
             scan, lidar_stamp_us, raw_valid_points = lidar_pipeline.process(
                 raw_ranges, sim_time_us, stalled=lidar_stalled
             )
+
+            # 4. QERRA-HSR Telemetry Evaluation
+            hsr_distress = 0.0
+            hsr_hazard = False
+            hsr_event_active = (
+                sim_time_sec >= HSR_EVENT_SIM_S
+                and (HSR_EVENT_END_SIM_S is None or sim_time_sec < HSR_EVENT_END_SIM_S)
+            )
+            if HSR_EVENT == "distress" and hsr_event_active:
+                hsr_distress = 0.85  # Breaches CRITICAL threshold (0.75)
+            elif HSR_EVENT == "hazard" and hsr_event_active:
+                hsr_hazard = True
+
+            hsr_input = HSRInput(
+                distress_confidence=hsr_distress,
+                persons_nearby_count=0,
+                hazard_proximity_flag=hsr_hazard,
+                robot_task_interruptible=True,
+            )
+            hsr_res = hsr_companion.evaluate(hsr_input)
+            hsr_status_str = hsr_res.status.value
+            if hsr_status_str != last_hsr_status:
+                print(f"[{sim_time_sec:6.3f}s][HSR] status {last_hsr_status} -> {hsr_status_str}")
+                last_hsr_status = hsr_status_str
 
             inputs = GateInputs(
                 sim_time_us=sim_time_us,
@@ -361,6 +471,8 @@ def main():
                 reset_source=reset_source,
                 log_write_failed=log_failed_prev,
                 raw_valid_points=raw_valid_points,
+                hsr_status=hsr_status_str,
+                hsr_stamp_us=sim_time_us,
             )
             log_failed_prev = False
 
@@ -369,6 +481,17 @@ def main():
             state = res.state
             if res.reason == Reason.RESET_ACCEPTED:
                 auto_reset_done = True
+                if injected3:
+                    auto_reset3_done = True
+
+            # Evidence: operator reset requests and the gate's answer
+            if reset_source is not None:
+                _events = res.record.get("events")
+                _key = (str(res.reason), str(_events))
+                if _key != last_reset_print:
+                    print(f"[{sim_time_sec:6.3f}s][GATE] Operator reset request -> reason={res.reason} "
+                          f"events={_events} (mode: {state.mode.value})")
+                    last_reset_print = _key
 
             # Actuator enforcement
             cmd_l = res.cmd_left_urad_s / 1_000_000.0
@@ -392,8 +515,9 @@ def main():
                     print("\n" + "!" * 70)
                     print(f"[{sim_time_sec:6.2f}s][GATE INTERVENTION] RUN -> TRIPPED | Reason: {res.reason}")
                     print(f"  • Lidar Min Distance : {rec['lidar_min_mm']} mm | Stop Distance: {rec['d_stop_mm']} mm")
+                    print(f"  • HSR Reflex Status  : {rec['hsr_status']}")
                     print(f"  • Proposal Age       : {rec['proposal_age_us']} µs")
-                    print(f"  • Command Output     : 0.0 rad/s (FAIL-CLOSED)")
+                    print(f"  • Command Output     : L={cmd_l:.3f} R={cmd_r:.3f} rad/s (fail-closed requires 0.000)")
                     print("!" * 70 + "\n")
                 else:
                     print(f"[{sim_time_sec:6.2f}s][GATE] {last_mode.value if last_mode else 'START'} -> {state.mode.value} | Reason: {res.reason}")
@@ -401,7 +525,7 @@ def main():
                     print(f"[{sim_time_sec:6.2f}s][GATE] Calmed. Click 3D view and press R to reset.")
                 last_mode, last_reason = state.mode, res.reason
             elif state.mode == Mode.RUN and tick % 30 == 0:
-                print(f"[{sim_time_sec:6.2f}s][GATE] RUN | Cmd: {cmd_l:.2f} rad/s | Meas: L={meas_left_rad_s:.2f}, R={meas_right_rad_s:.2f} rad/s | Lidar: {res.record['lidar_min_mm']} mm")
+                print(f"[{sim_time_sec:6.2f}s][GATE] RUN | Cmd: {cmd_l:.2f} rad/s | Meas: L={meas_left_rad_s:.2f}, R={meas_right_rad_s:.2f} rad/s | Lidar: {res.record['lidar_min_mm']} mm | HSR: {res.record.get('hsr_status', 'CLEAR')}")
 
             if proposer_proc is not None and not proposer_warned and tick % 30 == 0 \
                     and proposer_proc.poll() is not None:
@@ -415,6 +539,11 @@ def main():
                 log_failed_prev = True
                 zero_wheels(left_motor, right_motor)
                 print(f"[{sim_time_sec:6.2f}s][GATE] LOG WRITE FAILED ({exc!r}); tripping.")
+
+            # Harness end-of-run
+            if end_at_us is not None and sim_time_us >= end_at_us:
+                print(f"[{sim_time_sec:6.2f}s][GATE] QERRA_END_AT_S reached; ending run and closing the audit log.")
+                break
 
     except Exception:
         zero_wheels(left_motor, right_motor)
