@@ -1,0 +1,43 @@
+{
+  "code_hashes": {
+    "controller": "e1e6f63ceb2b681b0f36151b70adfdc6192d5960e98154dc3e5e3d096c71b0d7",
+    "gate_core": "8d28a1ae8c6ff5992e77f153d72491b1b77c55abcfa70d6f3d1660c954f8fc61",
+    "gate_ipc": "6ac989b26e6d419c2fed26a3f4b1297d720098d2cac184389d7c10c506a65321",
+    "gate_lidar": "858a0efb98ddd67410d6ddeb01b49167648b83cb7dbe4ed77e1751b392b2f086",
+    "gate_log": "dd68f0da47dc46be3bb49b6d166bbf97ea17c7e1bd376dd34bfe4aeda5824b0d",
+    "proposer": "a13444c9142134c0a9e487bd14a35b7bf17addf02429a196241900f20ad5b958",
+    "verify_log": "3136386d01580851711455aaa1e4cade28578f35967336f5c85b7057e059c503"
+  },
+  "gate_version": "0.3",
+  "params": {
+    "a_design_mmps2": 500,
+    "dt_us": 32000,
+    "hsr_required": true,
+    "lidar_n_expected": 667,
+    "lidar_period_us": 32000,
+    "margin_mm": 300,
+    "max_tick_gap_us": 64000,
+    "min_raw_lidar_returns": 5,
+    "proposer_period_us": 33000,
+    "t_dwell_us": 1000000,
+    "t_hsr_stale_us": 96000,
+    "t_react_us": 32000,
+    "t_stale_us": 96000,
+    "t_watch_us": 150000,
+    "w_max_urad_s": 3000000,
+    "w_min_urad_s": 0,
+    "wheel_radius_mm": 98
+  },
+  "qerra_auto_reset_at_us": null,
+  "qerra_env": {
+    "QERRA_SMOKE_OBSTACLE": "0"
+  },
+  "qerra_fault_sim_s": 3.0,
+  "qerra_hang_ms": 800,
+  "qerra_lidar_fault": "none",
+  "qerra_lidar_fault_sim_s": 3.0,
+  "qerra_proposer_fault": "none",
+  "qerra_skip_proposer": false,
+  "qerra_smoke_obstacle": false,
+  "run_id": "DEMO9_SCENARIO_B_FINAL"
+}
