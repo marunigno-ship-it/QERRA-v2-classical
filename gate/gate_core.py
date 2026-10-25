@@ -51,6 +51,9 @@ class Reason:
     TRIP_PROPOSER_DEAD = "TRIP_PROPOSER_DEAD"      # no valid proposal ever accepted
     TRIP_PROPOSER_STALE = "TRIP_PROPOSER_STALE"    # newest proposal age >= T_watch
     TRIP_SENSOR_INVALID = "TRIP_SENSOR_INVALID"
+    TRIP_HSR_CRITICAL = "TRIP_HSR_CRITICAL"        # acute physical distress / hazard reflex
+    TRIP_HSR_INVALID = "TRIP_HSR_INVALID"          # missing or corrupted HSR telemetry
+    TRIP_HSR_STALE = "TRIP_HSR_STALE"              # HSR heartbeat age >= t_hsr_stale
     TRIP_LOG_FAILURE = "TRIP_LOG_FAILURE"
     TRIP_CLOCK_ANOMALY = "TRIP_CLOCK_ANOMALY"      # sim time did not strictly increase
     LATCHED_DWELL = "LATCHED_DWELL"                # tripped, waiting for T_dwell of continuous clear
@@ -92,12 +95,14 @@ class GateParams:
     margin_mm: int = 300                # safety standoff margin: 300 mm
     min_raw_lidar_returns: int = 5      # minimum valid raw returns required for sensor liveness
     t_react_us: int = 0                 # reaction time allowance; defaults to 0 for backward-compatibility (F4)
+    hsr_required: bool = False          # False = legacy/Demo 8 mode; True = fail-closed if HSR missing (Demo 9)
+    t_hsr_stale_us: int = 96_000        # HSR freshness limit (3 * dt = 96 ms)
 
     def __post_init__(self) -> None:
         for name in (
             "lidar_n_expected", "dt_us", "t_watch_us", "proposer_period_us",
             "lidar_period_us", "t_stale_us", "t_dwell_us", "max_tick_gap_us",
-            "wheel_radius_mm", "w_max_urad_s", "a_design_mmps2",
+            "wheel_radius_mm", "w_max_urad_s", "a_design_mmps2", "t_hsr_stale_us",
         ):
             value = getattr(self, name)
             if not _is_int(value) or value <= 0:
@@ -106,6 +111,8 @@ class GateParams:
             value = getattr(self, name)
             if not _is_int(value) or value < 0:
                 raise ValueError(f"GateParams.{name} must be a non-negative int, got {value!r}")
+        if not isinstance(self.hsr_required, bool):
+            raise ValueError(f"GateParams.hsr_required must be a bool, got {self.hsr_required!r}")
         if self.w_min_urad_s > self.w_max_urad_s:
             raise ValueError("GateParams: w_min_urad_s must be <= w_max_urad_s")
         if self.t_stale_us < 2 * self.lidar_period_us + self.dt_us:
@@ -136,6 +143,8 @@ class GateInputs:
     reset_source: Optional[str] = None             # None, "operator" or "proposer"
     log_write_failed: bool = False                 # shell reports a failed log write (R-10)
     raw_valid_points: Optional[int] = None         # count of valid finite returns across raw scan
+    hsr_status: Optional[str] = None               # "CLEAR", "MONITOR", "CRITICAL", or None
+    hsr_stamp_us: Optional[int] = None             # sim time at which HSR status was evaluated
 
 
 @dataclass(frozen=True)
@@ -325,6 +334,10 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         proposer_stale = age_us >= params.t_watch_us
 
     # 6. one primary trip reason, fixed priority
+    hsr_age_us = None
+    if inp.hsr_stamp_us is not None and _is_int(inp.hsr_stamp_us):
+        hsr_age_us = now - inp.hsr_stamp_us
+
     trip_reason = None
     if inp.log_write_failed:
         trip_reason = Reason.TRIP_LOG_FAILURE
@@ -332,6 +345,18 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         trip_reason = Reason.TRIP_SENSOR_INVALID
     elif hazard:
         trip_reason = Reason.TRIP_OBSTACLE
+    elif params.hsr_required and (
+        inp.hsr_status is None or inp.hsr_status not in ("CLEAR", "MONITOR", "CRITICAL")
+    ):
+        trip_reason = Reason.TRIP_HSR_INVALID
+    elif params.hsr_required and (
+        inp.hsr_stamp_us is None or hsr_age_us is None or hsr_age_us < 0 or hsr_age_us > params.t_hsr_stale_us
+    ):
+        trip_reason = Reason.TRIP_HSR_STALE       # <--- ChatGPT Issue 3: Stale HSR Heartbeat Trip
+    elif inp.hsr_status is not None and inp.hsr_status not in ("CLEAR", "MONITOR", "CRITICAL"):
+        trip_reason = Reason.TRIP_HSR_INVALID
+    elif inp.hsr_status == "CRITICAL":
+        trip_reason = Reason.TRIP_HSR_CRITICAL
     elif proposer_dead:
         trip_reason = Reason.TRIP_PROPOSER_DEAD
     elif proposer_stale:
@@ -363,7 +388,11 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
             mode, clear_since, reason = Mode.RUN, None, Reason.RESET_ACCEPTED
         elif mode == Mode.RUN:
             events.append(Event.RESET_IGNORED_RUN)
-        elif hazard:
+        elif (
+            hazard
+            or inp.hsr_status == "CRITICAL"
+            or (params.hsr_required and inp.hsr_status != "CLEAR")
+        ):
             events.append(Event.RESET_REJECTED_HAZARD)
         else:
             events.append(Event.RESET_REJECTED_NOT_READY)
@@ -374,11 +403,11 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         last_session_id=last_session_id,
     )
     record = _record(now, mode, reason, tuple(events), held, age_us, lidar_ok, min_mm,
-                     stop_mm, hazard, cmd, inp=inp)
+                     stop_mm, hazard, cmd, inp=inp, hsr_age_us=hsr_age_us)
     return StepResult(new_state, cmd[0], cmd[1], reason, tuple(events), record)
 
 
-def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, hazard, cmd, inp: Optional[GateInputs] = None) -> dict:
+def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, hazard, cmd, inp: Optional[GateInputs] = None, hsr_age_us: Optional[int] = None) -> dict:
     rec = {
         "sim_time_us": now,
         "state": mode.value,
@@ -390,7 +419,8 @@ def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, 
         "lidar_min_mm": min_mm,
         "d_stop_mm": stop_mm,
         "obstacle_breach": hazard,
-        "hsr_status": None,
+        "hsr_status": inp.hsr_status if inp is not None else None,
+        "hsr_age_us": hsr_age_us,
         "cmd_left_urad_s": cmd[0],
         "cmd_right_urad_s": cmd[1],
     }
@@ -423,5 +453,10 @@ def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, 
             "log_write_failed": bool(inp.log_write_failed),
             "proposal": proposal_logged,
             "ranges_m": ranges_logged,
+            "hsr_status": (
+                inp.hsr_status if isinstance(inp.hsr_status, (str, type(None)))
+                else str(inp.hsr_status)[:64]
+            ),
+            "hsr_stamp_us": inp.hsr_stamp_us,
         }
     return rec
