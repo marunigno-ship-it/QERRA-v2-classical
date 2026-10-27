@@ -352,7 +352,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     elif params.hsr_required and (
         inp.hsr_stamp_us is None or hsr_age_us is None or hsr_age_us < 0 or hsr_age_us > params.t_hsr_stale_us
     ):
-        trip_reason = Reason.TRIP_HSR_STALE       # <--- ChatGPT Issue 3: Stale HSR Heartbeat Trip
+        trip_reason = Reason.TRIP_HSR_STALE       # <--- Stale HSR Heartbeat Trip
     elif inp.hsr_status is not None and inp.hsr_status not in ("CLEAR", "MONITOR", "CRITICAL"):
         trip_reason = Reason.TRIP_HSR_INVALID
     elif inp.hsr_status == "CRITICAL":
@@ -384,16 +384,17 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     if inp.reset_source is not None:
         if inp.reset_source != RESET_SOURCE_OPERATOR:
             events.append(Event.RESET_REJECTED_CHANNEL)
-        elif mode == Mode.AWAITING_RESET:
-            mode, clear_since, reason = Mode.RUN, None, Reason.RESET_ACCEPTED
-        elif mode == Mode.RUN:
-            events.append(Event.RESET_IGNORED_RUN)
         elif (
             hazard
             or inp.hsr_status == "CRITICAL"
             or (params.hsr_required and inp.hsr_status != "CLEAR")
+            or (inp.hsr_status is not None and inp.hsr_status != "CLEAR")
         ):
             events.append(Event.RESET_REJECTED_HAZARD)
+        elif mode == Mode.AWAITING_RESET:
+            mode, clear_since, reason = Mode.RUN, None, Reason.RESET_ACCEPTED
+        elif mode == Mode.RUN:
+            events.append(Event.RESET_IGNORED_RUN)
         else:
             events.append(Event.RESET_REJECTED_NOT_READY)
 
