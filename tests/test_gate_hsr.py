@@ -158,6 +158,37 @@ class TestGateHsrIntegration(unittest.TestCase):
         self.assertEqual(res.cmd_right_urad_s, 0)
         self.assertIn(Event.RESET_REJECTED_HAZARD, res.events)
 
+    def test_operator_reset_rejected_in_awaiting_reset_while_hsr_monitor(self):
+        """Rule: In AWAITING_RESET, operator reset must be REJECTED if HSR is MONITOR."""
+        awaiting_state = GateState(
+            mode=Mode.AWAITING_RESET,
+            last_tick_us=100_000,
+            clear_since_us=100_000,
+            held=self.clean_proposal,
+            last_seq=1,
+            last_cmd=(0, 0),
+            last_session_id=1,
+        )
+
+        inp = GateInputs(
+            sim_time_us=132_000,
+            proposal=self.clean_proposal,
+            ranges_m=self.clean_ranges,
+            lidar_stamp_us=132_000,
+            raw_valid_points=5,
+            reset_source=RESET_SOURCE_OPERATOR,
+            hsr_status="MONITOR",
+            hsr_stamp_us=132_000,
+        )
+
+        res = step(awaiting_state, self.params_required, inp)
+
+        # The robot MUST NOT start driving!
+        self.assertEqual(res.cmd_left_urad_s, 0)
+        self.assertEqual(res.cmd_right_urad_s, 0)
+        self.assertIn(Event.RESET_REJECTED_HAZARD, res.events)
+        self.assertEqual(res.state.mode, Mode.AWAITING_RESET)
+
     def test_hsr_clear_allows_normal_cruise(self):
         """Rule: When HSR is CLEAR and fresh, normal proposals pass through unhindered."""
         run_state = GateState(
