@@ -585,15 +585,15 @@ python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 -
 
 ## Project Status
 
-**Version:** **Version:** `2.1.2`
+**Version:** 2.1.3
 **Engine:** Supervisory Gate `v0.3` (F1-F8 hardened) · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
 
 All three layers are implemented. The evidence level differs by layer and is stated for each:
 
-- **Layer 1A — Supervisory Gate (`gate/`, AGPL-3.0-only):** Pure Python standard library only. 103 unit tests. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Baseline run `RUN_1791713619` (Gate v0.2) evidenced obstacle trip at 337 mm; standstill at 301 mm. Replayable offline via `verify_log.py --replay`.
+- **Layer 1A — Supervisory Gate (`gate/`, Apache-2.0):** Pure Python standard library only. 113 unit tests. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Baseline run `RUN_1791713619` (Gate v0.2) evidenced obstacle trip at 337 mm; standstill at 301 mm. Replayable offline via `verify_log.py --replay`.
 - **Layer 1 — QERRA-HSR (`hsr/`, Apache-2.0):** Implemented and unit-tested. Pure Python standard library only. Activation thresholds are design estimates and have not been calibrated against physical sensor streams. Human-in-the-Loop recovery directives are implemented.
-- **Layer 2 — Moral Gate (SEMEV-12 v1.9.2, AGPL-3.0):** Advisory, not part of the safety function. All 12 ethical vectors implemented and scoring. The 80-case baseline is documented in `SEMEV-12_Benchmark_Run_01.md`. The adversarial red-teaming suite in `SEMEV-12_Adversarial_Benchmark_Run_01.md` documents known bypasses and false positives.
-- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0, AGPL-3.0):** Advisory. 12 value vectors across the human-centered and ecological suites, with bounded look-back negation guards. Not yet evaluated with human participants.
+- **Layer 2 — Moral Gate (SEMEV-12 v1.9.2, Apache-2.0):** Advisory, not part of the safety function. All 12 ethical vectors implemented and scoring. The 80-case baseline is documented in `SEMEV-12_Benchmark_Run_01.md`. The adversarial red-teaming suite in `SEMEV-12_Adversarial_Benchmark_Run_01.md` documents known bypasses and false positives.
+- **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0, Apache-2.0):** Advisory. 12 value vectors across the human-centered and ecological suites, with bounded look-back negation guards. Not yet evaluated with human participants.
 - **Live Reference API:** Hosted on the Hugging Face Spaces free tier; the first request after inactivity can take 30–60 seconds (cold start). The ROS 2 bridge uses an 800 ms remote-call timeout with a local fallback.
 
 **Known limitations & honesty boundaries:**
