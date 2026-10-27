@@ -5,7 +5,7 @@ Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranke
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
-[![Version](https://img.shields.io/badge/version-2.1.2-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![Version](https://img.shields.io/badge/version-2.1.3-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## The Idea in One Sentence
