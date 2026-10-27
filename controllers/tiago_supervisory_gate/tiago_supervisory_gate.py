@@ -178,11 +178,23 @@ def find_lidar(robot):
 
 
 def zero_wheels(left, right):
-    try:
-        left.setVelocity(0.0)
-        right.setVelocity(0.0)
-    except Exception:
-        pass
+    """
+    Fail-closed actuator clamping. Ensures both motors are commanded
+    to 0.0 rad/s independently so a failure on one does not abandon the other.
+    """
+    errors = []
+    if left is not None:
+        try:
+            left.setVelocity(0.0)
+        except Exception as exc:
+            errors.append(f"left: {exc}")
+    if right is not None:
+        try:
+            right.setVelocity(0.0)
+        except Exception as exc:
+            errors.append(f"right: {exc}")
+    if errors:
+        sys.stderr.write(f"[ACTUATOR FAULT] zero_wheels failure: {', '.join(errors)}\n")
 
 
 def percentile(sorted_vals, q):
@@ -351,6 +363,8 @@ def main():
     last_hsr_status = None
     last_reset_print = None
     compute_ns = []
+    wall_intervals_ms = []
+    last_tick_wall_ns = None
 
     prev_pos_left = None
     prev_pos_right = None
@@ -358,11 +372,20 @@ def main():
 
     try:
         while robot.step(timestep) != -1:
+            t0 = time.perf_counter_ns()
             tick += 1
             sim_time_us = tick * dt_us
             sim_time_sec = sim_time_us / 1_000_000.0
             sim_clock_s = sim_time_sec  # Drive HSR dwell timer strictly from simulation clock
-            t0 = time.perf_counter_ns()
+
+            # Host OS scheduling jitter measurement (wall-clock interval between iterations)
+            if last_tick_wall_ns is not None:
+                interval_ms = (t0 - last_tick_wall_ns) / 1_000_000.0
+                wall_intervals_ms.append(interval_ms)
+                if interval_ms >= 100.0:
+                    print(f"[{sim_time_sec:6.2f}s][HOST JITTER WARNING] Inter-iteration gap: {interval_ms:.1f} ms "
+                          f"(approaching {params.t_watch_us / 1000:.0f} ms watchdog threshold)")
+            last_tick_wall_ns = t0
 
             # Master clock drift invariant check
             try:
@@ -493,11 +516,17 @@ def main():
                           f"events={_events} (mode: {state.mode.value})")
                     last_reset_print = _key
 
-            # Actuator enforcement
+            # Actuator enforcement (fail-closed guarded)
             cmd_l = res.cmd_left_urad_s / 1_000_000.0
             cmd_r = res.cmd_right_urad_s / 1_000_000.0
-            left_motor.setVelocity(cmd_l)
-            right_motor.setVelocity(cmd_r)
+            try:
+                left_motor.setVelocity(cmd_l)
+                right_motor.setVelocity(cmd_r)
+            except Exception as exc:
+                zero_wheels(left_motor, right_motor)
+                sys.stderr.write(f"[ACTUATOR FAULT] setVelocity exception: {exc}\n")
+                raise
+
             compute_ns.append(time.perf_counter_ns() - t0)
 
             # Write diagnostic telemetry CSV
@@ -575,6 +604,10 @@ def main():
                 pass
             print(f"[GATE] Per-tick compute latency (N={len(vals)}): "
                   f"p50={percentile(vals, 0.50) / 1e3:.1f} µs | p99={percentile(vals, 0.99) / 1e3:.1f} µs | max={vals[-1] / 1e3:.1f} µs")
+        if wall_intervals_ms:
+            sorted_wall = sorted(wall_intervals_ms)
+            print(f"[GATE HOST TIMING] Iteration wall intervals (N={len(sorted_wall)}): "
+                  f"p50={percentile(sorted_wall, 0.50):.1f} ms | p99={percentile(sorted_wall, 0.99):.1f} ms | max={sorted_wall[-1]:.1f} ms")
         print(f"[GATE] Audit log closed: {log_path}")
         print(f"[GATE] Wheel telemetry closed: {telemetry_path}")
 
