@@ -159,7 +159,7 @@ class TestGateHsrIntegration(unittest.TestCase):
         self.assertIn(Event.RESET_REJECTED_HAZARD, res.events)
 
     def test_operator_reset_rejected_in_awaiting_reset_while_hsr_monitor(self):
-        """Rule: In AWAITING_RESET, operator reset must be REJECTED if HSR is MONITOR."""
+        """Rule: In AWAITING_RESET, a valid operator reset must be REJECTED if HSR is MONITOR."""
         awaiting_state = GateState(
             mode=Mode.AWAITING_RESET,
             last_tick_us=100_000,
@@ -170,9 +170,18 @@ class TestGateHsrIntegration(unittest.TestCase):
             last_session_id=1,
         )
 
+        # Strictly fresh, valid proposal (seq=2) to isolate reset rejection without sequence warnings
+        fresh_proposal = Proposal(
+            seq=2,
+            sim_stamp_us=132_000,
+            left_urad_s=2_000_000,
+            right_urad_s=2_000_000,
+            session_id=1,
+        )
+
         inp = GateInputs(
             sim_time_us=132_000,
-            proposal=self.clean_proposal,
+            proposal=fresh_proposal,
             ranges_m=self.clean_ranges,
             lidar_stamp_us=132_000,
             raw_valid_points=5,
@@ -186,7 +195,7 @@ class TestGateHsrIntegration(unittest.TestCase):
         # The robot MUST NOT start driving!
         self.assertEqual(res.cmd_left_urad_s, 0)
         self.assertEqual(res.cmd_right_urad_s, 0)
-        self.assertIn(Event.RESET_REJECTED_HAZARD, res.events)
+        self.assertEqual(res.events, (Event.RESET_REJECTED_HAZARD,))
         self.assertEqual(res.state.mode, Mode.AWAITING_RESET)
 
     def test_hsr_clear_allows_normal_cruise(self):
