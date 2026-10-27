@@ -3,10 +3,48 @@
 All changes are additive. SEMEV-12 vectors are maintained as a stable core
 across versions.
 
+## [2.2.1] - 2026-10-27 — Supervisory Gate & Actuator Hardening, Demo 9 Cryptographic Anchor
+
+### Fixed
+- **Gate Recovery Interlock Ordering (`gate/gate_core.py`):** Re-ordered `AWAITING_RESET` evaluation to strictly validate hazard and non-clear HSR status (`MONITOR`, `CRITICAL`, invalid, or stale) *before* accepting an operator reset, preventing premature transition to `RUN`.
+- **Actuator Clamping Isolation (`tiago_supervisory_gate.py`):** Enclosed left and right motor `setVelocity(0.0)` commands in independent `try/except` blocks in `zero_wheels()`, guaranteeing that a hardware/communication fault on one motor does not abandon the other.
+- **Regression Test Polish (`tests/test_gate_hsr.py`):** Configured fresh proposal sequence (`seq=2`) in `test_operator_reset_rejected_in_awaiting_reset_while_hsr_monitor` to eliminate sequence rejection warnings and isolate `RESET_REJECTED_HAZARD` as the sole event.
+- **ROS 2 Package Metadata (`package.xml`):** Removed residual `<license>AGPL-3.0-only</license>` tag and bumped version to `2.2.1`, synchronizing package metadata with repository-wide Apache-2.0 relicensing.
+
+### Added
+- **Demo 9 Cryptographic Head Seal Anchor:** Formalized `results/DEMO9_SCENARIO_B_FINAL/ANCHOR.txt` locking 438 discrete simulation cycles (seal `eccb0d85416cf4a651205f34f3cc0d9275bff6e2b3baa512e4b23dbef0c2714a`) with bit-for-bit replay audit verification via `verify_log.py --replay`.
+- **Actuator Clamping Safety Tests (`tests/test_controller_actuators.py`):** Added 3 unit tests verifying independent fail-closed wheel clamping when individual motor drivers encounter simulated exceptions.
+- **Host Scheduling Diagnostics (`tiago_supervisory_gate.py`):** Implemented high-resolution monotonic wall-clock delta tracking between simulation steps, reporting `[HOST JITTER WARNING]` when iteration intervals reach $\ge 100\text{ ms}$ and printing timing distributions (`p50`, `p99`, `max`) at exit.
+
+### Changed
+- **Safety Concept v0.5 (`SAFETY_CONCEPT.md`):** Upgraded to Version 0.5 (Demo 9 Edition). Documented dual baseline anchors (Demo 7 and Demo 9), sub-32ms distress reflex stop (Claim C-2e), dual-dwell stabilization against spontaneous restart (Claim C-7), independent actuator clamping (AR-11, Claim C-5), and live `hsr_status` and `hsr_age_us` flight recorder fields.
+
+---
+
+## [2.2.0] - 2026-10-25 — Supervisory Gate & QERRA-HSR Reflex Integration (Simulation Demo 9)
+
+### Added
+- **Supervisory Gate HSR Arbitration (`gate/gate_core.py`):**
+  - Integrated Layer 1B QERRA-HSR reflex companion with Layer 1A Supervisory Gate.
+  - Enforced `TRIP_HSR_CRITICAL`, `TRIP_HSR_INVALID`, and `TRIP_HSR_STALE` trip reasons at the 32 ms discrete cycle boundary.
+  - Added `hsr_required: bool` parameter to `GateParams` for fail-closed telemetry enforcement.
+- **Flight Recorder HSR Replay (`gate/gate_log.py`, `verify_log.py`):**
+  - Extended canonical flight log schema and input reconstruction to capture `hsr_status` and `hsr_stamp_us`.
+  - Enables full bit-for-bit offline deterministic replay of integrated distress runs.
+- **Simulation Demo 9 (Webots R2025a, PAL Robotics TIAGo base):**
+  - **Scenario A (`DEMO9_SCENARIO_A_CONTROL`, 8.0 s, 250 cycles):** Causal control run proving steady cruise when distress is disabled. Head Seal: `ca2c52b3125485ab7d8724baa70d289706d419373ddfc456f950651d6b87aba1`.
+  - **Scenario B (`DEMO9_SCENARIO_B_FINAL`, 14.0 s, 438 cycles):** Exercised closed-loop distress reflex stop on cycle boundary ($\le 32\text{ ms}$, cycle 125, injected confidence 0.85), active hazard reset refusal at $t = 5.024\text{ s}$, dual-dwell recovery stabilization ($1.0\text{ s}$ HSR dwell + $1.0\text{ s}$ Gate dwell), and authorized mission resumption at $t = 9.056\text{ s}$. Head Seal: `eccb0d85416cf4a651205f34f3cc0d9275bff6e2b3baa512e4b23dbef0c2714a`.
+- **Environment & Controller:**
+  - Added dedicated world `worlds/demo9_hsr_gate.wbt` with hospital corridor layout.
+  - Configured standalone controller `controllers/tiago_supervisory_gate/tiago_supervisory_gate.py`.
+- **Pre-Registration & Evidence Documentation:**
+  - Added pre-registration protocol and evidence logs in `docs/demo9/PRE_REGISTRATION_D9_B.md` and `docs/demo9/DEMO9_EVIDENCE_SCENARIO_B.md`.
+
+---
+
 ## [2.1.3] - 2026-10-23
 ### Changed
 - Relicensed the entire repository (Supervisory Gate, SEMEV-12, THRIVE) under the **Apache License 2.0**.
-
 
 ---
 
