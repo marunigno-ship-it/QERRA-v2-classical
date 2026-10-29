@@ -5,8 +5,8 @@
 
 | | |
 |---|---|
-| Document version | 0.5 (Doer-Checker Gate v0.3 & QERRA-HSR Reflex Integration, Demo 9 Edition) |
-| Date | 2026-10-27 |
+| Document version | 0.6 (Doer-Checker Gate v0.4 & QERRA-HSR Reflex Integration, Demo 9 Edition; C-7 split, C-8 added) |
+| Date | 2026-10-29 |
 | Author | Marussa Metocharaki |
 | System under demonstration | QERRA Supervisory Gate & QERRA-HSR Reflex Companion, simulated PAL Robotics TIAGo in Webots R2025a, Windows 11 |
 | Status vocabulary | **SPECIFIED** (written, nothing built) → **IMPLEMENTED** (code exists, unit-tested) → **VERIFIED** (evidenced by live simulation run ID + anchored head hash) |
@@ -22,6 +22,7 @@
   * **Gate Version:** `0.3` (per `results/DEMO9_SCENARIO_B_FINAL/ANCHOR.txt`)
   * **Verified Records:** 438 continuous ticks ($t = 0.032\text{ s}$ to $t = 14.016\text{ s}$)
   * **Cryptographic Head Seal:** `eccb0d85416cf4a651205f34f3cc0d9275bff6e2b3baa512e4b23dbef0c2714a`
+* **Anchors vs. current code:** Both anchors were produced by Gate v0.2 / v0.3. The Gate core has since changed (v0.4: C-7b, C-8). The Demo 9 log replays bit-for-bit through the v0.4 core (`verify_log.py --replay`, 438 control cycles; author-run on the local branch, 2026-10-29), so its recorded decisions are unchanged. Demo 9 does not exercise the code paths those changes alter (see C-7b and C-8).
 
 ---
 
@@ -57,20 +58,22 @@ Informative references (names only; clause numbers omitted until checked against
 | C-3 Tamper-evident log | Every gate evaluation is appended to a canonical JSONL log with rolling SHA-256 digests ($hash = \text{SHA256}(prev\_hash + canonical\_bytes)$). | Offline rewrite detectable only against an externally anchored head hash. Log records gate **commands**, not wheel ground truth. | **VERIFIED** | Demo 7 (`RUN_1791713619`, 1,485 records, seal `ae37...`) and Demo 9 (`DEMO9_SCENARIO_B_FINAL`, 438 records, seal `eccb0d85...`). Replay verified bit-for-bit via `verify_log.py --replay`. |
 | C-4 IPC fault tolerance | The gate polls non-blocking, drains messages, caps datagram size, rejects NaN/Infinity, and steps reliably under proposer faults. | Windows 11 is not an RTOS. No hard real-time bound claimed. | **VERIFIED** | 12 unit tests in `test_gate_ipc.py` and `test_gate_link.py`. |
 | C-5 Actuator fail-closed isolation | Actuator enforcement commands left and right wheels independently in isolated try-blocks (`zero_wheels`). Motor driver exceptions do not abandon the opposing wheel. | Does not replace physical brake coils or emergency stop relays. | **VERIFIED** | Unit tests in `tests/test_controller_actuators.py`: left and right motor faults simulated; opposing wheel successfully clamped to 0.0 rad/s. |
-| C-6 Recovery contract | After a trip, the gate latches. Wheels stay at zero until: hazard is clear, continuous dwell elapses, and explicit operator reset arrives. Reset during hazard or while HSR is `MONITOR`/`CRITICAL` is strictly rejected (`RESET_REJECTED_HAZARD`). | Does not replace a physical lockout/tagout (LOTO) procedure. | **VERIFIED** | Demo 9: Reset refused at $t = 5.024\text{ s}$ during distress (`RESET_REJECTED_HAZARD`); unit regression test in `test_gate_hsr.py` proves rejection when HSR is `MONITOR`. |
-| C-7 Dual-dwell stabilization | To prevent chattering and premature restart on transient clearance, recovery requires stacked dwell completion: HSR stabilizer dwell ($1.0\text{ s}$) followed by Gate clear dwell ($1.0\text{ s}$). | Availability cost: extends standstill recovery period by design. | **VERIFIED** | Demo 9: Distress cleared at $t = 7.008\text{ s}$; HSR cleared at $t = 8.032\text{ s}$; Gate dwell completed at $t = 9.056\text{ s}$ before reset accepted (Invariants B4, B5). |
+| C-6 Recovery contract | After a trip, the gate latches. Wheels stay at zero until: hazard is clear, continuous dwell elapses, and explicit operator reset arrives. Reset during hazard or while HSR is `MONITOR`/`CRITICAL` is strictly rejected (`RESET_REJECTED_HAZARD`). With `hsr_required=True`, reset is additionally refused (`RESET_REJECTED_NOT_READY`) until the Gate itself has observed $T_{dwell}$ of continuous fresh HSR `CLEAR` (see C-7b). | Does not replace a physical lockout/tagout (LOTO) procedure. | **VERIFIED** (hazard rejection, as evidenced); the added dwell clause is **IMPLEMENTED** (see C-7b) | Demo 9: Reset refused at $t = 5.024\text{ s}$ during distress (`RESET_REJECTED_HAZARD`); unit regression test in `test_gate_hsr.py` proves rejection when HSR is `MONITOR`. |
+| C-7a Dual-dwell stabilization (direct `CRITICAL` to `CLEAR` path) | To prevent chattering and premature restart on transient clearance, recovery requires stacked dwell completion: HSR stabilizer dwell ($1.0\text{ s}$) followed by Gate clear dwell ($1.0\text{ s}$). | Availability cost: extends standstill recovery period by design; a single-sample sensor glitch causes a latched stop requiring full dwell and operator reset. Live evidence covers only the direct `CRITICAL` to `CLEAR` path: the harness injects only 0.85 distress or a hazard flag, so `MONITOR` is never produced live. | **VERIFIED** | Demo 9: Distress cleared at $t = 7.008\text{ s}$; HSR cleared at $t = 8.032\text{ s}$; Gate dwell completed at $t = 9.056\text{ s}$ before reset accepted (Invariants B4, B5). The Demo 9 log replays bit-for-bit through Gate v0.4 (438 cycles). |
+| C-7b Gate-level HSR clear-dwell (all paths, including `MONITOR`) | With `hsr_required=True`, the Gate itself requires $T_{dwell}$ of continuous, fresh, valid HSR `CLEAR` readings (`hsr_clear_since_us`) both to enter `AWAITING_RESET` and to accept a reset, independent of any upstream stabilizer. `MONITOR`, `CRITICAL`, invalid, stale or future-stamped HSR, or a tick gap larger than `max_tick_gap_us`, restarts the run. A `MONITOR` blip after arming makes the Gate refuse reset (`RESET_REJECTED_NOT_READY`) until a fresh full run completes. Closes a defect in Gate v0.3, which counted `MONITOR` as calm and accepted a reset on a single `CLEAR` tick. | Enforced only when `hsr_required=True` (legacy mode unchanged). Not live-verified: evidenced by unit tests and an offline repro, not by a Webots run. Availability cost: on a path through `MONITOR`, recovery takes $\ge 1.0\text{ s}$ longer than under Gate v0.3 (repro: reset accepted $1.024\text{ s}$ after the first `CLEAR` tick, versus on the first `CLEAR` tick before). Does not validate the HSR classifier, and does not fix the upstream stabilizer, which measures elapsed time between samples rather than continuous observation (repro section E). | **IMPLEMENTED** | `tests/test_gate_hsr_clear_dwell.py` (8 tests; 5 of them fail on Gate v0.3); offline repro `qerra_gate_hsr.py`, sections C and D; Demo 9 log replay (see anchors note). |
+| C-8 Proposer-channel poison recovery (2026-10-28 review finding F2) | The `(session_id, seq)` arbitration ratchet binds only while a live proposal (age $< T_{watch}$) is held. When none is held, a fresh (age $< T_{watch}$), valid, non-future candidate re-bases the ratchet. A single well-formed datagram with an astronomically large `session_id` or `seq` therefore blocks the legitimate proposer for at most the poisoned proposal's remaining freshness (repro: 4 rejected ticks, about $128\text{ ms}$, Gate in `RUN` afterwards) instead of permanently, as in Gate v0.3. Re-basing restores proposer liveness only: it does not lift a latch, shorten a dwell, or bypass operator reset. Stale, future-stamped and invalid datagrams never re-base. | Port 5005 is unauthenticated localhost UDP, and the sim-time echo that proposals copy is itself on localhost UDP (5007), so freshness is not authentication. A local sender that injects a higher `(session_id, seq)` on every tick still supplants the legitimate proposer (its proposals stay clamped to the envelope, AR-2, and subject to every trip). This is NOT defended against. Defence needs authenticated datagrams (for example a shared-key HMAC field) or OS-level channel isolation; neither is implemented. | **IMPLEMENTED** | `tests/test_gate_ratchet_rebase.py` (7 tests; 3 of them fail without the re-base); offline repro `qerra_gate_hsr.py`, section A. |
 
 ---
 
 ## 3. Definitions and parameters
 
-| Symbol | Meaning | Value in Gate v0.3 |
+| Symbol | Meaning | Value in Gate v0.4 |
 |---|---|---|
 | `dt` | Webots `basicTimeStep` | $32\text{ ms}$ ($32\,000\ \mu\text{s}$) |
 | `T_watch` | Proposer freshness limit | $150\,000\ \mu\text{s}$ ($150\text{ ms}$, accommodating Windows thread jitter) |
 | `T_stale` | Lidar freshness limit | $96\,000\ \mu\text{s}$ ($3 \times dt$) |
 | `T_hsr_stale` | HSR heartbeat freshness limit | $96\,000\ \mu\text{s}$ ($3 \times dt$) |
-| `T_dwell` | Continuous clear hysteresis before reset enabled | $1.0\text{ s}$ ($1\,000\,000\ \mu\text{s}$) |
+| `T_dwell` | Continuous clear hysteresis before reset enabled (applied to the trip-cause dwell and, with `hsr_required=True`, independently to fresh HSR `CLEAR`, C-7b) | $1.0\text{ s}$ ($1\,000\,000\ \mu\text{s}$) |
 | `w_max` | Maximum wheel angular velocity | $3.0\text{ rad/s}$ ($3\,000\,000\ \mu\text{rad/s}$) |
 | `a_design` | Design deceleration envelope | $500\text{ mm/s}^2$ ($0.5\text{ m/s}^2$) |
 | `margin` | Standstill clearance margin | $300\text{ mm}$ |
@@ -88,7 +91,7 @@ Informative references (names only; clause numbers omitted until checked against
 - **AR-3** Gate envelope parameters are immutable at startup.
 - **AR-4** Operator reset channel (UDP 5006 or edge-triggered keyboard) is isolated from proposer channel (UDP 5005).
 - **AR-5** The gate never blocks on IPC (`recvfrom` non-blocking, bounded drain $\le 256$ datagrams/tick).
-- **AR-6** IPC messages are capped at 2048 bytes, strictly parsed (no NaN/Inf), strictly typed integer values, with monotonic `session_id` arbitration.
+- **AR-6** IPC messages are capped at 2048 bytes, strictly parsed (no NaN/Inf), strictly typed integer values, with monotonic `session_id` arbitration (ratchet re-based only when no live proposal is held, C-8).
 - **AR-7** Lidar scan ($667$ samples, $240^\circ$ FOV) is filtered through a $0.64\text{ m}$ swept corridor. Sensor liveness is judged on raw returns ($\ge 5$ returns across 240°) and pipeline freshness.
 - **AR-8** Gate core is a pure function `step(state, params, inputs) -> StepResult` using strictly the Python standard library with zero external dependencies (verified via AST unit testing).
 - **AR-9** Obstacle hazard classification is a direct deterministic stopping envelope check: `hazard = (min_range <= d_stop)`.
@@ -97,6 +100,7 @@ Informative references (names only; clause numbers omitted until checked against
   - When `hsr_required=True`, missing, None, or unrecognized HSR statuses trip `TRIP_HSR_INVALID`.
   - Stale HSR heartbeat ($\text{age} > T_{hsr\_stale}$) trips `TRIP_HSR_STALE`.
   - In `Mode.AWAITING_RESET`, an operator reset is strictly rejected (`RESET_REJECTED_HAZARD`) unless HSR status is strictly `CLEAR`.
+  - With `hsr_required=True`, the Gate requires its own $T_{dwell}$ of continuous fresh HSR `CLEAR` before entering `AWAITING_RESET` and before accepting a reset (`RESET_REJECTED_NOT_READY` otherwise), regardless of upstream stabilization (C-7b).
 - **AR-11** Actuator Clamping Independence: `zero_wheels(left, right)` executes motor velocity clamping in separate isolated exception blocks to prevent asymmetric runaway if one actuator driver faults.
 
 ---
@@ -127,9 +131,11 @@ Every evaluation writes one canonical JSON line to `results/<run_id>/gate_audit.
 | `cmd_right_urad_s` | int | Output command to right wheel ($\mu\text{rad/s}$) |
 | `inputs` | dict (optional) | Serialized tick inputs enabling exact offline replay of `step()` |
 | `manifest` | dict (optional) | Sealed in record 0 (`seq=0`): run ID, gate version, parameters, and harness fault injection switches |
-| `gate_version` | string | Controller software release (`0.3`) |
+| `gate_version` | string | Controller software release (`0.4` from this release; the Demo 7 and Demo 9 anchors carry `0.2` and `0.3`) |
 | `prev_hash` | string | Hex SHA-256 of preceding log entry (Genesis: 64 zeros) |
 | `hash` | string | `SHA256(prev_hash_ascii || canonical_bytes)` |
+
+`hsr_clear_since_us` (C-7b) is Gate internal state and is not a logged field. `verify_log.py --replay` reconstructs it from the logged `hsr_status` and `hsr_stamp_us` inputs.
 
 ---
 
@@ -142,3 +148,4 @@ Every evaluation writes one canonical JSON line to `results/<run_id>/gate_audit.
 | 0.3 | 2026-10-17 | Hardened supervisory gate under independent review findings: F1-F8. Added reaction time allowance $t_{react}$ in $d_{stop}$ ($346\text{ mm}$ envelope). |
 | 0.4 | 2026-10-18 | Epistemic truth alignment under findings V1-V11: landed real F3 IPC unit tests (103 gate tests); verified deterministic offline replay via `verify_log.py --replay`; documented V5 simulated-only stale watchdog and V6 forward-arc occlusion boundaries. |
 | 0.5 | 2026-10-27 | Integrated Layer 1B QERRA-HSR reflex companion under Demo 9 (`DEMO9_SCENARIO_B_FINAL`, 438 cycles, Head Seal `eccb0d85...`). Added Claim C-2e (Distress reflex stop $\le 32\text{ ms}$) and Claim C-7 (Dual-dwell stabilization against chattering). Hardened Claim C-6 recovery contract to strictly reject reset in `AWAITING_RESET` when HSR is non-clear (`MONITOR`/`CRITICAL`). Documented independent actuator clamping (AR-11, C-5), host scheduling jitter diagnostics, active `hsr_status` and `hsr_age_us` log fields, and bumped Gate unit tests to 113. |
+| 0.6 | 2026-10-29 | Gate/HSR boundary review of 2026-10-28 (findings F1 dwell, F2 ratchet; numbering distinct from the v0.3 findings F1-F8). Split Claim C-7 into C-7a (VERIFIED, direct `CRITICAL` to `CLEAR` path, Demo 9) and C-7b (IMPLEMENTED, Gate-level continuous HSR `CLEAR` dwell via `hsr_clear_since_us`; closes the defect where the Gate counted `MONITOR` as calm and accepted reset on a single `CLEAR` tick; about $1.0\text{ s}$ added availability cost on the `MONITOR` path; not live-verified). Added Claim C-8 (ratchet re-basing, IMPLEMENTED) with explicit non-claim: unauthenticated localhost UDP, hostile local sender not defended against. Amended C-6, AR-6, AR-10, parameters and audit-log notes. Gate core bumped to v0.4. Gate unit tests: 130 (`test_gate_*.py`: 115 existing + 8 C-7b + 7 C-8), plus 3 actuator tests. Demo 9 log (438 cycles) replays bit-for-bit through v0.4. |
