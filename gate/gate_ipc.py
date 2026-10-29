@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
 """
-QERRA Supervisory Gate -- Non-Blocking UDP IPC Shell (Demo 7).
-SAFETY_CONCEPT.md v0.1: AR-5, AR-6, C-4, D-3.
+QERRA Supervisory Gate -- Non-Blocking UDP IPC Shell (Demo 7/8/9 & Phase 2).
+SAFETY_CONCEPT.md v0.2: AR-5, AR-6, C-4, D-3.
 
 Rules:
-  - Non-blocking localhost UDP socket.
-  - Drains pending datagrams in a tick (capped at MAX_DRAIN_PER_CALL) and keeps strictly the newest valid one.
+  - Non-blocking localhost UDP sockets.
+  - Proposals: Drains pending datagrams in a tick and keeps strictly the newest valid one.
+  - HSR Telemetry: Drains pending datagrams in a tick and keeps the WORST severity (CRITICAL > MONITOR > CLEAR).
   - Enforces max message size (MAX_DATAGRAM_BYTES) via buffer-length check.
   - Strictly rejects NaN, Infinity, non-ints, and malformed JSON.
   - Standard library only.
@@ -18,9 +19,15 @@ import socket
 from typing import Optional, Tuple
 
 from gate.gate_core import Proposal
+from gate.hsr_telemetry import (
+    HSRTelemetryPacket,
+    drain_worst_severity,
+    parse_hsr_telemetry,
+)
 
 DEFAULT_PROPOSAL_PORT = 5005
 DEFAULT_OPERATOR_PORT = 5006
+DEFAULT_HSR_PORT = 5008
 MAX_DATAGRAM_BYTES = 2048
 MAX_DRAIN_PER_CALL = 256
 
@@ -119,6 +126,47 @@ def drain_proposals(sock: socket.socket) -> Tuple[Optional[Proposal], int]:
                 newest_proposal = proposal
 
     return newest_proposal, count
+
+
+def drain_hsr_telemetry(
+    sock: socket.socket,
+    t_rx_us: int,
+) -> Tuple[Optional[HSRTelemetryPacket], int]:
+    """
+    Drains pending HSR telemetry datagrams non-blocking, bounded by MAX_DRAIN_PER_CALL.
+    Applies parse_hsr_telemetry with receipt timestamp t_rx_us.
+    Folds all valid packets in the batch using worst-severity reduction.
+
+    Returns (worst_packet_or_none, total_datagrams_drained).
+    """
+    valid_packets = []
+    count = 0
+
+    for _ in range(MAX_DRAIN_PER_CALL):
+        try:
+            data, _ = sock.recvfrom(MAX_DATAGRAM_BYTES + 1)
+        except (BlockingIOError, InterruptedError):
+            break
+        except OSError as e:
+            err = getattr(e, "winerror", getattr(e, "errno", None))
+            if err in (10054, 10040):  # Client reset or message truncated on Windows
+                count += 1
+                continue
+            break
+
+        count += 1
+        if len(data) > MAX_DATAGRAM_BYTES:
+            continue
+
+        try:
+            pkt = parse_hsr_telemetry(data, t_rx_us=t_rx_us)
+            valid_packets.append(pkt)
+        except (ValueError, KeyError, TypeError):
+            # Corrupted, malformed, or causality-violating datagrams are dropped
+            continue
+
+    winning_packet = drain_worst_severity(valid_packets)
+    return winning_packet, count
 
 
 def poll_operator_reset(sock: socket.socket) -> Optional[str]:
