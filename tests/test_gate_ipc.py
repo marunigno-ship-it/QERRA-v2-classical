@@ -1,10 +1,10 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
 """
-Unit tests for gate/gate_ipc.py (SAFETY_CONCEPT.md v0.1).
-Covers: UDP non-blocking drain, message flooding (newest retained),
-        size limits, NaN rejection, session arbitration (F3),
-        and operator reset isolation.
+Unit tests for gate/gate_ipc.py (SAFETY_CONCEPT.md v0.2 & Phase 2).
+Covers: UDP non-blocking drain, message flooding (newest retained for proposals,
+        worst-severity retained for HSR telemetry), size limits, NaN rejection,
+        session arbitration (F3), and operator reset isolation.
 Standard library only.
 """
 from __future__ import annotations
@@ -14,10 +14,16 @@ import socket
 import unittest
 
 from gate.gate_ipc import (
+    DEFAULT_HSR_PORT,
     create_udp_receiver,
+    drain_hsr_telemetry,
     drain_proposals,
     parse_proposal_datagram,
     poll_operator_reset,
+)
+from gate.hsr_telemetry import (
+    HSR_CLEAR,
+    HSR_CRITICAL,
 )
 
 
@@ -226,6 +232,81 @@ class TestGateIPC(unittest.TestCase):
         self.assertEqual(proposal.session_id, 5)
         self.assertEqual(proposal.seq, 10)
         self.assertEqual(proposal.left_urad_s, 300)
+
+    # --- Layer 1B Asynchronous HSR Telemetry UDP Tests ---
+
+    def test_hsr_clean_packet_received(self):
+        msg = {
+            "obs_id": 1,
+            "t_obs_us": 1_000_000,
+            "t_emit_us": 1_001_000,
+            "distress_permille": 0,
+        }
+        self._send(json.dumps(msg).encode("utf-8"))
+
+        pkt, count = drain_hsr_telemetry(self.recv_sock, t_rx_us=1_002_000)
+        self.assertEqual(count, 1)
+        self.assertIsNotNone(pkt)
+        self.assertEqual(pkt.obs_id, 1)
+        self.assertEqual(pkt.state, HSR_CLEAR)
+
+    def test_hsr_worst_severity_drain_over_socket(self):
+        # Datagram 1: CLEAR
+        msg_clear_1 = {
+            "obs_id": 10,
+            "t_obs_us": 1_000_000,
+            "t_emit_us": 1_001_000,
+            "distress_permille": 0,
+        }
+        # Datagram 2: CRITICAL (acute distress event)
+        msg_crit = {
+            "obs_id": 11,
+            "t_obs_us": 1_010_000,
+            "t_emit_us": 1_011_000,
+            "distress_permille": 850,
+        }
+        # Datagram 3: CLEAR (calmed reading arriving later in same 32 ms tick)
+        msg_clear_2 = {
+            "obs_id": 12,
+            "t_obs_us": 1_020_000,
+            "t_emit_us": 1_021_000,
+            "distress_permille": 100,
+        }
+
+        self._send(json.dumps(msg_clear_1).encode("utf-8"))
+        self._send(json.dumps(msg_crit).encode("utf-8"))
+        self._send(json.dumps(msg_clear_2).encode("utf-8"))
+
+        pkt, count = drain_hsr_telemetry(self.recv_sock, t_rx_us=1_030_000)
+        self.assertEqual(count, 3)
+        self.assertIsNotNone(pkt)
+        # CRITICAL must strictly win despite subsequent CLEAR datagram
+        self.assertEqual(pkt.obs_id, 11)
+        self.assertEqual(pkt.state, HSR_CRITICAL)
+
+    def test_hsr_oversized_and_corrupted_dropped(self):
+        oversized = b"X" * 3000
+        corrupted = b'{"obs_id": 1, "distress_permille": "invalid"}'
+        valid = json.dumps({
+            "obs_id": 2,
+            "t_obs_us": 1_000_000,
+            "t_emit_us": 1_001_000,
+            "distress_permille": 0,
+        }).encode("utf-8")
+
+        self._send(oversized)
+        self._send(corrupted)
+        self._send(valid)
+
+        pkt, count = drain_hsr_telemetry(self.recv_sock, t_rx_us=1_002_000)
+        self.assertEqual(count, 3)
+        self.assertIsNotNone(pkt)
+        self.assertEqual(pkt.obs_id, 2)
+
+    def test_hsr_empty_drain_returns_none_without_blocking(self):
+        pkt, count = drain_hsr_telemetry(self.recv_sock, t_rx_us=1_000_000)
+        self.assertIsNone(pkt)
+        self.assertEqual(count, 0)
 
 
 if __name__ == "__main__":
