@@ -1,14 +1,22 @@
 <?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>qerra_msgs</name>
-  <version>1.0.0</version>
-  <description>QERRA-v2 Classical custom ROS 2 action messages</description>
+  <version>2.2.1</version>
+  <description>QERRA-v2 Classical custom ROS 2 action and telemetry interfaces.</description>
   <maintainer email="marunigno@gmail.com">Marussa Metocharaki</maintainer>
- <license>Apache-2.0</license>
+  <license>Apache-2.0</license>
+
   <buildtool_depend>ament_cmake</buildtool_depend>
-<build_depend>rosidl_default_generators</build_depend>
-<exec_depend>rosidl_default_runtime</exec_depend>
-<member_of_group>rosidl_interface_packages</member_of_group>
+
+  <build_depend>rosidl_default_generators</build_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <depend>action_msgs</depend>
+  <depend>service_msgs</depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>
