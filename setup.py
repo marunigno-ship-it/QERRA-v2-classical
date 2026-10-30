@@ -27,6 +27,7 @@ setup(
         "auth",
         "models",
         "utils",
+        "ros2",
     ],
     data_files=[
         (
@@ -45,6 +46,7 @@ setup(
     entry_points={
         "console_scripts": [
             "bridge = ros2_bridge:main",
+            "qerra_gate_node = ros2.qerra_gate_node:main",
         ],
     },
 )
