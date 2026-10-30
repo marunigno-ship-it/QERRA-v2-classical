@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional, Sequence, Tuple
 
-GATE_CORE_VERSION = "0.3"
+GATE_CORE_VERSION = "0.4"
 
 # Reset sources. Only the exact string "operator" is ever accepted (AR-4).
 RESET_SOURCE_OPERATOR = "operator"
@@ -156,6 +156,9 @@ class GateState:
     last_seq: int = -1                             # highest accepted sequence number
     last_cmd: Tuple[int, int] = (0, 0)
     last_session_id: int = -1                      # session ID of highest accepted proposal
+    # Start of the current unbroken run of fresh, valid HSR "CLEAR" readings (C-7).
+    # MONITOR, CRITICAL, invalid, stale or future-stamped HSR resets it to None.
+    hsr_clear_since_us: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -287,6 +290,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
             mode=Mode.TRIPPED, last_tick_us=now, clear_since_us=None,
             held=None, last_seq=state.last_seq, last_cmd=(0, 0),
             last_session_id=state.last_session_id,
+            hsr_clear_since_us=None,
         )
         record = _record(now, new_state.mode, Reason.TRIP_CLOCK_ANOMALY, (), None, None,
                          False, None, None, False, (0, 0), inp=inp)
@@ -298,10 +302,19 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     held, last_seq, last_session_id = state.held, state.last_seq, state.last_session_id
     cand = inp.proposal
     if cand is not None:
+        # F2: the (session_id, seq) ratchet binds only while a LIVE proposal is held. If nothing
+        # fresh is held, a poisoned ratchet (one huge session_id/seq from a faulty sender) would
+        # lock out every legitimate proposer and the gate could never re-arm. A candidate that is
+        # itself fresh then re-bases the ratchet. It still passes through every normal check below
+        # for staleness, trips, dwell and operator reset; it does not lift any latch.
+        held_is_live = held is not None and (now - held.sim_stamp_us) < params.t_watch_us
         if not _validate_proposal(cand):
             events.append(Event.MSG_REJECTED_INVALID)
         elif cand.sim_stamp_us > now:
             events.append(Event.MSG_REJECTED_FUTURE)
+        elif not held_is_live and (now - cand.sim_stamp_us) < params.t_watch_us:
+            # (here cand.sim_stamp_us <= now, so the age is non-negative)
+            held, last_seq, last_session_id = cand, cand.seq, cand.session_id
         elif cand.session_id < last_session_id:
             events.append(Event.MSG_REJECTED_SEQ)
         elif cand.session_id == last_session_id and cand.seq <= last_seq:
@@ -362,6 +375,25 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     elif proposer_stale:
         trip_reason = Reason.TRIP_PROPOSER_STALE
 
+    # 6b. HSR clear-dwell tracking (C-7). Only a fresh, valid "CLEAR" counts; MONITOR does not.
+    #     The run restarts on any non-CLEAR/invalid/stale/future reading and on a tick gap.
+    gap_ok = state.last_tick_us is not None and (now - state.last_tick_us) <= params.max_tick_gap_us
+    hsr_clear_now = (
+        inp.hsr_status == "CLEAR"
+        and hsr_age_us is not None
+        and 0 <= hsr_age_us <= params.t_hsr_stale_us
+    )
+    if not hsr_clear_now:
+        hsr_clear_since = None
+    elif state.hsr_clear_since_us is None or not gap_ok:
+        hsr_clear_since = now
+    else:
+        hsr_clear_since = state.hsr_clear_since_us
+    # Enforced only when HSR is required (legacy / Demo 8 mode has no HSR stream to dwell on).
+    hsr_dwell_ok = (not params.hsr_required) or (
+        hsr_clear_since is not None and now - hsr_clear_since >= params.t_dwell_us
+    )
+
     # 7. mode transitions
     mode = state.mode
     clear_since = state.clear_since_us
@@ -372,11 +404,10 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     elif mode == Mode.RUN:
         reason, cmd = Reason.PASS, clamped
     else:
-        gap_ok = state.last_tick_us is not None and (now - state.last_tick_us) <= params.max_tick_gap_us
         if mode == Mode.TRIPPED:
             if clear_since is None or not gap_ok:
                 clear_since = now
-            if now - clear_since >= params.t_dwell_us:
+            if now - clear_since >= params.t_dwell_us and hsr_dwell_ok:
                 mode = Mode.AWAITING_RESET
         reason = Reason.LATCHED_AWAIT_RESET if mode == Mode.AWAITING_RESET else Reason.LATCHED_DWELL
 
@@ -392,7 +423,11 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         ):
             events.append(Event.RESET_REJECTED_HAZARD)
         elif mode == Mode.AWAITING_RESET:
-            mode, clear_since, reason = Mode.RUN, None, Reason.RESET_ACCEPTED
+            if not hsr_dwell_ok:
+                # C-7: a non-CLEAR blip after AWAITING_RESET restarts the HSR clear dwell.
+                events.append(Event.RESET_REJECTED_NOT_READY)
+            else:
+                mode, clear_since, reason = Mode.RUN, None, Reason.RESET_ACCEPTED
         elif mode == Mode.RUN:
             events.append(Event.RESET_IGNORED_RUN)
         else:
@@ -402,6 +437,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         mode=mode, last_tick_us=now, clear_since_us=clear_since,
         held=held, last_seq=last_seq, last_cmd=cmd,
         last_session_id=last_session_id,
+        hsr_clear_since_us=hsr_clear_since,
     )
     record = _record(now, mode, reason, tuple(events), held, age_us, lidar_ok, min_mm,
                      stop_mm, hazard, cmd, inp=inp, hsr_age_us=hsr_age_us)
