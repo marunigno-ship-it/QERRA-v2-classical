@@ -5,7 +5,7 @@ Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranke
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
-[![Version](https://img.shields.io/badge/version-2.1.3-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![Version](https://img.shields.io/badge/version-2.2.1-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## The Idea in One Sentence
@@ -16,7 +16,7 @@ The setting this is built for: a transport cobot in a hospital corridor yields a
 
 | Layer | Role | Evidence today |
 |-------|------|----------------|
-| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demo 7 (`RUN_1791713619`), 103 unit tests passing, verified offline with `verify_log.py` against anchored head hash `ae37ae62...` with deterministic replay (`--replay`). Limits: Webots R2025a simulation only, Windows non-real-time host, anchor stored in repo. Demo 8 (simulation): fault-injection and reset campaign, see [`docs/demo8/DEMO8_YOUTUBE_TAKE.md`](./docs/demo8/DEMO8_YOUTUBE_TAKE.md) |
+| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | **Packaged as a standalone ROS 2 node (`qerra_gate_node`).** Demonstrated in simulation: Demo 7, 8, and 9. Verified offline with `verify_log.py` against anchored head hashes. Test coverage: 180 unit tests passing (kinematics, fail-closed bounding, sequence ratchets). |
 | **Layer 1B: QERRA-HSR (`hsr/`)** | Advisory 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. Pure Python, Apache-2.0. | Built and unit-tested (20 tests passing). Evaluated in Webots Demo 6 with stabilized 1.0s dwell and Property HSR-5 recovery directives. |
 | **Layer 2: SEMEV-12** | Advisory screening of text task instructions against 12 moral and coercion vectors. MiniLM embeddings with deterministic scoring gates and negation pre-filtering. Not part of the physical safety function. | Built, unit-tested and benchmarked (15 regression cases, 80-case baseline, active adversarial suite). The adversarial benchmark documents known evasion vectors. |
 | **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
@@ -338,32 +338,47 @@ For the active **Adversarial Red-Teaming Benchmark** (stress-testing subtle pate
 
 ## ROS 2 Integration
 
-QERRA-v2 is designed to operate as a **Condition node** in a Behavior Tree —
-an ethical check evaluated before a robot commits to an action involving a human.
+QERRA-v2 Classical ships with native ROS 2 (`ros:jazzy`) packages separating the physical safety execution from the high-level semantic deliberation.
 
+### 1. Physical Supervisory Gate (`qerra_gate_node`)
+
+A standalone, deterministic ROS 2 node wrapping the Layer 1A integer state machine. It is designed to sit directly between untrusted navigation planners (like Nav2) and the robot's base controller.
+
+**Execution:**
+```bash
+ros2 run qerra_core qerra_gate_node
 ```
+
+**Subscribes to:**
+- `/cmd_vel` (`geometry_msgs/msg/Twist`) — Untrusted velocity proposal.
+- `/scan` (`sensor_msgs/msg/LaserScan`) — Forward obstacle ranges.
+- `/gate/reset` (`std_msgs/msg/String`) — Authorized operator reset (payload: `"operator"`).
+
+**Publishes to:**
+- `/cmd_vel_safe` (`geometry_msgs/msg/Twist`) — Sole authority fail-closed commands to the base controller (outputs `0.0` when tripped).
+- `/gate/state` (`std_msgs/msg/String`) — Diagnostic JSON state and decision telemetry.
+
+**Safety Hardening:** Uses unified ROS clock timing (supports `use_sim_time`) to prevent negative-age watchdog faults, and locks lidar beam arrays at startup to prevent silent geometric reconfiguration from damaged sensors.
+
+### 2. Moral Deliberation Action Server (`ros2_bridge.py`)
+
+QERRA-v2 operates as a **Condition node** in a Behavior Tree — an ethical check evaluated before a robot commits to an action involving a human.
+
+```text
 [Sequence]
   ├── [Condition]  QERRA_score < threshold    ← ethical check
   ├── [Action]     ExecuteTask
   └── [Fallback]   RequestHumanReview
 ```
 
-A bridge (`ros2_bridge.py`) is included in the repository. In standalone mode
-(no ROS 2 installed), it runs a direct local evaluation and prints the result.
-
-When `rclpy` and the custom `qerra_msgs` package are present, it becomes a
-ROS 2 **Action Server**:
+A bridge (`ros2_bridge.py`) is included in the repository. When `rclpy` and the custom `qerra_msgs` package are present, it becomes a ROS 2 **Action Server**:
 
 - **Action name:** `/qerra/evaluate`
 - **Action type:** `qerra_msgs/action/QerraEvaluate`
-- Runs on a `MultiThreadedExecutor` with a `ReentrantCallbackGroup`, so a
-  slow evaluation never blocks the rest of the ROS 2 executor.
-- Uses a hybrid strategy: remote API first (strict 800ms timeout), then
-  falls back to a locally pre-loaded model if the network is slow or
-  unavailable.
-  
-See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration
-details and open questions for the robotics community.
+- Runs on a `MultiThreadedExecutor` with a `ReentrantCallbackGroup`.
+- Uses a hybrid strategy: remote API first (strict 800ms timeout), then falls back to a locally pre-loaded model.
+
+See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration details.
 
 ---
 
@@ -585,9 +600,8 @@ python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 -
 
 ## Project Status
 
-**Version:** 2.1.3
-**Engine:** Supervisory Gate `v0.3` (F1-F8 hardened) · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
-
+**Version:** 2.2.1
+**Engine:** Supervisory Gate `v0.4` (Standalone ROS 2 node, C-7 stacked dwell) · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
 All three layers are implemented. The evidence level differs by layer and is stated for each:
 
 - **Layer 1A — Supervisory Gate (`gate/`, Apache-2.0):** Pure Python standard library only. 113 unit tests. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Baseline run `RUN_1791713619` (Gate v0.2) evidenced obstacle trip at 337 mm; standstill at 301 mm. Replayable offline via `verify_log.py --replay`.
