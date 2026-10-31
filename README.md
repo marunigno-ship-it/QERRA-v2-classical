@@ -16,11 +16,10 @@ The setting this is built for: a transport cobot in a hospital corridor yields a
 
 | Layer | Role | Evidence today |
 |-------|------|----------------|
-| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | **Packaged as a standalone ROS 2 node (`qerra_gate_node`).** Demonstrated in simulation: Demo 7, 8, and 9. Verified offline with `verify_log.py` against anchored head hashes. Test coverage: 180 unit tests passing (kinematics, fail-closed bounding, sequence ratchets). |
-| **Layer 1B: QERRA-HSR (`hsr/`)** | Advisory 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. Pure Python, Apache-2.0. | Built and unit-tested (20 tests passing). Evaluated in Webots Demo 6 with stabilized 1.0s dwell and Property HSR-5 recovery directives. |
+| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | **Packaged as a standalone ROS 2 node (`qerra_gate_node`) integrating Layer 1B HSR reflex telemetry.** Demonstrated in simulation: Demo 7, 8, and 9. Verified offline with `verify_log.py` against anchored head hashes. Test coverage: 183 unit tests passing in `tests/` (kinematics, fail-closed bounding, sequence ratchets, UDP reflex integration). |
+| **Layer 1B: QERRA-HSR (`hsr/`)** | Advisory 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. Pure Python, Apache-2.0. | Built and unit-tested (20 tests passing in `hsr/`). Evaluated in Webots Demo 6 and 9 with stabilized 1.0s dwell and Property HSR-5 recovery directives. |
 | **Layer 2: SEMEV-12** | Advisory screening of text task instructions against 12 moral and coercion vectors. MiniLM embeddings with deterministic scoring gates and negation pre-filtering. Not part of the physical safety function. | Built, unit-tested and benchmarked (15 regression cases, 80-case baseline, active adversarial suite). The adversarial benchmark documents known evasion vectors. |
 | **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
-
 **Where to start:**
 - Safety and robotics engineers: [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, and the Demo 7 and Demo 8 sections below.
 - Ethics, human-robot interaction and standards readers: the SEMEV-12 and QERRA-THRIVE sections below, and the two benchmark files.
@@ -317,7 +316,7 @@ values/
 - **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical directive, preventing ambiguous failure states.
 - **Resilience vs. Coercion Nuance:** Distinguishes between active workplace coercion versus a committed professional voluntarily pushing through a demanding environment.
 - **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors ranking candidate actions for human courtesy (quiet "whisper mode" in corridors, lawn/flora protection) with native PyTrees integration.
-- **Test-Verified (142 Total Tests Passing in CI):** 127 pure standard-library unit tests (103 Supervisory Gate, 20 QERRA-HSR, 4 License Boundary Guard) plus 15 SEMEV-12 benchmark regression cases executing cleanly in automated CI.
+- **Test-Verified (203 Total Tests Passing):** 183 pure unit and integration tests in `tests/` (Supervisory Gate core, ROS 2 node, HsrReceiver, kinematics, license boundary, and SEMEV-12 regression cases) plus 20 QERRA-HSR reflex tests in `hsr/` executing cleanly in automated CI.
 ---
 
 ## Calibrated Benchmarks
@@ -342,7 +341,7 @@ QERRA-v2 Classical ships with native ROS 2 (`ros:jazzy`) packages separating the
 
 ### 1. Physical Supervisory Gate (`qerra_gate_node`)
 
-A standalone, deterministic ROS 2 node wrapping the Layer 1A integer state machine. It is designed to sit directly between untrusted navigation planners (like Nav2) and the robot's base controller.
+A standalone, deterministic ROS 2 node wrapping the pure Gate Core (`v0.4`). It holds exclusive write authority over `/cmd_vel_safe`, enforcing both the physical obstacle stopping envelope (Layer 1A) and the human distress reflex (Layer 1B) directly ahead of the base controller.
 
 **Execution:**
 ```bash
@@ -350,15 +349,31 @@ ros2 run qerra_core qerra_gate_node
 ```
 
 **Subscribes to:**
-- `/cmd_vel` (`geometry_msgs/msg/Twist`) — Untrusted velocity proposal.
-- `/scan` (`sensor_msgs/msg/LaserScan`) — Forward obstacle ranges.
-- `/gate/reset` (`std_msgs/msg/String`) — Authorized operator reset (payload: `"operator"`).
+- `/cmd_vel` (`geometry_msgs/msg/Twist`) — Untrusted velocity proposals from navigation planners.
+- `/scan` (`sensor_msgs/msg/LaserScan`) — Forward obstacle ranges from Hokuyo URG-04LX.
+- `/gate/reset` (`std_msgs/msg/String`) — Authorized operator reset command (payload: `"operator"`).
 
 **Publishes to:**
-- `/cmd_vel_safe` (`geometry_msgs/msg/Twist`) — Sole authority fail-closed commands to the base controller (outputs `0.0` when tripped).
-- `/gate/state` (`std_msgs/msg/String`) — Diagnostic JSON state and decision telemetry.
+- `/cmd_vel_safe` (`geometry_msgs/msg/Twist`) — Clamped, fail-closed velocity command to the base controller (outputs `0.0` when tripped).
+- `/gate/state` (`std_msgs/msg/String`) — Diagnostic JSON state record: mode, trip reason, stopping envelope $d_{stop}$, minimum clearance, and HSR stream metrics.
 
-**Safety Hardening:** Uses unified ROS clock timing (supports `use_sim_time`) to prevent negative-age watchdog faults, and locks lidar beam arrays at startup to prevent silent geometric reconfiguration from damaged sensors.
+**Asynchronous UDP Telemetry Channels:**
+- **HSR Distress Ingestion (Port 5008):** Ingests non-blocking `HSRTelemetryPacket` datagrams via `HsrReceiver`. Applies worst-severity batch reduction per 32 ms tick and trips immediately on acute distress (`TRIP_HSR_CRITICAL`) or stale heartbeats (`TRIP_HSR_STALE` after 96 ms).
+- **Simulation Time Echo (Port 5007):** Transmits current ROS timestamp via `gate_link.send_state()` so independent synthetic perception producers (`synthetic_hsr_producer.py`) synchronize observation clocks without drift.
+
+**Key Node Parameters:**
+- `rate_hz` (double, default: `31.25`) — Gate evaluation frequency (32 ms control cycle).
+- `hsr_source` (string, default: `"udp"`) — Reflex telemetry source: `"udp"` for active monitoring, or `"none"` for explicit obstacle-only mode.
+- `hsr_required` (bool, default: `True`) — Fail-closed enforcement: trips if HSR telemetry is absent or stale.
+- `hsr_port` (int, default: `5008`) — UDP port for HSR datagrams.
+- `state_port` (int, default: `5007`) — UDP port for simulation clock echo.
+- `lidar_n_expected` (int, default: `682`) — Fixed forward scan beam count.
+
+**Fail-Closed Safety Hardening:**
+- **Sensor geometry guard:** Rejects mismatched lidar beam counts immediately, discarding corrupted scans to trip `TRIP_SENSOR_INVALID` rather than crashing the subscription callback.
+- **Configuration guard:** Refuses startup with `ValueError` if `hsr_source="none"` and `hsr_required=True` are set simultaneously.
+- **Quiescent re-arm tick:** On authorized operator reset (`RESET_ACCEPTED`), wheel commands are held at zero for that cycle; physical motion only resumes on the subsequent `RUN` cycle (`Reason.PASS`).
+- **Unified clock domain:** Uses `self.get_clock().now()` exclusively, matching `/scan` headers and supporting simulation time (`use_sim_time`).
 
 ### 2. Moral Deliberation Action Server (`ros2_bridge.py`)
 
@@ -604,7 +619,7 @@ python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 -
 **Engine:** Supervisory Gate `v0.4` (Standalone ROS 2 node, C-7 stacked dwell) · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
 All three layers are implemented. The evidence level differs by layer and is stated for each:
 
-- **Layer 1A — Supervisory Gate (`gate/`, Apache-2.0):** Pure Python standard library only. 113 unit tests. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Baseline run `RUN_1791713619` (Gate v0.2) evidenced obstacle trip at 337 mm; standstill at 301 mm. Replayable offline via `verify_log.py --replay`.
+- **Layer 1A — Supervisory Gate (`gate/`, Apache-2.0):** Pure Python standard library only. 183 unit and integration tests in `tests/` covering kinematics, stopping envelopes, HsrReceiver, and standalone ROS 2 node translators. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Replayable offline via `verify_log.py --replay`.
 - **Layer 1 — QERRA-HSR (`hsr/`, Apache-2.0):** Implemented and unit-tested. Pure Python standard library only. Activation thresholds are design estimates and have not been calibrated against physical sensor streams. Human-in-the-Loop recovery directives are implemented.
 - **Layer 2 — Moral Gate (SEMEV-12 v1.9.2, Apache-2.0):** Advisory, not part of the safety function. All 12 ethical vectors implemented and scoring. The 80-case baseline is documented in `SEMEV-12_Benchmark_Run_01.md`. The adversarial red-teaming suite in `SEMEV-12_Adversarial_Benchmark_Run_01.md` documents known bypasses and false positives.
 - **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0, Apache-2.0):** Advisory. 12 value vectors across the human-centered and ecological suites, with bounded look-back negation guards. Not yet evaluated with human participants.
