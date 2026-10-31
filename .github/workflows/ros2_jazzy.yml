@@ -1,0 +1,73 @@
+name: ROS 2 Jazzy Validation
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  ros2-jazzy-build-and-test:
+    name: Build & Verify under native ROS 2 Jazzy
+    runs-on: ubuntu-latest
+    container:
+      image: ros:jazzy
+
+    steps:
+      - name: Checkout repository into workspace
+        uses: actions/checkout@v4
+        with:
+          path: ros2_ws/src/qerra_core
+
+      - name: Install build tools and message dependencies
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y python3-colcon-common-extensions python3-pip
+          rosdep update
+          cd ros2_ws
+          rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy
+
+      - name: Build qerra_core with colcon
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          cd ros2_ws
+          colcon build --packages-select qerra_core
+
+      - name: Verify ROS 2 package and executable discovery
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          ros2 pkg executables qerra_core
+
+      - name: Verify real rclpy node initialization and lifecycle
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          cd ros2_ws/src/qerra_core
+          python3 -c "
+          import rclpy
+          from ros2.qerra_gate_node import QerraGateNode
+
+          rclpy.init()
+          node = QerraGateNode()
+          print(f'[CI-TEST] Successfully instantiated {node.get_name()} under real rclpy!')
+          assert node._lidar_n_expected == 682
+          assert node._hsr_required is True
+          assert node._hsr_source == 'udp'
+          assert node._hsr_port == 5008
+          node.destroy_node()
+          rclpy.shutdown()
+          print('[CI-TEST] Node lifecycle destroyed cleanly fail-closed.')
+          "
+
+      - name: Run ROS 2 gate node unit and wiring tests in Jazzy
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          cd ros2_ws/src/qerra_core
+          python3 -m unittest tests/test_gate_ros2_node.py
+          python3 -m unittest tests/test_gate_ros2_node_wiring.py
