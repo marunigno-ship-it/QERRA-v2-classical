@@ -43,19 +43,62 @@ jobs:
           echo "$EXEC_LIST"
           echo "$EXEC_LIST" | grep -q "qerra_gate_node"
 
-      - name: Verify installed executable starts from a neutral directory
+      - name: Verify installed executable starts, ticks without exception, and publishes gate state
         shell: bash
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
           PREFIX="$(ros2 pkg prefix qerra_core)"
           cd /tmp
+
           set +e
-          timeout -s INT 5 "$PREFIX/lib/qerra_core/qerra_gate_node"
-          CODE=$?
-          set -e
-          echo "[CI-TEST] installed executable exit code: $CODE (124 = still running when stopped)"
-          test "$CODE" -eq 124
+          # Run node in background with unbuffered output captured to log
+          PYTHONUNBUFFERED=1 "$PREFIX/lib/qerra_core/qerra_gate_node" > /tmp/qerra_gate_node.log 2>&1 &
+          NODE_PID=$!
+
+          # Capture exactly one message from /gate/state (timeout after 10s)
+          timeout 10 ros2 topic echo --once /gate/state > /tmp/gate_state_msg.txt
+          ECHO_CODE=$?
+
+          # Signal node to stop via SIGINT
+          kill -INT "$NODE_PID" 2>/dev/null || true
+          for i in $(seq 1 50); do
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          if kill -0 "$NODE_PID" 2>/dev/null; then
+            echo "[CI-TEST] WARNING: Node did not terminate after SIGINT within 5s; sending SIGKILL"
+            kill -KILL "$NODE_PID" 2>/dev/null || true
+          fi
+          wait "$NODE_PID" 2>/dev/null
+          NODE_EXIT=$?
+
+          # Always display logs for diagnostic verification in CI output
+          echo "=== [CI-TEST] /tmp/qerra_gate_node.log ==="
+          cat /tmp/qerra_gate_node.log
+          echo "=== [CI-TEST] /tmp/gate_state_msg.txt ==="
+          cat /tmp/gate_state_msg.txt
+          echo "[CI-TEST] Node exit code: $NODE_EXIT, Topic echo exit code: $ECHO_CODE"
+
+          # 1. Topic echo must succeed
+          if [ "$ECHO_CODE" -ne 0 ]; then
+            echo "[CI-TEST] FAILURE: Failed to capture /gate/state message within 10s (exit code $ECHO_CODE)"
+            exit 1
+          fi
+
+          # 2. Gate state message must be non-empty
+          if [ ! -s /tmp/gate_state_msg.txt ]; then
+            echo "[CI-TEST] FAILURE: /tmp/gate_state_msg.txt is empty"
+            exit 1
+          fi
+
+          # 3. No tick exceptions may be logged
+          if grep -q "Tick exception" /tmp/qerra_gate_node.log; then
+            echo "[CI-TEST] FAILURE: Node logged tick exception(s)!"
+            exit 1
+          fi
 
       - name: Verify real rclpy node initialization and lifecycle
         shell: bash
