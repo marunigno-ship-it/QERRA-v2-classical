@@ -39,7 +39,23 @@ jobs:
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
-          ros2 pkg executables qerra_core
+          EXEC_LIST="$(ros2 pkg executables qerra_core)"
+          echo "$EXEC_LIST"
+          echo "$EXEC_LIST" | grep -q "qerra_gate_node"
+
+      - name: Verify installed executable starts from a neutral directory
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          PREFIX="$(ros2 pkg prefix qerra_core)"
+          cd /tmp
+          set +e
+          timeout -s INT 5 "$PREFIX/lib/qerra_core/qerra_gate_node"
+          CODE=$?
+          set -e
+          echo "[CI-TEST] installed executable exit code: $CODE (124 = still running when stopped)"
+          test "$CODE" -eq 124
 
       - name: Verify real rclpy node initialization and lifecycle
         shell: bash
