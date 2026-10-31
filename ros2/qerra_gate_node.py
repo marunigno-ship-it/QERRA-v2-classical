@@ -3,8 +3,8 @@
 """QERRA ROS 2 supervisory gate node.
 
 Provides standard ROS 2 node wrapping around the deterministic gate_core.py v0.4
-engine, alongside pure-Python kinematic and sensor translators that execute
-independently on hosts without ROS 2 installed.
+engine, alongside pure-Python kinematic, lidar, and HSR reflex translators that
+execute independently on hosts without ROS 2 installed.
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import json
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from gate.gate_config import get_live_gate_params
 from gate.gate_core import (
     GATE_CORE_VERSION,
     GateInputs,
@@ -24,7 +25,10 @@ from gate.gate_core import (
     initial_state,
     step,
 )
+from gate.gate_ipc import DEFAULT_HSR_PORT
 from gate.gate_lidar import CorridorFilter, LidarPipeline
+from gate.gate_link import DEFAULT_STATE_PORT, create_state_sender, send_state
+from ros2.hsr_receiver import HsrReceiver
 
 NODE_VERSION = "0.3.0"
 
@@ -168,7 +172,15 @@ def process_laser_scan(
     return pipeline.process(ranges, stamp_us, stalled=stalled)
 
 
-def format_gate_state_json(state: GateState, result_record: Dict[str, Any]) -> str:
+def format_gate_state_json(
+    state: GateState,
+    result_record: Dict[str, Any],
+    *,
+    hsr_source: str = "none",
+    hsr_required: bool = False,
+    hsr_drained: int = 0,
+    hsr_error: Optional[str] = None,
+) -> str:
     """Formats gate decision and state metrics into a clean JSON string."""
     payload = {
         "node_version": NODE_VERSION,
@@ -178,6 +190,10 @@ def format_gate_state_json(state: GateState, result_record: Dict[str, Any]) -> s
         "d_stop_mm": result_record.get("d_stop_mm"),
         "lidar_min_mm": result_record.get("lidar_min_mm"),
         "hsr_status": result_record.get("hsr_status"),
+        "hsr_source": hsr_source,
+        "hsr_required": hsr_required,
+        "hsr_drained_total": hsr_drained,
+        "hsr_socket_error": hsr_error,
         "proposal_seq": result_record.get("proposal_seq"),
         "proposal_age_us": result_record.get("proposal_age_us"),
         "cmd_left_urad_s": result_record.get("cmd_left_urad_s"),
@@ -218,18 +234,31 @@ if ROS2_AVAILABLE:
             self.declare_parameter("robot_half_width_m", DEFAULT_ROBOT_HALF_WIDTH_M)
             self.declare_parameter("lidar_n_expected", DEFAULT_LIDAR_N_EXPECTED)
             self.declare_parameter("lidar_fov_rad", DEFAULT_LIDAR_FOV_RAD)
-            self.declare_parameter("hsr_required", False)
+            self.declare_parameter("hsr_source", "udp")
+            self.declare_parameter("hsr_port", DEFAULT_HSR_PORT)
+            self.declare_parameter("hsr_required", True)
+            self.declare_parameter("state_port", DEFAULT_STATE_PORT)
 
             self._track_width_m = float(self.get_parameter("track_width_m").value)
             self._wheel_radius_m = float(self.get_parameter("wheel_radius_m").value)
             self._half_width_m = float(self.get_parameter("robot_half_width_m").value)
             self._lidar_n_expected = int(self.get_parameter("lidar_n_expected").value)
             self._lidar_fov_rad = float(self.get_parameter("lidar_fov_rad").value)
+            self._hsr_source = str(self.get_parameter("hsr_source").value).strip().lower()
+            self._hsr_port = int(self.get_parameter("hsr_port").value)
             self._hsr_required = bool(self.get_parameter("hsr_required").value)
+            self._state_port = int(self.get_parameter("state_port").value)
 
-            # Node runtime state holds (AR-3: GateParams instantiated at startup)
+            # Configuration guard: cannot require HSR if no source is active
+            if self._hsr_source == "none" and self._hsr_required:
+                raise ValueError(
+                    "Invalid configuration: hsr_required=True cannot be used with hsr_source='none'. "
+                    "Set hsr_required=False for explicit obstacle-only mode."
+                )
+
+            # Node runtime state holds (AR-3: live gate parameters instantiated at startup)
             self._state = initial_state()
-            self._params = GateParams(
+            self._params = get_live_gate_params(
                 lidar_n_expected=self._lidar_n_expected,
                 wheel_radius_mm=int(round(self._wheel_radius_m * 1000)),
                 hsr_required=self._hsr_required,
@@ -239,6 +268,15 @@ if ROS2_AVAILABLE:
                 fov_rad=self._lidar_fov_rad,
                 half_width_m=self._half_width_m,
             )
+
+            # Asynchronous HSR reflex telemetry receiver
+            self._hsr_receiver = HsrReceiver(
+                port=self._hsr_port,
+                enabled=(self._hsr_source == "udp"),
+            )
+
+            # UDP simulation clock sender to drive synthetic producers
+            self._state_sock = create_state_sender()
 
             self._latest_proposal: Optional[Proposal] = None
             self._proposal_seq = 0
@@ -273,7 +311,8 @@ if ROS2_AVAILABLE:
             self.get_logger().info(
                 f"QERRA Supervisory Gate Node v{NODE_VERSION} initialized. "
                 f"Tick period: {timer_period_s * 1000:.1f} ms | "
-                f"Lidar: {self._lidar_n_expected} beams, FOV={math.degrees(self._lidar_fov_rad):.1f}°"
+                f"Lidar: {self._lidar_n_expected} beams | "
+                f"HSR: source={self._hsr_source}, port={self._hsr_port}, required={self._hsr_required}"
             )
 
         def _get_ros_time_us(self) -> int:
@@ -302,21 +341,32 @@ if ROS2_AVAILABLE:
                 self._latest_proposal = None
 
         def _scan_callback(self, msg: LaserScan) -> None:
-            """Ingests laser scan using fixed parameter geometry."""
+            """Ingests laser scan using fixed parameter geometry (Fail-Closed on Mismatch)."""
             if len(msg.ranges) != self._lidar_n_expected:
                 self.get_logger().warn(
-                    f"Scan beam mismatch: expected {self._lidar_n_expected}, got {len(msg.ranges)}. Tripping."
+                    f"Scan beam mismatch: expected {self._lidar_n_expected}, "
+                    f"got {len(msg.ranges)}. Discarding scan to fail closed."
                 )
+                self._latest_ranges = None
+                self._lidar_stamp_us = None
+                self._raw_valid_points = None
+                return
 
-            filtered, stamp_us, valid_pts = process_laser_scan(
-                ranges=msg.ranges,
-                stamp_sec=msg.header.stamp.sec,
-                stamp_nanosec=msg.header.stamp.nanosec,
-                pipeline=self._lidar_pipeline,
-            )
-            self._latest_ranges = filtered
-            self._lidar_stamp_us = stamp_us
-            self._raw_valid_points = valid_pts
+            try:
+                filtered, stamp_us, valid_pts = process_laser_scan(
+                    ranges=msg.ranges,
+                    stamp_sec=msg.header.stamp.sec,
+                    stamp_nanosec=msg.header.stamp.nanosec,
+                    pipeline=self._lidar_pipeline,
+                )
+                self._latest_ranges = filtered
+                self._lidar_stamp_us = stamp_us
+                self._raw_valid_points = valid_pts
+            except Exception as exc:
+                self.get_logger().error(f"Scan processing exception: {exc}. Discarding scan.")
+                self._latest_ranges = None
+                self._lidar_stamp_us = None
+                self._raw_valid_points = None
 
         def _reset_callback(self, msg: String) -> None:
             """Accepts operator reset trigger."""
@@ -329,6 +379,12 @@ if ROS2_AVAILABLE:
                 now_us = self._get_ros_time_us()
                 reset_source = RESET_SOURCE_OPERATOR if self._reset_requested else None
                 self._reset_requested = False
+
+                # Echo clock to synthetic producer on port 5007
+                send_state(self._state_sock, now_us, port=self._state_port)
+
+                # Poll HSR reflex telemetry stream
+                self._hsr_status, self._hsr_stamp_us = self._hsr_receiver.poll(now_us)
 
                 inputs = GateInputs(
                     sim_time_us=now_us,
@@ -357,9 +413,16 @@ if ROS2_AVAILABLE:
                 safe_twist.angular.z = safe_angular_z
                 self._pub_cmd_safe.publish(safe_twist)
 
-                # Publish diagnostic state telemetry
+                # Publish diagnostic state telemetry (including HSR status and diagnostics)
                 state_msg = String()
-                state_msg.data = format_gate_state_json(self._state, result.record)
+                state_msg.data = format_gate_state_json(
+                    self._state,
+                    result.record,
+                    hsr_source=self._hsr_source,
+                    hsr_required=self._hsr_required,
+                    hsr_drained=self._hsr_receiver.packets_drained_total,
+                    hsr_error=self._hsr_receiver.socket_error,
+                )
                 self._pub_state.publish(state_msg)
 
             except Exception as exc:
@@ -367,6 +430,18 @@ if ROS2_AVAILABLE:
                 self.get_logger().error(f"Tick exception (holding 0.0 m/s fail-closed): {exc}")
                 zero_twist = Twist()
                 self._pub_cmd_safe.publish(zero_twist)
+
+        def destroy_node(self) -> bool:
+            """Releases HSR receiver and state sockets, cleaning up resources."""
+            if hasattr(self, "_hsr_receiver"):
+                self._hsr_receiver.close()
+            if hasattr(self, "_state_sock") and self._state_sock is not None:
+                try:
+                    self._state_sock.close()
+                except OSError:
+                    pass
+                self._state_sock = None
+            return super().destroy_node()
 
 
 def main(args=None) -> None:
