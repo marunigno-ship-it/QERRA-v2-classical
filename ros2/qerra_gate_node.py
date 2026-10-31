@@ -43,6 +43,7 @@ DEFAULT_LIDAR_FOV_RAD: float = 4.1887902    # 240 degrees in radians
 
 try:
     import rclpy
+    from rclpy.executors import ExternalShutdownException
     from rclpy.node import Node
     from geometry_msgs.msg import Twist
     from sensor_msgs.msg import LaserScan
@@ -52,6 +53,7 @@ try:
     ROS2_IMPORT_ERROR = None
 except ImportError as exc:
     rclpy = None
+    ExternalShutdownException = Exception
     Node = object  # Fallback base class for linting on non-ROS hosts
     Twist = None
     LaserScan = None
@@ -172,6 +174,38 @@ def process_laser_scan(
     return pipeline.process(ranges, stamp_us, stalled=stalled)
 
 
+# ----------------------------------------------------------------------------
+# Pure Fault Latch (Zero ROS 2 Dependencies)
+# ----------------------------------------------------------------------------
+class NodeFaultLatch:
+    """
+    Pure-Python fault latch enforcing fail-closed persistence across control ticks.
+
+    Once an unhandled exception or critical runtime fault trips the latch, it remains
+    latched for the remaining lifetime of the process. All subsequent control cycles
+    are forced fail-closed (0.0 wheel commands) and publish diagnostic FAULT telemetry.
+    """
+
+    def __init__(self) -> None:
+        self._latched: bool = False
+        self._fault_reason: Optional[str] = None
+
+    @property
+    def is_latched(self) -> bool:
+        return self._latched
+
+    @property
+    def fault_reason(self) -> Optional[str]:
+        return self._fault_reason
+
+    def trip(self, reason: Any) -> None:
+        """Latches the fault fail-closed. Retains the initial root-cause reason."""
+        if not self._latched:
+            self._latched = True
+            msg = str(reason).strip()
+            self._fault_reason = msg if msg else "Unknown node fault"
+
+
 def format_gate_state_json(
     state: GateState,
     result_record: Dict[str, Any],
@@ -180,13 +214,24 @@ def format_gate_state_json(
     hsr_required: bool = False,
     hsr_drained: int = 0,
     hsr_error: Optional[str] = None,
+    fault_latched: bool = False,
+    fault_reason: Optional[str] = None,
 ) -> str:
     """Formats gate decision and state metrics into a clean JSON string."""
+    mode_str = "FAULT" if fault_latched else state.mode.value
+    reason_str = (
+        f"NODE_FAULT_LATCHED: {fault_reason}"
+        if fault_latched
+        else result_record.get("reason")
+    )
+    left_urad = 0 if fault_latched else result_record.get("cmd_left_urad_s")
+    right_urad = 0 if fault_latched else result_record.get("cmd_right_urad_s")
+
     payload = {
         "node_version": NODE_VERSION,
         "gate_version": GATE_CORE_VERSION,
-        "mode": state.mode.value,
-        "reason": result_record.get("reason"),
+        "mode": mode_str,
+        "reason": reason_str,
         "d_stop_mm": result_record.get("d_stop_mm"),
         "lidar_min_mm": result_record.get("lidar_min_mm"),
         "hsr_status": result_record.get("hsr_status"),
@@ -194,10 +239,12 @@ def format_gate_state_json(
         "hsr_required": hsr_required,
         "hsr_drained_total": hsr_drained,
         "hsr_socket_error": hsr_error,
+        "fault_latched": fault_latched,
+        "fault_reason": fault_reason,
         "proposal_seq": result_record.get("proposal_seq"),
         "proposal_age_us": result_record.get("proposal_age_us"),
-        "cmd_left_urad_s": result_record.get("cmd_left_urad_s"),
-        "cmd_right_urad_s": result_record.get("cmd_right_urad_s"),
+        "cmd_left_urad_s": left_urad,
+        "cmd_right_urad_s": right_urad,
     }
     return json.dumps(payload, separators=(",", ":"))
 
@@ -268,6 +315,9 @@ if ROS2_AVAILABLE:
                 fov_rad=self._lidar_fov_rad,
                 half_width_m=self._half_width_m,
             )
+
+            # Persistent node-level fault latch
+            self._fault_latch = NodeFaultLatch()
 
             # Asynchronous HSR reflex telemetry receiver
             self._hsr_receiver = HsrReceiver(
@@ -373,8 +423,33 @@ if ROS2_AVAILABLE:
             if msg.data.strip().lower() == RESET_SOURCE_OPERATOR:
                 self._reset_requested = True
 
+        def _publish_fault_state(self) -> None:
+            """Publishes /gate/state telemetry indicating persistent latched fault."""
+            try:
+                state_msg = String()
+                state_msg.data = format_gate_state_json(
+                    self._state,
+                    {"reason": f"NODE_FAULT_LATCHED: {self._fault_latch.fault_reason}"},
+                    hsr_source=self._hsr_source,
+                    hsr_required=self._hsr_required,
+                    hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
+                    hsr_error=getattr(self._hsr_receiver, "socket_error", None),
+                    fault_latched=True,
+                    fault_reason=self._fault_latch.fault_reason,
+                )
+                self._pub_state.publish(state_msg)
+            except Exception:
+                pass
+
         def _tick_callback(self) -> None:
             """Deterministic Gate evaluation tick (Fail-Closed Guarantees)."""
+            # Node fault latch: if previously tripped, remain fail-closed permanently
+            if self._fault_latch.is_latched:
+                zero_twist = Twist()
+                self._pub_cmd_safe.publish(zero_twist)
+                self._publish_fault_state()
+                return
+
             try:
                 now_us = self._get_ros_time_us()
                 reset_source = RESET_SOURCE_OPERATOR if self._reset_requested else None
@@ -422,14 +497,20 @@ if ROS2_AVAILABLE:
                     hsr_required=self._hsr_required,
                     hsr_drained=self._hsr_receiver.packets_drained_total,
                     hsr_error=self._hsr_receiver.socket_error,
+                    fault_latched=False,
+                    fault_reason=None,
                 )
                 self._pub_state.publish(state_msg)
 
             except Exception as exc:
-                # Fail-closed zeroing on any unhandled tick exception
-                self.get_logger().error(f"Tick exception (holding 0.0 m/s fail-closed): {exc}")
+                # Trip persistent node-level fault latch fail-closed
+                self._fault_latch.trip(exc)
+                self.get_logger().error(
+                    f"Tick exception: latching permanent node fault (holding 0.0 m/s fail-closed): {exc}"
+                )
                 zero_twist = Twist()
                 self._pub_cmd_safe.publish(zero_twist)
+                self._publish_fault_state()
 
         def destroy_node(self) -> bool:
             """Releases HSR receiver and state sockets, cleaning up resources."""
@@ -451,18 +532,12 @@ def main(args=None) -> None:
     node = QerraGateNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        # Emergency fail-closed zero command on shutdown
-        try:
-            if rclpy.ok():
-                zero_twist = Twist()
-                node._pub_cmd_safe.publish(zero_twist)
-        except Exception:
-            pass
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
