@@ -5,8 +5,8 @@
 
 | | |
 |---|---|
-| Document version | 0.7 (ROS 2 Standalone Gate Node Integration & Clock/Sensor Hardening) |
-| Date | 2026-10-30 |
+| Document version | 0.8 (ROS 2 HSR Reflex Telemetry Integration & Fail-Closed Guard Hardening) |
+| Date | 2026-10-31 |
 | Author | Marussa Metocharaki |
 | System under demonstration | QERRA Supervisory Gate & QERRA-HSR Reflex Companion, simulated PAL Robotics TIAGo in Webots R2025a, Windows 11 |
 | Status vocabulary | **SPECIFIED** (written, nothing built) → **IMPLEMENTED** (code exists, unit-tested) → **VERIFIED** (evidenced by live simulation run ID + anchored head hash) |
@@ -102,6 +102,7 @@ Informative references (names only; clause numbers omitted until checked against
   - In `Mode.AWAITING_RESET`, an operator reset is strictly rejected (`RESET_REJECTED_HAZARD`) unless HSR status is strictly `CLEAR`.
   - With `hsr_required=True`, the Gate requires its own $T_{dwell}$ of continuous fresh HSR `CLEAR` before entering `AWAITING_RESET` and before accepting a reset (`RESET_REJECTED_NOT_READY` otherwise), regardless of upstream stabilization (C-7b).
 - **AR-11** Actuator Clamping Independence: `zero_wheels(left, right)` executes motor velocity clamping in separate isolated exception blocks to prevent asymmetric runaway if one actuator driver faults.
+- **AR-12** ROS 2 Supervisory Gate Shell: `QerraGateNode` enforces sole write authority over `/cmd_vel_safe`. It discards mismatched lidar scans to fail closed (`TRIP_SENSOR_INVALID`), rejects contradictory HSR configurations at startup (`ValueError`), holds quiescent 0.0 m/s wheel commands on `RESET_ACCEPTED`, and ingests asynchronous reflex telemetry non-blocking via `HsrReceiver` (UDP port 5008).
 
 ---
 
@@ -150,3 +151,4 @@ Every evaluation writes one canonical JSON line to `results/<run_id>/gate_audit.
 | 0.5 | 2026-10-27 | Integrated Layer 1B QERRA-HSR reflex companion under Demo 9 (`DEMO9_SCENARIO_B_FINAL`, 438 cycles, Head Seal `eccb0d85...`). Added Claim C-2e (Distress reflex stop $\le 32\text{ ms}$) and Claim C-7 (Dual-dwell stabilization against chattering). Hardened Claim C-6 recovery contract to strictly reject reset in `AWAITING_RESET` when HSR is non-clear (`MONITOR`/`CRITICAL`). Documented independent actuator clamping (AR-11, C-5), host scheduling jitter diagnostics, active `hsr_status` and `hsr_age_us` log fields, and bumped Gate unit tests to 113. |
 | 0.6 | 2026-10-29 | Gate/HSR boundary review of 2026-10-28 (findings F1 dwell, F2 ratchet; numbering distinct from the v0.3 findings F1-F8). Split Claim C-7 into C-7a (VERIFIED, direct `CRITICAL` to `CLEAR` path, Demo 9) and C-7b (IMPLEMENTED, Gate-level continuous HSR `CLEAR` dwell via `hsr_clear_since_us`; closes the defect where the Gate counted `MONITOR` as calm and accepted reset on a single `CLEAR` tick; about $1.0\text{ s}$ added availability cost on the `MONITOR` path; not live-verified). Added Claim C-8 (ratchet re-basing, IMPLEMENTED) with explicit non-claim: unauthenticated localhost UDP, hostile local sender not defended against. Amended C-6, AR-6, AR-10, parameters and audit-log notes. Gate core bumped to v0.4. Gate unit tests: 130 (`test_gate_*.py`: 115 existing + 8 C-7b + 7 C-8), plus 3 actuator tests. Demo 9 log (438 cycles) replays bit-for-bit through v0.4. |
 | 0.7 | 2026-10-30 | **ROS 2 Integration & Clock Hardening:** Packaged Gate v0.4 into a standalone ROS 2 Jazzy node (`qerra_gate_node`). Addressed two safety hazards identified in node review: (1) Unified clock domain (`use_sim_time` compatible) to prevent negative-age watchdog faults caused by mixing OS wall time and ROS message epochs. (2) Replaced dynamic `GateParams` auto-configuration with fixed startup parameters (`lidar_n_expected=682`, `lidar_fov_rad=240°`) to prevent silent geometric reconfiguration from a damaged sensor array, restoring strict length-integrity validation (fail-closed `TRIP_SENSOR_INVALID`). |
+| 0.8 | 2026-10-31 | **ROS 2 Layer 1B Telemetry & Fail-Closed Hardening:** Wired `HsrReceiver` into `qerra_gate_node` via UDP port 5008 (worst-severity batch reduction per 32 ms tick). Added simulation clock echo on UDP port 5007 (`gate_link.send_state()`) to sync external perception producers (`synthetic_hsr_producer.py`). Enforced fail-closed scan discard on beam count mismatch to prevent subscriber callback termination. Added startup configuration guard rejecting `hsr_source="none"` when `hsr_required=True`. Verified quiescent re-arm tick holding 0.0 m/s on `RESET_ACCEPTED`. |
