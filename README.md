@@ -57,7 +57,7 @@ All safety decisions are deterministic, inspectable, and auditable. Every result
 - **Permissive Robotics Architecture:** Permissive for chassis-local ROS 2 integration, academic research, and commercial robotics adoption.
 - **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are timestamped and permanently archived on Zenodo.
 
-  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23559804 
+  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23836773
   **ORCID:** https://orcid.org/0009-0009-4100-9881
   
 ## Quickstart
