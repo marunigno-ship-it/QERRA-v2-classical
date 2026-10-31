@@ -3,6 +3,23 @@
 All changes are additive. SEMEV-12 vectors are maintained as a stable core
 across versions.
 
+## [2.3.1] - 2026-10-31 — ROS 2 Gate Node QERRA-HSR Reflex Telemetry Integration
+
+### Added
+- **Asynchronous HSR Telemetry Ingestion (`ros2/hsr_receiver.py`):** Created pure-Python, zero-`rclpy` UDP receiver on port 5008 with worst-severity batch reduction per 32 ms tick matching Webots controller parity.
+- **Simulation Clock Echo (`gate_link.py`, `ros2/qerra_gate_node.py`):** Added non-blocking transmission of current ROS time on UDP port 5007 (`send_state()`), enabling external perception stress-testing scripts (`synthetic_hsr_producer.py`) to synchronize observation timestamps without drift.
+- **Layer 1B Unit & Integration Tests (`tests/test_gate_ros2_node.py`):** Added 3 unit tests (11 tests total) verifying disabled receiver returns, UDP acute distress (`CRITICAL`) tripping to 0.0 m/s fail-closed, and `hsr_required` stale/missing heartbeat tripping. All 203 project tests pass green.
+
+### Fixed
+- **Lidar Beam Mismatch Fail-Closed Guard (`ros2/qerra_gate_node.py`):** Scans with beam counts mismatching `lidar_n_expected` (682) are immediately discarded to trip `TRIP_SENSOR_INVALID` on the next tick, preventing unhandled exceptions from terminating the subscription callback.
+- **Configuration Contradiction Guard (`ros2/qerra_gate_node.py`):** Added startup validation rejecting `hsr_source="none"` when `hsr_required=True` is set, failing loudly with `ValueError`.
+- **Quiescent Re-arm Verification:** Verified that `gate_core.step()` holds wheel velocity at 0.0 m/s on the `RESET_ACCEPTED` tick, resuming commanded motion on the subsequent `RUN` tick (`Reason.PASS`).
+
+### Changed
+- **Webots Reaction Parity:** Switched node parameter construction to `gate_config.get_live_gate_params` to enforce the 32 ms reaction time envelope ($t_{react} = 32\,000\ \mu\text{s}$).
+
+---
+
 ## [2.2.1] - 2026-10-27 — Supervisory Gate & Actuator Hardening, Demo 9 Cryptographic Anchor
 
 ### Fixed
