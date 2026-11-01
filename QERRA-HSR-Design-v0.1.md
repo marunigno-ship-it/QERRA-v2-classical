@@ -1,6 +1,6 @@
 # QERRA-HSR v0.1 — Design Document
 
-**Status:** Hardened & Verified (v2.0.1) — September 2026  
+**Status:** Hardened & Verified in simulation (v2.0.1) — September 2026; revised 1 November 2026  
 **Original Release:** 12 June 2026  
 **Author:** Marussa Metocharaki  
 **Repository:** https://github.com/marunigno-ship-it/QERRA-v2-classical  
@@ -11,6 +11,8 @@
 ## 1. Purpose and Scope
 
 QERRA-HSR is a deterministic physical safety companion layer for humanoid and collaborative mobile robots. It works alongside SEMEV-12 to handle immediate physical safety reflexes with sub-millisecond latency, while SEMEV-12 evaluates high-level moral deliberation.
+
+QERRA-HSR is also the reflexive companion of the Supervisory Gate (Layer 1A). The Gate consumes the HSR state directly, both in the Webots controllers (in-process, or asynchronous UDP) and in `qerra_gate_node` (UDP port 5008). A `CRITICAL` state trips the Gate to 0.0 rad/s on the same tick, regardless of any deliberation. In the API pipeline, a `CRITICAL` result also suspends SEMEV-12 evaluation immediately. See Section 10 for the telemetry contract.
 
 ---
 
@@ -37,6 +39,8 @@ HSRInput(
     robot_task_interruptible: bool     # affects HOW, never WHETHER
 )
 ```
+
+**Perception boundary (non-claim).** QERRA-HSR consumes `distress_confidence`, `persons_nearby_count` and `hazard_proximity_flag` as given. In all simulation demonstrations these inputs are injected or synthetic. They have not been evaluated against a physical, live vision perception pipeline. The activation thresholds are design estimates and have not been calibrated against sensor streams.
 
 ---
 
@@ -69,16 +73,18 @@ class HSRResult:
 ## 5. Key Design Principles
 
 - **Pure Python, zero ML:** Zero extra dependencies, runs on local CPU.
-- **Sub-millisecond reflex:** Independently verified at **0.0 ms command delay** (<1 cm physical stopping distance at 0.33 m/s in simulation).
+- **Same-tick reflex, measured in simulation:** The HSR evaluation is pure Python with a sub-millisecond software compute budget. In Webots, the commanded velocity is clamped to 0.0 rad/s on the same 32 ms tick as the injected `CRITICAL` input (cycle 125 in Demo 9). The full gate cycle in that run, which includes logging, averaged 1.38 ms (p99 3.70 ms, max 4.50 ms). Physical stopping distance depends on actuator dynamics: about 0.9 cm over about 0.08 s at 0.33 m/s was measured on a 56.58 kg four-wheeled test platform in Webots (not the TIAGo). This is a simulation measurement, not a hardware result.
 - **Fully deterministic & explainable:** Auditable logic with human-readable reasoning traces.
-- **Fail-closed precedence:** A `CRITICAL` output suspends SEMEV-12 deliberation immediately.
+- **Fail-closed precedence:** A `CRITICAL` output suspends SEMEV-12 deliberation immediately (API pipeline) and trips the Supervisory Gate to 0.0 rad/s (Webots controllers and `qerra_gate_node`).
 - **The "HOW, never WHETHER" Contract:** Emergency halts are absolute ("never WHETHER"). Task interruptibility governs the **Recovery Directive** ("affects HOW") once safe conditions are restored.
 
 ---
 
 ## 6. Status
 
-Hardened and verified in simulation (Webots R2025a, PAL Robotics TIAGo AMR). Fully covered by 14 core regression cases and 6 hysteresis stabilizer tests (20 tests passing).
+Hardened and verified in simulation (Webots R2025a, PAL Robotics TIAGo AMR). Fully covered by 20 tests in `hsr/`: 14 core regression cases (`hsr/test_hsr_cases.py`) and 6 hysteresis stabilizer tests (`hsr/test_hysteresis.py`).
+
+Non-claims: distress inputs in the simulation demonstrations are injected or synthetic and have not been evaluated against a physical, live vision perception pipeline. Nothing here has been tested on hardware, and QERRA-HSR is not a certified safety function.
 
 ---
 
@@ -200,7 +206,7 @@ These properties are proven by direct code inspection of `hsr/qerra_hsr.py` and 
 
 ## 9. Regression Test Coverage
 
-The 14-case test suite in `hsr/test_hsr_cases.py` provides complete coverage of all activation paths, boundary conditions, and architectural contracts.
+The 14-case test suite in `hsr/test_hsr_cases.py` provides complete coverage of all activation paths, boundary conditions, and architectural contracts. The 6 hysteresis stabilizer tests in `hsr/test_hysteresis.py` bring the total in `hsr/` to 20 tests.
 
 | Test | Condition tested | Expected output |
 |---|---|---|
@@ -225,6 +231,23 @@ Run with:
 ```bash
 python -m unittest hsr.test_hsr_cases -v
 ```
+
+---
+
+## 10. Integration with the Supervisory Gate (Telemetry Contract)
+
+The Supervisory Gate consumes the HSR state as a validated telemetry packet (`gate/hsr_telemetry.py`, v0.2.0), in the Webots controllers (in-process or UDP) and in `qerra_gate_node` (UDP port 5008, localhost only).
+
+| Item | Contract |
+|---|---|
+| Distress scale | Integer permille, $0$ to $1000$ (no floating point at the thresholds). Monitor threshold $\ge 450$, critical threshold $\ge 750$, mirroring $0.45$ and $0.75$. |
+| Classification | Identical to Section 7: `CRITICAL` if distress $\ge 750$, or hazard proximity, or distress $\ge 450$ with persons nearby $\le 1$; `MONITOR` if distress $\ge 450$; otherwise `CLEAR`. A declared `state` that disagrees with the derived state is rejected. |
+| Packet fields | `obs_id` (monotonic frame counter), `t_obs_us`, `t_emit_us`, `distress_permille`, optional `hazard_proximity`, `persons_nearby_count`, optional `state`. All numeric fields are strict integers. |
+| Causality | $0 \le t_{obs} \le t_{emit}$, and $t_{obs} \le t_{rx}$ (the Gate's receipt time). A future-stamped or causally inverted packet is dropped. |
+| Reduction | All valid packets drained in one tick are reduced to the worst severity; ties go to the freshest observation. |
+| Gate behaviour | `CRITICAL` trips `TRIP_HSR_CRITICAL`. With `hsr_required=True`, missing telemetry trips `TRIP_HSR_INVALID` and a heartbeat older than $96\text{ ms}$ trips `TRIP_HSR_STALE`. Recovery needs the Gate's own continuous `CLEAR` dwell (see `SAFETY_CONCEPT.md`, C-7b). |
+
+Limits of this contract: the UDP channel has no sender authentication, and `is_perception_frozen()` (frame-counter regression check) exists in `gate/hsr_telemetry.py` but is not called at runtime by `qerra_gate_node`, so only heartbeat staleness is enforced there. The perception boundary in Section 3 applies.
 
 ---
 
