@@ -99,6 +99,12 @@ jobs:
             echo "[CI-TEST] FAILURE: Node logged tick exception(s)!"
             exit 1
           fi
+          
+          # 4. Node must exit cleanly after SIGINT
+          if [ "$NODE_EXIT" -ne 0 ]; then
+            echo "[CI-TEST] FAILURE: Node did not exit cleanly (code $NODE_EXIT) after SIGINT!"
+            exit 1
+          fi
 
       - name: Verify real rclpy node initialization and lifecycle
         shell: bash
