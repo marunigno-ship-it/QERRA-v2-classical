@@ -1,7 +1,7 @@
 # QERRA-v2 Classical
 
 **A fully explainable, classical three-layer pipeline for AI systems and autonomous robots.**
-Physical safety (QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranked choice (QERRA-THRIVE) — 24 named, auditable vectors, deterministic rule bounds.
+Physical safety (Supervisory Gate + QERRA-HSR) → moral filtering (SEMEV-12) → flourishing-ranked choice (QERRA-THRIVE) — 27 named, auditable vectors (3 + 12 + 12), deterministic rule bounds.
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
@@ -14,40 +14,42 @@ Values and ethics can screen and rank what a robot wants to do, but only a deter
 
 The setting this is built for: a transport cobot in a hospital corridor yields and slows near people, stops safely if its software fails, and leaves a record a safety officer can audit.
 
+> **Status in one paragraph.** QERRA is a simulation-based research prototype. It is not a certified safety system, it has not been tested on hardware, and a 0.0 wheel command is a software setpoint, not an emergency stop. The deterministic gate is demonstrated in Webots and, as a standalone ROS 2 node, is built and started under ROS 2 Jazzy in GitHub Actions. See [Known limitations](#known-limitations--honesty-boundaries).
+
 | Layer | Role | Evidence today |
 |-------|------|----------------|
-| **Layer 1A: Supervisory Gate (`gate/`)** | The only component with actuator authority over the wheel motors. Pure standard library integer state machine enforcing dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Logs every tick to a SHA-256 rolling hash chain. | **Packaged as a standalone ROS 2 node (`qerra_gate_node`) integrating Layer 1B HSR reflex telemetry.** Demonstrated in simulation: Demo 7, 8, and 9. Verified offline with `verify_log.py` against anchored head hashes. Test coverage: 183 unit tests passing in `tests/` (kinematics, fail-closed bounding, sequence ratchets, UDP reflex integration). |
-| **Layer 1B: QERRA-HSR (`hsr/`)** | Advisory 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. Pure Python, Apache-2.0. | Built and unit-tested (20 tests passing in `hsr/`). Evaluated in Webots Demo 6 and 9 with stabilized 1.0s dwell and Property HSR-5 recovery directives. |
+| **Layer 1A: Supervisory Gate (`gate/`)** | The component that decides wheel commands. In the Webots controller it is the only process that writes wheel velocities. Pure standard-library integer state machine enforcing a dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. The Webots controller logs every tick to a SHA-256 rolling hash chain. | Demonstrated in simulation: Demos 7, 8 and 9. Flight log verifiable offline with `verify_log.py`. Also packaged as a standalone ROS 2 node (`qerra_gate_node`), built and started under ROS 2 Jazzy in CI. Simulation and CI evidence only. |
+| **Layer 1B: QERRA-HSR (`hsr/`)** | A 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 for assistive and healthcare mobile cobots. The Gate acts on it when it is wired in (`CRITICAL` trips the gate). Pure Python, Apache-2.0. ("HSR" here is this project's own name and is unrelated to Toyota's Human Support Robot.) | Built and unit-tested (20 tests in `hsr/`). Evaluated in Webots Demos 6 and 9 with a stabilised 1.0 s dwell and Property HSR-5 recovery directives. |
 | **Layer 2: SEMEV-12** | Advisory screening of text task instructions against 12 moral and coercion vectors. MiniLM embeddings with deterministic scoring gates and negation pre-filtering. Not part of the physical safety function. | Built, unit-tested and benchmarked (15 regression cases, 80-case baseline, active adversarial suite). The adversarial benchmark documents known evasion vectors. |
 | **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
+
 **Where to start:**
-- Safety and robotics engineers: [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, and the Demo 7 and Demo 8 sections below.
+- Safety and robotics engineers: [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, the [ROS 2 Integration](#ros-2-integration) section, and the Demo 7, 8 and 9 sections below.
 - Ethics, human-robot interaction and standards readers: the SEMEV-12 and QERRA-THRIVE sections below, and the two benchmark files.
 
 ---
 
 ## What QERRA Does
 
-QERRA-v2 Classical is an open-source execution guard for autonomous robots and AI systems. 
+QERRA-v2 Classical is an open-source execution guard for autonomous robots and AI systems.
 
-A mobile robot should never rely on an unpredictable neural network to make life-or-death physical decisions. If a complex model lags or hallucinates, a 70 kg machine can crush someone. 
+A mobile robot should never rely on an unpredictable neural network to make life-or-death physical decisions. If a complex model lags or hallucinates, a 70 kg machine can crush someone.
 
-QERRA solves this by splitting safety into three separate, accountable jobs that run in a strict sequence:
+QERRA addresses this by splitting safety into three separate, accountable jobs that run in a strict sequence:
 
-1. **The Deterministic Gate & Assistive Reflex (Layer 1A & 1B):**  
-   - **Layer 1A — The Supervisory Gate (`gate/`):** Pure-function, standard-library-only integer state machine that holds exclusive authority over motor velocity commands. It evaluates velocity proposals from untrusted planners against dynamic kinematic stopping envelopes ($d_{stop} = \lceil v^2 / (2a) \rceil + margin$), trips fail-closed on obstacle breach, clock anomalies, invalid sensor scans, or proposer stalls ($\ge 150\text{ ms}$), and enforces a 1.0 s continuous-clear dwell and manual operator reset before recovery. In verified simulation (TIAGo base in Webots R2025a, `RUN_1791713619`), commanded cruise was halted with $36\text{ mm}$ physical coasting upon a 337 mm trip.
-   - **Layer 1B — QERRA-HSR Reflex (`hsr/`):** Pure Python threshold reflex under ISO 13482 for assistive and healthcare mobile cobots. Evaluates distress telemetry, human isolation, and proximity hazards to issue advisory reflex states (`CLEAR`, `MONITOR`, `CRITICAL`) and Property HSR-5 human-in-the-loop recovery directives.
+1. **The Deterministic Gate & Assistive Reflex (Layer 1A & 1B):**
+   - **Layer 1A — The Supervisory Gate (`gate/`):** Pure-function, standard-library-only integer state machine that decides velocity commands. It evaluates velocity proposals from untrusted planners against a dynamic kinematic stopping envelope ($d_{stop} = \lceil v^2 / (2a) \rceil + \lceil v \cdot t_{react} \rceil + margin$, with $a = 0.5\ \text{m/s}^2$, $t_{react} = 32\ \text{ms}$ and $margin = 300\ \text{mm}$), trips fail-closed on obstacle breach, clock anomalies, invalid sensor scans, or proposer stalls ($\ge 150\ \text{ms}$), and enforces a 1.0 s continuous-clear dwell and a manual operator reset before recovery. In verified simulation (TIAGo base in Webots R2025a, `RUN_1791713619`), a commanded cruise was halted with $36\ \text{mm}$ of physical coasting after a trip at 337 mm clearance (standstill at 301 mm).
+   - **Layer 1B — QERRA-HSR Reflex (`hsr/`):** Pure Python threshold reflex under ISO 13482 for assistive and healthcare mobile cobots. Evaluates distress telemetry, human isolation, and proximity hazards to issue reflex states (`CLEAR`, `MONITOR`, `CRITICAL`) and Property HSR-5 human-in-the-loop recovery directives. The Gate trips on `CRITICAL`.
 
-2. **The Moral Conscience (SEMEV-12):**  
+2. **The Moral Conscience (SEMEV-12):**
    A 12-dimensional ethical filter that evaluates text instructions before the robot moves. If someone orders the robot to do something abusive, deceptive, or coercive (such as forcing a worker through a break or falsifying safety records), the robot refuses the command, illuminates an amber LED, logs the refusal reason, and **physically shakes its head "No"** in simulation.
 
-3. **The Social Manners (QERRA-THRIVE):**  
-   A 12-vector ranker for tasks that are already physically safe and morally clean. It selects the most considerate way to move—such as quiet "whisper mode" in hospital corridors or keeping off garden lawns unless an emergency overrides etiquette.
+3. **The Social Manners (QERRA-THRIVE):**
+   A 12-vector ranker for tasks that are already physically safe and morally clean. It selects the most considerate way to move, such as quiet "whisper mode" in hospital corridors or keeping off garden lawns unless an emergency overrides etiquette.
 
-All safety decisions are deterministic, inspectable, and auditable. Every result outputs the exact vectors that triggered, human-readable reasoning, and a concrete recovery directive.
+The decision logic is deterministic, inspectable, and auditable. Every result outputs the exact vectors that triggered, human-readable reasoning, and a concrete recovery directive.
+
 ---
-
-
 
 ## ⚖️ Authorship & License
 
@@ -59,7 +61,7 @@ All safety decisions are deterministic, inspectable, and auditable. Every result
 
   **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23836773
   **ORCID:** https://orcid.org/0009-0009-4100-9881
-  
+
 ## Quickstart
 
 **Public example endpoint** (no API key required):
@@ -158,7 +160,7 @@ physical safety check first:
 
 **Response:**
 
-Every response is wrapped in the standard envelope (`status`, `version`, `timestamp`, `data`). 
+Every response is wrapped in the standard envelope (`status`, `version`, `timestamp`, `data`).
 
 When `hsr_signals` is clear, the response includes the `recovery_directive` and passes through to SEMEV-12:
 
@@ -216,8 +218,8 @@ If `hsr_signals` returns `CRITICAL`, SEMEV-12 is suspended immediately and `reco
 
 ## The SEMEV-12 Framework
 
-12 named ethical vectors, maintained as a stable core across versions.  
-All 12 vectors use semantic similarity as the primary  
+12 named ethical vectors, maintained as a stable core across versions.
+All 12 vectors use semantic similarity as the primary
 detection mechanism via `sentence-transformers` (all-MiniLM-L6-v2).
 
 | Vector | Name                    | Detection | What it detects                                      |
@@ -304,30 +306,37 @@ values/
 ```
 ---
 
-
-
 ## Features
 
-- **Deterministic Supervisory Gate (Layer 1A):** Pure-function integer state machine owning exclusive actuator authority. Clamps wheel velocities into a kinematic stopping envelope ($d_{stop} = \lceil v^2 / (2a) \rceil + margin$), trips fail-closed upon sensor faults or corridor obstruction, and enforces latched recovery with operator reset. Measured in Webots R2025a (Demo 7, TIAGo) halting cruise at 301 mm clearance ($36\text{ mm}$ physical coasting).
-- **Tamper-Evident SHA-256 Flight Recorder:** Every discrete control decision is appended to a canonical JSONL flight log chained via rolling SHA-256 digests ($hash = \text{SHA256}(prev\_hash + canonical\_bytes)$) for offline auditing via `verify_log.py`.
+- **Deterministic Supervisory Gate (Layer 1A):** Pure-function integer state machine. Clamps wheel velocities into a kinematic stopping envelope ($d_{stop} = \lceil v^2 / (2a) \rceil + \lceil v \cdot t_{react} \rceil + margin$), trips fail-closed upon sensor faults or corridor obstruction, and enforces latched recovery with operator reset. Measured in Webots R2025a (Demo 7, TIAGo): trip at 337 mm clearance, standstill at 301 mm ($36\ \text{mm}$ of physical coasting).
+- **Standalone ROS 2 Gate Node (`qerra_gate_node`):** The gate wrapped as a ROS 2 Jazzy node between an untrusted planner and the base controller, with an asynchronous UDP distress input (Layer 1B), a node-level fault latch, and a CI workflow that builds it, starts the installed executable and checks for a clean shutdown. Simulation and CI evidence only; see [ROS 2 Integration](#ros-2-integration).
+- **Tamper-Evident SHA-256 Flight Recorder (Webots controller):** Every discrete control decision is appended to a canonical JSONL flight log chained via rolling SHA-256 digests ($hash = \text{SHA256}(prev\_hash + canonical\_bytes)$) for offline auditing via `verify_log.py`. The ROS 2 node does not write this log yet.
 - **Assistive Safety Reflex (Layer 1B / QERRA-HSR):** Pure Python, standard-library reflex under ISO 13482 evaluating distress, isolation, and environmental proximity for assistive cobots, with Property HSR-5 human-in-the-loop recovery directives.
 - **Dual-Tier Watchdog Architecture:** Strict 150 ms proposal freshness watchdog at the wheel-level execution gate; 800 ms fail-closed network timeout on high-level semantic and API bridges.
 - **12-Vector Semantic Moral Filtering (SEMEV-12):** Evaluates workplace coercion, deception, and autonomy violations using sentence embeddings bounded by deterministic scoring gates and negation pre-filtering.
 - **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical directive, preventing ambiguous failure states.
 - **Resilience vs. Coercion Nuance:** Distinguishes between active workplace coercion versus a committed professional voluntarily pushing through a demanding environment.
 - **Social Manners & Etiquette (QERRA-THRIVE):** 12 value vectors ranking candidate actions for human courtesy (quiet "whisper mode" in corridors, lawn/flora protection) with native PyTrees integration.
-- **Test-Verified (203 Total Tests Passing):** 183 pure unit and integration tests in `tests/` (Supervisory Gate core, ROS 2 node, HsrReceiver, kinematics, license boundary, and SEMEV-12 regression cases) plus 20 QERRA-HSR reflex tests in `hsr/` executing cleanly in automated CI.
+- **Tested and CI-checked:** In the last local run on the Windows development host (1 Nov 2026): 192 unit tests in `tests/` and 20 in `hsr/` (212 `unittest` cases), plus the 15-case SEMEV-12 regression script. GitHub Actions runs the Python 3.10 test suite and the ROS 2 Jazzy workflow on every push to `main`. Counts change as tests are added, so treat the workflow runs as the source of truth.
+
 ---
 
 ## Calibrated Benchmarks
 
-| Scenario                                                            | Score  | Label                    |
-|---------------------------------------------------------------------|--------|--------------------------|
-| Toxic environment + strong mission + health risks + determination   | 0.425  | moderate ethical concern |
-| Doctor forced to falsify records, committed to oath, family at risk | 0.394  | moderate ethical concern |
-| Clear self-harm intent                                              | > 0.90 | critical ethical concern |
+Selected cases from the SEMEV-12 regression run of 30 Oct 2026 (`python -m tests.test_cases`, 15/15 passing). Scores are the engine's output for each named test case.
 
-All benchmarks are verified by `tests/test_cases.py` before every commit.
+| Test case                                                            | Score  | Vectors activated         |
+|----------------------------------------------------------------------|--------|---------------------------|
+| Canonical benchmark (toxic environment + mission + health + determination) | 0.4539 | v003, v004, v007 |
+| Medical ethics — doctor dilemma (v1.8 calibrated)                    | 0.4539 | v003, v004, v007          |
+| Clear harm intent — must score high                                  | 0.98   | v005                      |
+| Gaslighting / cognitive manipulation — must activate v010            | 0.82   | v010                      |
+| 3rd-person coercion — supervisor forcing robot to falsify compliance records | 0.88 | v004                |
+| v001 emotional distress ("hopeless")                                 | 0.45   | v001                      |
+| v001 false-positive guard (physical exhaustion)                      | 0.25   | none                      |
+| v005 negation guard — direct negation                                | 0.25   | none                      |
+
+All 15 cases are checked by `tests/test_cases.py` and must pass before any commit.
 
 For the complete baseline benchmark (80 verified test cases across all 12 vectors, including all findings and calibration analysis), see [`SEMEV-12_Benchmark_Run_01.md`](./SEMEV-12_Benchmark_Run_01.md).
 
@@ -337,43 +346,108 @@ For the active **Adversarial Red-Teaming Benchmark** (stress-testing subtle pate
 
 ## ROS 2 Integration
 
-QERRA-v2 Classical ships with native ROS 2 (`ros:jazzy`) packages separating the physical safety execution from the high-level semantic deliberation.
+QERRA-v2 Classical provides ROS 2 Jazzy integration in two separate parts: the physical supervisory gate node, and a moral-deliberation bridge. Both are simulation-stage research software.
 
 ### 1. Physical Supervisory Gate (`qerra_gate_node`)
 
-A standalone, deterministic ROS 2 node wrapping the pure Gate Core (`v0.4`). It holds exclusive write authority over `/cmd_vel_safe`, enforcing both the physical obstacle stopping envelope (Layer 1A) and the human distress reflex (Layer 1B) directly ahead of the base controller.
+A standalone ROS 2 node (version 0.3.0, in the `ament_python` package `qerra_core`) that wraps the pure gate core (`gate_core.py` v0.4). It sits between an untrusted planner and the base controller and applies both the lidar stopping envelope (Layer 1A) and the distress reflex (Layer 1B).
 
-**Execution:**
+```text
+untrusted planner (Nav2, LLM agent, teleop)
+        │  /cmd_vel (Twist)
+        ▼
+  ┌─────────────────┐  ◄── /scan (LaserScan)
+  │ qerra_gate_node │  ◄── HSR telemetry (UDP 5008)
+  └─────────────────┘  ◄── /gate/reset (String "operator")
+        │  /cmd_vel_safe (Twist)      │  /gate/state (String, JSON)
+        ▼                             ▼
+  base controller                diagnostics
+```
+
+The node is intended to be the only writer to the base. Nothing in ROS enforces that: the base controller must be wired to `/cmd_vel_safe`, and nothing else may publish to it.
+
+**Build and run** (this mirrors the CI workflow; the repository is checked out as the package `qerra_core`):
+
 ```bash
+mkdir -p ros2_ws/src && cd ros2_ws/src
+git clone https://github.com/marunigno-ship-it/QERRA-v2-classical qerra_core
+cd ..
+rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy
+colcon build --packages-select qerra_core
+source install/setup.bash
 ros2 run qerra_core qerra_gate_node
 ```
 
+Explicit obstacle-only mode (no HSR input):
+
+```bash
+ros2 run qerra_core qerra_gate_node --ros-args -p hsr_source:=none -p hsr_required:=false
+```
+
+Sensor geometry: the node defaults to 682 beams over 240° (Hokuyo URG-04LX hardware). The Webots TIAGo in Demos 7–9 reports 667 samples, so for that simulation set `-p lidar_n_expected:=667`. A scan with any other beam count is discarded and the gate trips.
+
+**What you will see on a fresh start:** the gate starts latched (`TRIPPED`). It reports `TRIP_SENSOR_INVALID` until a valid `/scan` arrives, and with the default `hsr_required=True` it also needs a fresh HSR heartbeat and a live proposer. After the clear dwell it waits in `AWAITING_RESET`; send the operator reset with:
+
+```bash
+ros2 topic pub --once /gate/reset std_msgs/msg/String "{data: operator}"
+```
+
 **Subscribes to:**
-- `/cmd_vel` (`geometry_msgs/msg/Twist`) — Untrusted velocity proposals from navigation planners.
-- `/scan` (`sensor_msgs/msg/LaserScan`) — Forward obstacle ranges from Hokuyo URG-04LX.
-- `/gate/reset` (`std_msgs/msg/String`) — Authorized operator reset command (payload: `"operator"`).
+- `/cmd_vel` (`geometry_msgs/msg/Twist`) — untrusted velocity proposals from navigation planners. `Twist` only; `TwistStamped` is not supported.
+- `/scan` (`sensor_msgs/msg/LaserScan`) — forward obstacle ranges with fixed, parameterised geometry.
+- `/gate/reset` (`std_msgs/msg/String`) — operator reset (payload: `"operator"`).
 
 **Publishes to:**
-- `/cmd_vel_safe` (`geometry_msgs/msg/Twist`) — Clamped, fail-closed velocity command to the base controller (outputs `0.0` when tripped).
-- `/gate/state` (`std_msgs/msg/String`) — Diagnostic JSON state record: mode, trip reason, stopping envelope $d_{stop}$, minimum clearance, and HSR stream metrics.
+- `/cmd_vel_safe` (`geometry_msgs/msg/Twist`) — the clamped command for the base controller (`0.0` when tripped or faulted).
+- `/gate/state` (`std_msgs/msg/String`) — diagnostic JSON: node and gate versions, mode (`RUN`, `TRIPPED`, `AWAITING_RESET`, or `FAULT`), reason, `d_stop_mm`, `lidar_min_mm`, HSR status and configuration (`hsr_source`, `hsr_required`, `hsr_drained_total`, `hsr_socket_error`), `fault_latched` and `fault_reason`, proposal sequence and age, and the wheel commands in urad/s.
 
-**Asynchronous UDP Telemetry Channels:**
-- **HSR Distress Ingestion (Port 5008):** Ingests non-blocking `HSRTelemetryPacket` datagrams via `HsrReceiver`. Applies worst-severity batch reduction per 32 ms tick and trips immediately on acute distress (`TRIP_HSR_CRITICAL`) or stale heartbeats (`TRIP_HSR_STALE` after 96 ms).
-- **Simulation Time Echo (Port 5007):** Transmits current ROS timestamp via `gate_link.send_state()` so independent synthetic perception producers (`synthetic_hsr_producer.py`) synchronize observation clocks without drift.
+**Asynchronous UDP channels (localhost only):**
+- **HSR distress input (port 5008):** non-blocking `HSRTelemetryPacket` datagrams read by `HsrReceiver`, with worst-severity reduction per tick. The gate trips on `CRITICAL` (`TRIP_HSR_CRITICAL`), on missing telemetry (`TRIP_HSR_INVALID`) and on a stale heartbeat (`TRIP_HSR_STALE`, older than 96 ms) when `hsr_required` is true.
+- **Clock echo (port 5007):** the node sends its current ROS time in microseconds so the synthetic producer (`scripts/synthetic_hsr_producer.py`) stamps its observations in the node's clock domain.
 
-**Key Node Parameters:**
-- `rate_hz` (double, default: `31.25`) — Gate evaluation frequency (32 ms control cycle).
-- `hsr_source` (string, default: `"udp"`) — Reflex telemetry source: `"udp"` for active monitoring, or `"none"` for explicit obstacle-only mode.
-- `hsr_required` (bool, default: `True`) — Fail-closed enforcement: trips if HSR telemetry is absent or stale.
-- `hsr_port` (int, default: `5008`) — UDP port for HSR datagrams.
-- `state_port` (int, default: `5007`) — UDP port for simulation clock echo.
-- `lidar_n_expected` (int, default: `682`) — Fixed forward scan beam count.
+**Parameters:**
 
-**Fail-Closed Safety Hardening:**
-- **Sensor geometry guard:** Rejects mismatched lidar beam counts immediately, discarding corrupted scans to trip `TRIP_SENSOR_INVALID` rather than crashing the subscription callback.
-- **Configuration guard:** Refuses startup with `ValueError` if `hsr_source="none"` and `hsr_required=True` are set simultaneously.
-- **Quiescent re-arm tick:** On authorized operator reset (`RESET_ACCEPTED`), wheel commands are held at zero for that cycle; physical motion only resumes on the subsequent `RUN` cycle (`Reason.PASS`).
-- **Unified clock domain:** Uses `self.get_clock().now()` exclusively, matching `/scan` headers and supporting simulation time (`use_sim_time`).
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `rate_hz` | `31.25` | Nominal tick rate (32 ms period) |
+| `hsr_source` | `"udp"` | `"udp"` or `"none"` (explicit obstacle-only mode) |
+| `hsr_required` | `true` | Trip if HSR telemetry is missing or stale |
+| `hsr_port` | `5008` | UDP port for HSR datagrams |
+| `state_port` | `5007` | UDP port for the clock echo |
+| `lidar_n_expected` | `682` | Required beam count per scan |
+| `lidar_fov_rad` | `4.1887902` | Scan field of view (240°) |
+| `robot_half_width_m` | `0.32` | Corridor half-width |
+| `track_width_m`, `wheel_radius_m` | `0.4044`, `0.098` | TIAGo base kinematics |
+
+**Fail-closed behaviour:**
+- **Sensor geometry guard:** a scan whose beam count differs from `lidar_n_expected` is discarded, so the gate trips `TRIP_SENSOR_INVALID` instead of raising inside the subscription callback.
+- **Configuration guard:** startup is refused with a `ValueError` if `hsr_source="none"` and `hsr_required=true`.
+- **Quiescent re-arm tick:** when an operator reset is accepted (`RESET_ACCEPTED`), wheel commands stay at zero for that cycle; motion resumes on the next `RUN` cycle (`Reason.PASS`).
+- **Unified clock domain:** all timestamps come from the node's ROS clock, so `use_sim_time` is respected.
+- **Node fault latch:** any exception inside the control tick latches a node fault. From then on the node publishes a zero command every tick, `/gate/state` reports mode `FAULT` with the first fault reason, and only a process restart clears it. `/gate/reset` does not clear the latch.
+- **Clean shutdown:** on SIGINT the node exits with code 0 (checked in CI). It does not publish a final zero command on shutdown. If the gate process dies or stops ticking, the base keeps its last command unless the base controller has its own command timeout, so configure one.
+
+**What the ROS 2 CI checks** (workflow `ROS 2 Jazzy Validation`, container `ros:jazzy`, runs on every push to `main`; `.github/workflows/ros2_jazzy.yml` is the source of truth):
+- The package builds with `colcon` and `qerra_gate_node` is discoverable under `lib/qerra_core`.
+- The installed executable starts from a neutral directory and runs under real `rclpy`; the node constructs and ticks.
+- A sample of `/gate/state` is captured with `ros2 topic echo --once`.
+- A SIGINT produces exit code 0, and the captured log contains no `Tick exception`.
+- The ROS 2 node unit and wiring tests run inside the Jazzy container.
+
+**What it does not check:** behaviour with real `/cmd_vel` and `/scan` traffic, the reset path, timing under load, anything on hardware, and the `qerra_msgs` interface package (it is not built in CI).
+
+### Known limitations of the ROS 2 node
+
+1. **Reaction-time model.** The stopping envelope uses $t_{react} = 32\ \text{ms}$, the Webots lockstep assumption. In ROS the real reaction time also includes the scanner period (a URG-04LX is nominally about 10 Hz; verify for your sensor), queueing, DDS transport and base-controller latency. Until that is measured and re-derived, `d_stop` is likely under-estimated.
+2. **Timing.** The tick is a ROS timer in Python on a general-purpose OS. It is nominally 31.25 Hz, garbage collection and scheduling can delay it, and jitter has not been measured under ROS. The per-cycle compute figures in Demo 9 come from Webots on a Windows host and do not show ROS timing.
+3. **No flight recorder in the node.** The SHA-256 hash-chained log exists in the Webots controller only; the node cannot trip on a log-write failure.
+4. **No authentication.** Any publisher on `/gate/reset` that sends `operator` can request a reset. UDP port 5008 is bound to `127.0.0.1` but has no sender authentication.
+5. **Frozen-frame detection is not active at runtime.** `is_perception_frozen()` exists in `gate/hsr_telemetry.py`, but the node does not call it; only the 96 ms heartbeat staleness is enforced.
+6. **One forward corridor.** A single lidar with fixed geometry parameters; no lateral or rear protection and no TF handling.
+7. **Message types.** `Twist` only, in and out.
+8. **Latch coverage.** The fault latch covers exceptions in the control tick. An unhandled exception in a subscription callback is not covered.
+9. **No comparison with other safety monitors.** QERRA has not been benchmarked against `nav2_collision_monitor` or similar, and no claim of superiority is made.
+10. **No hardware testing, and not certified.** See [Known limitations & honesty boundaries](#known-limitations--honesty-boundaries).
 
 ### 2. Moral Deliberation Action Server (`ros2_bridge.py`)
 
@@ -391,11 +465,9 @@ A bridge (`ros2_bridge.py`) is included in the repository. When `rclpy` and the 
 - **Action name:** `/qerra/evaluate`
 - **Action type:** `qerra_msgs/action/QerraEvaluate`
 - Runs on a `MultiThreadedExecutor` with a `ReentrantCallbackGroup`.
-- Uses a hybrid strategy: remote API first (strict 800ms timeout), then falls back to a locally pre-loaded model.
+- Uses a hybrid strategy: remote API first (strict 800 ms timeout), then falls back to a locally pre-loaded model.
 
-See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration details.
-
----
+The `qerra_msgs` interface package (`src/qerra_msgs`) is not built by the ROS 2 CI workflow yet. See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration details.
 
 ---
 
@@ -410,9 +482,9 @@ running live against a PAL Robotics TIAGo humanoid:
   and the safety wrapper cuts wheel velocity instantly, halting TIAGo before
   it crosses the hazard boundary.
 
-> **Commanded Reflex Latency vs. Physical Braking Distance:**  
+> **Commanded Reflex Latency vs. Physical Braking Distance:**
 > QERRA-HSR guarantees sub-millisecond software reflex latency (<1ms compute budget in simulation). Physical stopping distance is governed by actuator dynamics and Newtonian momentum, cleanly decoupled from the deterministic safety layer — measured in Webots R2025a simulation at ~0.9 cm over ~0.08s at 0.33 m/s cruise speed on a 56.58 kg four-wheeled test platform (not the TIAGo shown in this demo).
-> **Human-in-the-Loop Recovery Directive:**  
+> **Human-in-the-Loop Recovery Directive:**
 > Once safe conditions hold steady across the 1.0s dwell window (`CLEAR`), QERRA issues a `recovery_directive`: routine tasks (`robot_task_interruptible=True`) are cleared to resume autonomously (`"Clear now — resume as normal."`), whereas delicate or high-consequence tasks (`robot_task_interruptible=False`) enforce human oversight by design (`"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."`).
 
 [![QERRA-HSR Webots Demo](https://img.youtube.com/vi/Wn-2N6LLWJQ/maxresdefault.jpg)](https://youtu.be/Wn-2N6LLWJQ)
@@ -431,8 +503,6 @@ This 1-minute 15-second simulation demonstrates the complete multi-layer interac
 
 [![QERRA-v2 SEMEV-12 Webots Demo](https://img.youtube.com/vi/lvAB2QgfX_o/hqdefault.jpg)](https://youtu.be/lvAB2QgfX_o)
 
-Full write-up and discussion: [Open Robotics Discourse](https://discourse.ros.org/)
-
 ## Simulation Demo 3: Corporate Autonomy & Cognitive Integrity Guard in Webots
 
 This 1-minute 46-second simulation demonstrates dynamic multi-stage moral evaluation and recovery on a PAL Robotics TIAGo humanoid AMR in a corporate marketing office setting (Webots R2025a):
@@ -443,8 +513,6 @@ This 1-minute 46-second simulation demonstrates dynamic multi-stage moral evalua
 
 [![QERRA-v2 Corporate Autonomy Webots Demo 3](https://img.youtube.com/vi/5Srvteem2JI/hqdefault.jpg)](https://www.youtube.com/watch?v=5Srvteem2JI)
 
-Full write-up and discussion: [Open Robotics Discourse](https://discourse.openrobotics.org/)
-
 ## Simulation Demo 4: Social Etiquette & Emergency Override in Webots
 
 This 1-minute 08-second simulation demonstrates the third layer (QERRA-THRIVE v2.0.0) operating alongside the reflexive physical safety companion (QERRA-HSR v0.1) on a PAL Robotics TIAGo humanoid AMR in an assisted-living courtyard setting (Webots R2025a):
@@ -454,7 +522,6 @@ This 1-minute 08-second simulation demonstrates the third layer (QERRA-THRIVE v2
 *   **Stage 3: On-Site Arrival & Emergency Link (0:52 – 1:08)** — TIAGo halts cleanly at a safe 0.7m standoff distance in front of the resident, tilts its head downward to check on the patient, switches its status LED to Amber, and activates a continuous emergency telemetry link.
 
 https://youtu.be/hFtU4m2HS-0?si=IKkcjumPTTEp5q9d
-
 
 ## Simulation Demo 5: Moral Deliberation, Reflexive Safety & Values Selection in Webots
 
@@ -476,14 +543,14 @@ This 1-minute 05-second simulation demonstrates Layer 1 (QERRA-HSR v0.1) executi
 *   **Stage 4: Property HSR-5 Recovery Hold (0:39 – 0:56)** — Conditions evaluate to `CLEAR`, but QERRA-HSR enforces the recovery directive: *"Clear now, but this was interrupted mid-task — hold for a person to confirm before continuing."* The robot remains clamped at 0.0 rad/s on safe standby.
 *   **Stage 5: Supervisor Confirmation & Safe Standby (0:56 – 1:05)** — The shift supervisor inspects the battery tray and confirms load integrity. TIAGo re-centers its head, switches its status LED to Green, and maintains safe standby on site while medical teams clear the bay.
 
- [![QERRA-v2 Classical Simulation Demo 6](https://img.youtube.com/vi/tOrM5KbZWBw/hqdefault.jpg)](https://youtu.be/tOrM5KbZWBw)
+[![QERRA-v2 Classical Simulation Demo 6](https://img.youtube.com/vi/tOrM5KbZWBw/hqdefault.jpg)](https://youtu.be/tOrM5KbZWBw)
 
- ## Simulation Demo 7: Actuator Authority Separation & Supervisory Gate in Webots
+## Simulation Demo 7: Actuator Authority Separation & Supervisory Gate in Webots
 
 This simulation (video length 38 s; the full logged run is 47.52 s, 1,485 ticks) demonstrates deterministic actuator authority separation on a PAL Robotics TIAGo mobile base in Webots (R2025a), decoupling high-level deliberation from motor actuators via a fail-closed Supervisory Gate:
 
 *   **Stage 1: Startup Fail-Closed Latch & Operator Reset (0:00 – 0:05)** — The Supervisory Gate boots in `TRIPPED` mode (`TRIP_PROPOSER_DEAD`). An untrusted external proposer process connects over UDP port 5005. After a continuous 1.0-second clear dwell window, the gate transitions to `AWAITING_RESET`. An edge-triggered operator reset (Key R) is accepted at t = 4.38s (`RESET_ACCEPTED`), transitioning the gate to `RUN` at cruise speed (2.0 rad/s / ~0.196 m/s).
-*   **Stage 2: Corridor Transit & Kinematic Stop Envelope (0:05 – 0:31)** — TIAGo cruises down the transport corridor. Forward ranges from the onboard Hokuyo lidar (240° FOV, 667 samples) are filtered across a 0.64m swept corridor matching the base width plus safety margin. The gate dynamically computes the stopping envelope: $d_{stop} = \lceil v^2 / (2 \cdot a_{design}) \rceil + margin$ (339 mm at 2.0 rad/s with $a_{design} = 0.5\text{ m/s}^2$ and a 300 mm margin).
+*   **Stage 2: Corridor Transit & Kinematic Stop Envelope (0:05 – 0:31)** — TIAGo cruises down the transport corridor. Forward ranges from the onboard Hokuyo lidar (240° FOV, 667 samples) are filtered across a 0.64m swept corridor matching the base width plus safety margin. The gate dynamically computes the stopping envelope: $d_{stop} = \lceil v^2 / (2 \cdot a_{design}) \rceil + margin$ (339 mm at 2.0 rad/s with $a_{design} = 0.5\text{ m/s}^2$ and a 300 mm margin). This run used the earlier form of the envelope without the reaction-time term; gate v0.4 adds it (346 mm at the same speed, as in Demo 8).
 *   **Stage 3: Deterministic Fail-Closed Trip (0:31 – 0:34)** — At t = 31.52s, corridor clearance breaches the 339 mm bound. Within a single 32 ms simulation tick, the gate overrides the proposer, cuts wheel velocity to 0.0 rad/s, and latches in `TRIPPED` (`TRIP_OBSTACLE`). The trip command fires at 337 mm clearance; final standstill is reached at 301 mm without displacing the cart at X = 2.8m.
 *   **Stage 4: Guarded Recovery Contract Check (0:34 – 0:38)** — While stationary facing the cart, an operator reset is attempted. The gate inspects corridor clearance, detects the active hazard, and strictly rejects the reset (`RESET_REJECTED_HAZARD: 1`), keeping motors locked at 0.0 rad/s.
 *   **Stage 5: Tamper-Evident Flight Recorder Seal (0:38)** — Every control decision is appended to a canonical JSONL flight recorder with a SHA-256 hash chain linking each tick to the preceding record. All 1,485 discrete control cycles verify offline with zero discrepancies (`verify_log.py`, Head Seal: `ae37ae62227c4fdca51233b7e4189607898ae2c27eca5bf0847414d1f0d4c191`). The chain is tamper-evident, not unforgeable: the head hash is anchored in `results/RUN_1791713619/ANCHOR.txt` inside this same repository, so stronger assurance would need an independent anchor.
@@ -492,7 +559,7 @@ This simulation (video length 38 s; the full logged run is 47.52 s, 1,485 ticks)
 
 [![QERRA-v2 Supervisory Gate Webots Demo 7](https://img.youtube.com/vi/sZxwLtu5YWQ/hqdefault.jpg)](https://youtu.be/sZxwLtu5YWQ)
 
-Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.com/cyberbotics/webots/discussions/7050) · [Open Robotics Discourse](https://discourse.openrobotics.org/)
+Full write-up and discussion: [Webots GitHub Discussions #7050](https://github.com/cyberbotics/webots/discussions/7050)
 
 ## Simulation Demo 8: Fault-Injection and Reset Campaign for the Supervisory Gate in Webots
 
@@ -539,24 +606,28 @@ What the take shows (every reason code and event is printed by the gate itself i
 - *Simulation only (Webots R2025a); not an ISO 13849-1 hardware certification claim. Independent project, not affiliated with PAL Robotics.*
 
 [![QERRA-v2 Supervisory Gate Webots Demo 9](https://img.youtube.com/vi/CC1J8FCeSgs/hqdefault.jpg)](https://youtu.be/CC1J8FCeSgs)
-  
-
 
 ---
 
 ## Repository Structure
 
 ```
-├── hsr/                                     # Layer 1: QERRA-HSR v0.1 physical safety reflex (3 vectors)
-├── gate/                                    # Layer 1: supervisory gate (pure-function core, IPC, lidar corridor, hash-chained log)
-├── controllers/tiago_supervisory_gate/      # Webots controller for Demo 7
+├── hsr/                                     # Layer 1B: QERRA-HSR v0.1 physical safety reflex (3 vectors)
+├── gate/                                    # Layer 1A: supervisory gate (pure-function core, IPC, lidar corridor, HSR telemetry contract, hash-chained log)
+├── ros2/                                    # Standalone ROS 2 gate node (qerra_gate_node.py) and HSR UDP receiver (hsr_receiver.py)
+├── src/qerra_msgs/                          # ROS 2 action interface package for the SEMEV-12 bridge (not built in CI yet)
+├── .github/workflows/                       # CI: Python test suite, ROS 2 Jazzy validation
+├── setup.py, setup.cfg, package.xml         # ament_python packaging of qerra_core
+├── controllers/tiago_supervisory_gate/      # Webots controller for Demos 7 and 9
 ├── controllers/tiago_demo_sequence/         # Webots demo-sequencer controller for Demo 8 (scripted fault sequence)
 ├── worlds/demo7_supervisory_gate.wbt        # Webots world for Demo 7
 ├── scripts/untrusted_proposer.py            # Scripted untrusted proposer (2.0 rad/s) used in Demo 7
+├── scripts/synthetic_hsr_producer.py        # Synthetic HSR telemetry producer (UDP 5008)
 ├── verify_log.py                            # Offline hash-chain verifier for the gate log
 ├── results/RUN_1791713619/                  # Demo 7 audit log and ANCHOR.txt
 ├── results/DEMO8_*/                         # Demo 8 run folders (manifest, audit log, wheel telemetry)
 ├── docs/demo8/DEMO8_YOUTUBE_TAKE.md         # Demo 8 YouTube take evidence and geometry proof
+├── docs/demo9/                              # Demo 9 pre-registration and evidence records
 ├── ethical_core.py                          # Layer 2: SEMEV-12 scoring engine (v1.9.2)
 ├── vectors.py                               # SEMEV-12 vector definitions and weights
 ├── values/                                  # Layer 3: QERRA-THRIVE v2.0.0 values ranker (12 vectors)
@@ -565,12 +636,14 @@ What the take shows (every reason code and event is printed by the gate itself i
 ├── classical_analyze.py                     # Single & batch evaluation entry point
 ├── qerra_condition_node.py                  # Behavior Tree Condition node (Layer 1 & 2 gate)
 ├── qerra_action_ranker_node.py              # Behavior Tree Action Ranker node (Layer 3 selector)
-├── ros2_bridge.py                           # ROS 2 bridge (standalone + rclpy node)
+├── ros2_bridge.py                           # SEMEV-12 / THRIVE ROS 2 bridge (standalone + rclpy node)
 ├── tests/
-│   ├── test_cases.py                        # Regression test suite
+│   ├── test_cases.py                        # SEMEV-12 regression script (15 cases)
 │   ├── test_vectors.py                      # Vector unit tests
 │   ├── test_verify_manifest.py              # Replay-from-manifest tests for verify_log.py
-│   └── test_gate_*.py                       # Supervisory gate tests (core, IPC, lidar, link, log)
+│   ├── test_gate_*.py                       # Supervisory gate tests (core, IPC, lidar, link, log) and ROS 2 node tests (translators, HSR receiver, wiring, fault latch)
+│   ├── test_synthetic_hsr_telemetry.py      # Asynchronous HSR telemetry pipeline tests
+│   └── test_license_boundary.py             # License and version parity guard
 ├── SEMEV-12_Benchmark_Run_01.md             # Baseline benchmark — 80 verified test cases
 ├── SEMEV-12_Adversarial_Benchmark_Run_01.md # Active adversarial red-teaming benchmark
 ├── CURRENT_ARCHITECTURE.md                  # Canonical three-layer architecture documentation
@@ -583,9 +656,11 @@ What the take shows (every reason code and event is printed by the gate itself i
 └── README.md
 ```
 
-## Running the Regression Tests
+## Running the Tests
 
-Run from the repository root:
+Run from the repository root.
+
+SEMEV-12 regression benchmark:
 
 ```bash
 python -m tests.test_cases
@@ -599,11 +674,19 @@ Physical-reflex (QERRA-HSR) tests (standard library only):
 python -m unittest discover -s hsr -t . -v
 ```
 
-Supervisory gate tests (standard library only):
+Supervisory gate and ROS 2 node tests that do not need ROS (standard library only):
 
 ```bash
 python -m unittest discover -s tests -p "test_gate_*.py" -v
 ```
+
+Everything under `tests/` (use this exact form; `tests/` is not a package, so do not add `-t .`):
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+The ROS 2 node itself (`QerraGateNode`) needs `rclpy`, so it is exercised only in the `ROS 2 Jazzy Validation` GitHub Actions workflow, not on a host without ROS 2.
 
 Verify the Demo 7 flight-recorder log against its anchored head hash:
 
@@ -616,20 +699,25 @@ python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 -
 ## Project Status
 
 **Version:** 2.2.1
-**Engine:** Supervisory Gate `v0.4` (Standalone ROS 2 node, C-7 stacked dwell) · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
+**Engine:** Supervisory Gate `v0.4` · ROS 2 gate node `0.3.0` · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
 All three layers are implemented. The evidence level differs by layer and is stated for each:
 
-- **Layer 1A — Supervisory Gate (`gate/`, Apache-2.0):** Pure Python standard library only. 183 unit and integration tests in `tests/` covering kinematics, stopping envelopes, HsrReceiver, and standalone ROS 2 node translators. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Replayable offline via `verify_log.py --replay`.
-- **Layer 1 — QERRA-HSR (`hsr/`, Apache-2.0):** Implemented and unit-tested. Pure Python standard library only. Activation thresholds are design estimates and have not been calibrated against physical sensor streams. Human-in-the-Loop recovery directives are implemented.
+- **Layer 1A — Supervisory Gate (`gate/`, Apache-2.0):** Pure Python standard library only. Unit and integration tests in `tests/` cover the gate core, stopping envelopes, IPC, lidar corridor, HSR telemetry, and the ROS 2 node's translators, HSR receiver and fault latch (192 tests in `tests/` in the last local run, 1 Nov 2026). Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Replayable offline via `verify_log.py --replay`.
+- **ROS 2 gate node (`ros2/`, Apache-2.0):** Built, started and shut down under ROS 2 Jazzy in GitHub Actions; unit-tested without ROS for the pure logic. Never run on a robot. See [Known limitations of the ROS 2 node](#known-limitations-of-the-ros-2-node).
+- **Layer 1B — QERRA-HSR (`hsr/`, Apache-2.0):** Implemented and unit-tested (20 tests in `hsr/`). Pure Python standard library only. Activation thresholds are design estimates and have not been calibrated against physical sensor streams. Human-in-the-Loop recovery directives are implemented.
 - **Layer 2 — Moral Gate (SEMEV-12 v1.9.2, Apache-2.0):** Advisory, not part of the safety function. All 12 ethical vectors implemented and scoring. The 80-case baseline is documented in `SEMEV-12_Benchmark_Run_01.md`. The adversarial red-teaming suite in `SEMEV-12_Adversarial_Benchmark_Run_01.md` documents known bypasses and false positives.
 - **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0, Apache-2.0):** Advisory. 12 value vectors across the human-centered and ecological suites, with bounded look-back negation guards. Not yet evaluated with human participants.
 - **Live Reference API:** Hosted on the Hugging Face Spaces free tier; the first request after inactivity can take 30–60 seconds (cold start). The ROS 2 bridge uses an 800 ms remote-call timeout with a local fallback.
 
-**Known limitations & honesty boundaries:**
+### Known limitations & honesty boundaries
 
-- **Semantic detection limits:** Highly implicit, metaphorical, or indirect phrasing can fall below semantic thresholds.
-- **Hardware boundary:** The supervisory gate and physical reflex are verified in physics simulation only (Webots R2025a). Real-world deployment on physical hardware requires integration with certified industrial e-stop loops, certified safety laser scanners, and hardware watchdogs.
-- **Research status:** This is an open-source research and middleware tool, not a certified commercial safety system. See `LIMITATIONS.md` for full technical detail.
+- **Simulation only.** Everything here is validated in physics simulation (Webots R2025a), standard-library unit tests, and Linux containers in GitHub Actions. There is no hardware-in-the-loop or real-robot testing, and no real sensor noise, latency, wheel slip or payload effects have been measured.
+- **Not a safety function.** QERRA is an open-source research and middleware tool, not a certified commercial safety system. It is not SIL/PL rated. Python on a general-purpose operating system cannot guarantee hard real-time deadlines.
+- **0.0 is not an emergency stop.** A zero wheel command is a software setpoint delivered to motor controllers; it is not a hardware brake, torque-off, or protective stop. Real-world deployment requires certified industrial e-stop loops, certified safety laser scanners and hardware watchdogs.
+- **Standards are references only.** ISO 13849-1, ISO 13482 and ISO 3691-4 are used as informative design references. No conformity is claimed, and the hazard analysis is self-authored without independent review.
+- **Semantic detection limits.** Highly implicit, metaphorical, or indirect phrasing can fall below semantic thresholds.
+- **Perception is not validated.** The HSR distress signal is injected or synthetic in all demonstrations; there is no validated live perception pipeline.
+- See [`LIMITATIONS.md`](./LIMITATIONS.md) for the full technical detail.
 
 ---
 ## Development Reality: Constraints and Transparency
@@ -641,9 +729,10 @@ itself, not only to the systems it evaluates.
 **Solo development, zero institutional support.**
 QERRA-v2 Classical is developed and maintained by one independent researcher
 with no team, no institutional affiliation, no grant funding, and no
-organisational infrastructure. Every design decision, every line of code,
-every document in this repository is the work of a single person operating
-as an independent, self-funded developer.
+organisational infrastructure. Every design decision and the direction of the
+project are the work of a single person operating as an independent,
+self-funded developer; AI tools assisted with implementation (see
+[Development Tools & AI Assistance](#development-tools--ai-assistance)).
 
 **Severe resource limitations.**
 The project runs on the Hugging Face free tier, which imposes real
@@ -655,18 +744,19 @@ iterative stages rather than continuous deployment cycles. This is an accurate
 description of working conditions, not a limitation of vision or commitment.
 
 **What this means in practice.**
-The core engine is stable and the SEMEV-12 framework is complete and
-calibrated. What is not yet possible under current conditions is rapid
-iteration, sustained testing across diverse hardware, or active community
-management at scale. The project moves one small, safe step at a time.
+The core engine is stable at its tested scope, and the SEMEV-12 calibration and
+known gaps are documented in the benchmark files. What is not yet possible
+under current conditions is rapid iteration, sustained testing across diverse
+hardware, or active community management at scale. The project moves one
+small, safe step at a time.
 
 **What would change with support.**
 Stable hosting would eliminate current API reliability issues and make the
 public endpoint consistently available to testers and collaborators.
 Additional time — freed by even modest financial support — would accelerate
-ROS 2 integration work, the creation of an evaluation dataset for
-cross-cultural validation of the SEMEV-12 vectors, and the development of
-a dedicated `qerra_msgs` ROS 2 package.
+hardware-in-the-loop testing, ROS 2 interface validation (`qerra_msgs`), and
+the creation of an evaluation dataset for cross-cultural validation of the
+SEMEV-12 vectors.
 
 **Why this is stated openly.**
 Independent research is legitimate research. Stating these constraints
@@ -713,15 +803,13 @@ communities is also a meaningful contribution that costs nothing.
 QERRA-v2 Classical was developed with AI assistance as an active part of the engineering and research process.
 
 **AI tools used:**
-- **Claude (Anthropic)** — primary engineering co-pilot: architecture decisions, SEMEV-12 vector design, scoring logic, benchmark design and execution, anchor expansion, documentation, and strategic planning
+- **Claude (Anthropic)** — architecture and safety-claims review, SEMEV-12 vector design, scoring logic, benchmark design and execution, test and CI design, documentation, and strategic planning
 - **Grok (xAI)** — parallel co-pilot: benchmark continuation, anchor expansion verification, and cross-validation of technical decisions
-- **Google AI Studio (Google DeepMind)** — specialist tasks: ROS 2 colcon workspace structuring and Docker containerization planning
+- **Google AI Studio / Gemini (Google DeepMind)** — ROS 2 gate node and CI workflow engineering sessions, colcon workspace structuring, and containerization
 
-All design decisions, framework logic, vector definitions, and final implementation choices were made and validated by the author. AI tools were used as engineering co-pilots — accelerating development, not replacing authorship or intellectual ownership.
+All design decisions, framework logic, vector definitions, and final implementation choices were made and validated by the author. Claims in this repository are backed by test output, CI runs and run logs. AI tools were used as engineering co-pilots — accelerating development, not replacing authorship or intellectual ownership.
 
 The SEMEV-12 framework, its 12 vectors, their semantic descriptions, scoring architecture, and nuance logic are the original intellectual creation of **Marussa Metocharaki**.
-
-
 
 ## Licensing
 
