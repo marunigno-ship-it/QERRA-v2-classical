@@ -14,7 +14,7 @@ Values and ethics can screen and rank what a robot wants to do, but only a deter
 
 The setting this is built for: a transport cobot in a hospital corridor yields and slows near people, stops safely if its software fails, and leaves a record a safety officer can audit.
 
-> **Status in one paragraph.** QERRA is a simulation-based research prototype. It is not a certified safety system, it has not been tested on hardware, and a 0.0 wheel command is a software setpoint, not an emergency stop. The deterministic gate is demonstrated in Webots and, as a standalone ROS 2 node, is built and started under ROS 2 Jazzy in GitHub Actions. See [Known limitations](#known-limitations--honesty-boundaries).
+> **Status in one paragraph.** QERRA is a simulation-based research prototype. It is not a certified safety system, it has not been tested on hardware, and a 0.0 wheel command is a software setpoint, not an emergency stop. The deterministic gate is demonstrated in Webots and, as a standalone ROS 2 node, is built and started under ROS 2 Jazzy in GitHub Actions. See the formal [Technical Brief](./TECHNICAL_BRIEF_ROS2_GATE.md) and [Known limitations](#known-limitations--honesty-boundaries).
 
 | Layer | Role | Evidence today |
 |-------|------|----------------|
@@ -24,7 +24,7 @@ The setting this is built for: a transport cobot in a hospital corridor yields a
 | **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
 
 **Where to start:**
-- Safety and robotics engineers: [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, the [ROS 2 Integration](#ros-2-integration) section, and the Demo 7, 8 and 9 sections below.
+- Safety and robotics engineers: [`TECHNICAL_BRIEF_ROS2_GATE.md`](./TECHNICAL_BRIEF_ROS2_GATE.md) (formal ROS 2 Jazzy systems-engineering brief), [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, the [ROS 2 Integration](#ros-2-integration) section, and the Demo 7, 8 and 9 sections below.
 - Ethics, human-robot interaction and standards readers: the SEMEV-12 and QERRA-THRIVE sections below, and the two benchmark files.
 
 ---
