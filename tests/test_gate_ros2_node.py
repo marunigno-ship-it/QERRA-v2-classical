@@ -22,9 +22,11 @@ from ros2.qerra_gate_node import (
     DEFAULT_TRACK_WIDTH_M,
     DEFAULT_WHEEL_RADIUS_M,
     DEFAULT_ROBOT_HALF_WIDTH_M,
+    DEFAULT_T_REACT_MS,
     NODE_VERSION,
     ROS2_AVAILABLE,
     create_lidar_pipeline,
+    format_gate_state_json,
     process_laser_scan,
     require_ros2,
     twist_to_proposal,
@@ -111,6 +113,34 @@ class TestGateRos2Translators(unittest.TestCase):
             process_laser_scan([1.0, 1.0, 1.0], -1, 0, pipeline)
         with self.assertRaises(ValueError):
             process_laser_scan([1.0, 1.0, 1.0], 0, -500, pipeline)
+
+    def test_reaction_time_envelope_growth_and_telemetry(self) -> None:
+        """Verifies that t_react parameterization grows stopping envelope and serializes to telemetry."""
+        # Kinematic envelope comparison at cruise speed (200 mm/s)
+        # d_stop = ceil(200^2 / (2 * 500)) + ceil(200 * t_react / 1e6) + 300
+        # At 32ms: 40 + 7 + 300 = 347 mm
+        # At 96ms: 40 + 20 + 300 = 360 mm (+13 mm fail-closed buffer)
+        # At 160ms: 40 + 32 + 300 = 372 mm (+25 mm fail-closed buffer)
+        p_32 = get_live_gate_params(lidar_n_expected=5, t_react_us=32_000)
+        p_96 = get_live_gate_params(lidar_n_expected=5, t_react_us=96_000)
+        p_160 = get_live_gate_params(lidar_n_expected=5, t_react_us=160_000)
+
+        prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
+        inp = GateInputs(sim_time_us=100_000, proposal=prop, ranges_m=[2.0] * 5, lidar_stamp_us=100_000)
+
+        res_32 = step(initial_state(), p_32, inp)
+        res_96 = step(initial_state(), p_96, inp)
+        res_160 = step(initial_state(), p_160, inp)
+
+        self.assertEqual(res_32.record["d_stop_mm"], 347)
+        self.assertEqual(res_96.record["d_stop_mm"], 360)
+        self.assertEqual(res_160.record["d_stop_mm"], 372)
+
+        # Telemetry JSON output verification
+        json_str = format_gate_state_json(res_96.state, res_96.record, t_react_us=96_000)
+        data = json.loads(json_str)
+        self.assertEqual(data["t_react_us"], 96_000)
+        self.assertEqual(DEFAULT_T_REACT_MS, 96.0)
 
 
 class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
