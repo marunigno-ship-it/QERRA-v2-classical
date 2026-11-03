@@ -41,6 +41,10 @@ DEFAULT_ROBOT_HALF_WIDTH_M: float = 0.32    # 0.27m base half-width + 0.05m marg
 DEFAULT_LIDAR_N_EXPECTED: int = 682         # 682 samples
 DEFAULT_LIDAR_FOV_RAD: float = 4.1887902    # 240 degrees in radians
 
+# Worst-case ROS 2 reaction latency budget (T_scan + T_transport + T_gate + T_jitter + T_actuator)
+# Default 96.0 ms aligns with 3 control ticks (3 * 32ms) and the 96ms sensor staleness ceiling.
+DEFAULT_T_REACT_MS: float = 96.0
+
 try:
     import rclpy
     from rclpy.executors import ExternalShutdownException
@@ -210,6 +214,7 @@ def format_gate_state_json(
     state: GateState,
     result_record: Dict[str, Any],
     *,
+    t_react_us: int = 96_000,
     hsr_source: str = "none",
     hsr_required: bool = False,
     hsr_drained: int = 0,
@@ -237,6 +242,7 @@ def format_gate_state_json(
         "reason": reason_str,
         "d_stop_mm": result_record.get("d_stop_mm"),
         "lidar_min_mm": result_record.get("lidar_min_mm"),
+        "t_react_us": t_react_us,
         "hsr_status": result_record.get("hsr_status"),
         "hsr_source": hsr_source,
         "hsr_required": hsr_required,
@@ -287,6 +293,7 @@ if ROS2_AVAILABLE:
             self.declare_parameter("robot_half_width_m", DEFAULT_ROBOT_HALF_WIDTH_M)
             self.declare_parameter("lidar_n_expected", DEFAULT_LIDAR_N_EXPECTED)
             self.declare_parameter("lidar_fov_rad", DEFAULT_LIDAR_FOV_RAD)
+            self.declare_parameter("t_react_ms", DEFAULT_T_REACT_MS)
             self.declare_parameter("hsr_source", "udp")
             self.declare_parameter("hsr_port", DEFAULT_HSR_PORT)
             self.declare_parameter("hsr_required", True)
@@ -297,10 +304,18 @@ if ROS2_AVAILABLE:
             self._half_width_m = float(self.get_parameter("robot_half_width_m").value)
             self._lidar_n_expected = int(self.get_parameter("lidar_n_expected").value)
             self._lidar_fov_rad = float(self.get_parameter("lidar_fov_rad").value)
+            self._t_react_ms = float(self.get_parameter("t_react_ms").value)
             self._hsr_source = str(self.get_parameter("hsr_source").value).strip().lower()
             self._hsr_port = int(self.get_parameter("hsr_port").value)
             self._hsr_required = bool(self.get_parameter("hsr_required").value)
             self._state_port = int(self.get_parameter("state_port").value)
+
+            # Parameter bounds validation (fail-closed on non-finite or negative)
+            if self._t_react_ms < 0.0 or not math.isfinite(self._t_react_ms):
+                raise ValueError(
+                    f"Invalid configuration: t_react_ms must be finite and non-negative, got {self._t_react_ms!r}"
+                )
+            self._t_react_us = int(round(self._t_react_ms * 1_000))
 
             # Configuration guard: cannot require HSR if no source is active
             if self._hsr_source == "none" and self._hsr_required:
@@ -315,6 +330,7 @@ if ROS2_AVAILABLE:
                 lidar_n_expected=self._lidar_n_expected,
                 wheel_radius_mm=int(round(self._wheel_radius_m * 1000)),
                 hsr_required=self._hsr_required,
+                t_react_us=self._t_react_us,
             )
             self._lidar_pipeline = create_lidar_pipeline(
                 n_samples=self._lidar_n_expected,
@@ -367,6 +383,7 @@ if ROS2_AVAILABLE:
             self.get_logger().info(
                 f"QERRA Supervisory Gate Node v{NODE_VERSION} initialized. "
                 f"Tick period: {timer_period_s * 1000:.1f} ms | "
+                f"t_react: {self._t_react_ms:.1f} ms ({self._t_react_us} us) | "
                 f"Lidar: {self._lidar_n_expected} beams | "
                 f"HSR: source={self._hsr_source}, port={self._hsr_port}, required={self._hsr_required}"
             )
@@ -436,6 +453,7 @@ if ROS2_AVAILABLE:
                 state_msg.data = format_gate_state_json(
                     self._state,
                     {"reason": f"NODE_FAULT_LATCHED: {self._fault_latch.fault_reason}"},
+                    t_react_us=self._t_react_us,
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
@@ -501,11 +519,12 @@ if ROS2_AVAILABLE:
                 safe_twist.angular.z = safe_angular_z
                 self._pub_cmd_safe.publish(safe_twist)
 
-                # Publish diagnostic state telemetry (including HSR stream diagnostics)
+                # Publish diagnostic state telemetry (including t_react and HSR diagnostics)
                 state_msg = String()
                 state_msg.data = format_gate_state_json(
                     self._state,
                     result.record,
+                    t_react_us=self._t_react_us,
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=self._hsr_receiver.packets_drained_total,
