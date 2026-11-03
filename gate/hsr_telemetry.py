@@ -1,11 +1,11 @@
 """
 QERRA-v2 Classical — Layer 1B Telemetry Contract
 Module: gate.hsr_telemetry
-Version: 0.2.0 (Phase 2, Aligned with hsr/qerra_hsr.py)
+Version: 0.3.0 (Hardened Stream Monitor & Rebase Dwell)
 License: Apache-2.0
 
-Pure-standard-library telemetry contract, validation, and reduction functions
-for asynchronous perception-to-Gate IPC.
+Pure-standard-library telemetry contract, validation, reduction, and stream
+freshness state machine for asynchronous perception-to-Gate IPC.
 Zero external dependencies. Eliminates IEEE-754 float epsilon at thresholds.
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Final, Iterable, Mapping, Optional, Tuple, Union
+from typing import Final, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 # Reflex state strings matching gate_core.py v0.4 and hsr/qerra_hsr.py
 HSR_CLEAR: Final[str] = "CLEAR"
@@ -218,16 +218,167 @@ def is_perception_frozen(
     last_seen_obs_id: Optional[int],
 ) -> bool:
     """
-    Returns True if an incoming packet repeats or regresses a frame counter,
-    indicating a frozen upstream camera buffer or replay.
+    Pure predicate. Returns True if an incoming packet repeats or regresses a
+    frame counter, indicating a frozen upstream camera buffer or replay.
     """
     if last_seen_obs_id is None:
         return False
     return current_obs_id <= last_seen_obs_id
 
 
+# ----------------------------------------------------------------------------
+# Layer 1B Pure Stream Monitor & Controlled Rebase State Machine
+# ----------------------------------------------------------------------------
+@dataclass(frozen=True)
+class HSRStreamState:
+    """
+    Immutable state of the Layer 1B perception freshness monitor.
+
+    Attributes:
+        last_seen_obs_id: Highest sequence counter accepted in nominal operation.
+        last_seen_t_obs_us: Capture timestamp of the last accepted observation.
+        frozen_latched: True if an identical frame counter was observed (sticky freeze).
+        rebase_in_progress: True if a counter regression / producer restart was detected.
+        rebase_streak: Consecutive control ticks observing fresh, strictly advancing CLEAR frames.
+        last_valid_status: Most recent valid reflex state (held across nominal idle ticks).
+        last_valid_stamp_us: Most recent observation timestamp (held across nominal idle ticks).
+    """
+    last_seen_obs_id: Optional[int] = None
+    last_seen_t_obs_us: Optional[int] = None
+    frozen_latched: bool = False
+    rebase_in_progress: bool = False
+    rebase_streak: int = 0
+    last_valid_status: Optional[str] = None
+    last_valid_stamp_us: Optional[int] = None
+
+
+def step_hsr_stream(
+    state: HSRStreamState,
+    packets: Sequence[HSRTelemetryPacket],
+    now_us: int,
+    *,
+    max_age_us: int = 96_000,
+    required_streak: int = 5,
+) -> Tuple[HSRStreamState, Optional[str], Optional[int]]:
+    """
+    Pure deterministic control-cycle step for Layer 1B HSR stream monitoring.
+
+    Enforces functional-safety requirements:
+      1. Per-packet sequence inspection BEFORE batch reduction (closes Trap 2).
+      2. Sticky frozen-frame latching (closes Trap 1).
+      3. Controlled producer restart recovery requiring `required_streak` (default 5)
+         consecutive ticks with strictly advancing, fresh CLEAR frames.
+      4. At most +1 streak credit per tick (closes 1 ms burst trap).
+      5. Any distress (MONITOR/CRITICAL), regression, or freeze during dwell resets streak to 0.
+      6. While latched or in rebase, output status is None (trips TRIP_HSR_INVALID in gate_core).
+
+    Returns:
+      (new_state, hsr_status, hsr_stamp_us)
+    """
+    last_obs = state.last_seen_obs_id
+    last_t_obs = state.last_seen_t_obs_us
+    frozen = state.frozen_latched
+    rebase = state.rebase_in_progress
+    streak = state.rebase_streak
+    held_status = state.last_valid_status
+    held_stamp = state.last_valid_stamp_us
+
+    # 1. Per-packet inspection in strict arrival order across the batch
+    batch_has_freeze = False
+    batch_has_regression = False
+    batch_has_distress = False
+    batch_has_stale = False
+    current_eval_obs = last_obs
+    current_eval_t = last_t_obs
+
+    for p in packets:
+        # Freshness bound against current gate clock
+        age_us = now_us - p.t_obs_us
+        if age_us < 0 or age_us > max_age_us:
+            batch_has_stale = True
+
+        if p.state in (HSR_MONITOR, HSR_CRITICAL):
+            batch_has_distress = True
+
+        if current_eval_obs is not None:
+            if p.obs_id == current_eval_obs:
+                batch_has_freeze = True
+            elif p.obs_id < current_eval_obs or (current_eval_t is not None and p.t_obs_us < current_eval_t):
+                batch_has_regression = True
+
+        current_eval_obs = p.obs_id
+        current_eval_t = p.t_obs_us
+
+    # 2. Update latches based on batch inspection
+    if batch_has_freeze:
+        frozen = True
+
+    if batch_has_regression:
+        rebase = True
+        streak = 0  # regression immediately wipes any dwell progress
+
+    # 3. Controlled Rebase & Sticky Fault Evaluation
+    if frozen or rebase:
+        if len(packets) == 0:
+            # Idle tick during fault: streak does not advance (idle ticks cannot satisfy dwell)
+            pass
+        elif batch_has_freeze or batch_has_regression or batch_has_distress or batch_has_stale:
+            # Any non-compliant frame during dwell resets streak
+            streak = 0
+            last_obs = current_eval_obs
+            last_t_obs = current_eval_t
+        else:
+            # Tick delivered fresh, strictly advancing CLEAR frames: credit exactly +1 tick
+            streak += 1
+            last_obs = current_eval_obs
+            last_t_obs = current_eval_t
+            if streak >= required_streak:
+                # Dwell requirement fulfilled: rebase complete, clear latches
+                frozen = False
+                rebase = False
+                streak = 0
+                held_status = HSR_CLEAR
+                held_stamp = current_eval_t
+
+        if frozen or rebase:
+            # Still in fault or rebase dwell: output None (forces TRIP_HSR_INVALID in gate_core)
+            new_state = HSRStreamState(
+                last_seen_obs_id=last_obs,
+                last_seen_t_obs_us=last_t_obs,
+                frozen_latched=frozen,
+                rebase_in_progress=rebase,
+                rebase_streak=streak,
+                last_valid_status=None,
+                last_valid_stamp_us=None,
+            )
+            return new_state, None, None
+
+    # 4. Nominal Operation
+    if len(packets) > 0:
+        winning = drain_worst_severity(packets)
+        assert winning is not None
+        held_status = winning.state
+        held_stamp = winning.t_obs_us
+        last_obs = current_eval_obs
+        last_t_obs = current_eval_t
+
+    new_state = HSRStreamState(
+        last_seen_obs_id=last_obs,
+        last_seen_t_obs_us=last_t_obs,
+        frozen_latched=False,
+        rebase_in_progress=False,
+        rebase_streak=0,
+        last_valid_status=held_status,
+        last_valid_stamp_us=held_stamp,
+    )
+    return new_state, held_status, held_stamp
+
+
+# ----------------------------------------------------------------------------
+# Inline Verification Suite
+# ----------------------------------------------------------------------------
 if __name__ == "__main__":
-    print("[HSR TELEMETRY CONTRACT] Running inline verification against hsr/qerra_hsr.py rules...")
+    print("[HSR TELEMETRY CONTRACT] Running inline verification suites...")
 
     # 1. Exact permille boundary verification (0.45 and 0.75)
     assert classify_hsr_telemetry(0) == HSR_CLEAR
@@ -284,10 +435,72 @@ if __name__ == "__main__":
     assert winning.obs_id == 11
     assert winning.state == HSR_CRITICAL
 
-    # 7. Frozen frame detector
+    # 7. Pure predicate frozen frame detector
     assert not is_perception_frozen(current_obs_id=5, last_seen_obs_id=None)
     assert not is_perception_frozen(current_obs_id=6, last_seen_obs_id=5)
     assert is_perception_frozen(current_obs_id=5, last_seen_obs_id=5)
     assert is_perception_frozen(current_obs_id=4, last_seen_obs_id=5)
 
-    print("[HSR TELEMETRY CONTRACT] All 7 assertion suites passed cleanly.")
+    # 8. Hardened Stream Monitor (step_hsr_stream) verification
+    s0 = HSRStreamState()
+    # Nominal initial tick
+    p1 = HSRTelemetryPacket(1, 100_000, 101_000, 102_000, 0, HSR_CLEAR)
+    s1, st, stamp = step_hsr_stream(s0, [p1], now_us=102_000)
+    assert st == HSR_CLEAR and stamp == 100_000
+    assert s1.last_seen_obs_id == 1 and not s1.frozen_latched
+
+    # Idle tick holds nominal status
+    s2, st, stamp = step_hsr_stream(s1, [], now_us=134_000)
+    assert st == HSR_CLEAR and stamp == 100_000
+
+    # Frozen frame detection (repeated obs_id=1) -> Trips sticky fault
+    p_frozen = HSRTelemetryPacket(1, 166_000, 167_000, 168_000, 0, HSR_CLEAR)
+    s3, st, stamp = step_hsr_stream(s2, [p_frozen], now_us=168_000)
+    assert s3.frozen_latched is True
+    assert st is None and stamp is None, "Frozen frame must immediately clear status to trip gate"
+
+    # Subsequent idle tick during fault remains sticky None
+    s4, st, stamp = step_hsr_stream(s3, [], now_us=200_000)
+    assert st is None and stamp is None
+
+    # Within-batch duplicate / freeze (Trap 2: p_a has obs_id=5, p_b has obs_id=5)
+    s_clean = HSRStreamState(last_seen_obs_id=4, last_seen_t_obs_us=100_000)
+    p_dup_a = HSRTelemetryPacket(5, 200_000, 201_000, 202_000, 0, HSR_CLEAR)
+    p_dup_b = HSRTelemetryPacket(5, 200_100, 201_100, 202_000, 0, HSR_CLEAR)
+    s_trap2, st, stamp = step_hsr_stream(s_clean, [p_dup_a, p_dup_b], now_us=202_000)
+    assert s_trap2.frozen_latched is True
+    assert st is None, "Within-batch duplicate must trip frozen latch"
+
+    # Producer Restart & 5-Tick Dwell Verification
+    # Initial state with high counter
+    s_high = HSRStreamState(last_seen_obs_id=5000, last_seen_t_obs_us=1_000_000)
+    # Restart datagram: obs_id drops to 0
+    p_restart = HSRTelemetryPacket(0, 1_032_000, 1_033_000, 1_034_000, 0, HSR_CLEAR)
+    s_re, st, _ = step_hsr_stream(s_high, [p_restart], now_us=1_034_000)
+    assert s_re.rebase_in_progress is True
+    assert s_re.rebase_streak == 0
+    assert st is None
+
+    # Burst of 3 packets in 1 tick only credits +1 tick streak
+    p_b1 = HSRTelemetryPacket(1, 1_064_000, 1_065_000, 1_066_000, 0, HSR_CLEAR)
+    p_b2 = HSRTelemetryPacket(2, 1_064_100, 1_065_100, 1_066_000, 0, HSR_CLEAR)
+    p_b3 = HSRTelemetryPacket(3, 1_064_200, 1_065_200, 1_066_000, 0, HSR_CLEAR)
+    s_re, st, _ = step_hsr_stream(s_re, [p_b1, p_b2, p_b3], now_us=1_066_000)
+    assert s_re.rebase_streak == 1, "A burst of 3 packets in one tick must only credit 1 streak"
+    assert st is None
+
+    # Ticks 2, 3, 4 with advancing CLEAR packets
+    for i in range(2, 5):
+        pkt_i = HSRTelemetryPacket(3 + i, 1_064_000 + i * 32_000, 1_065_000 + i * 32_000, 1_066_000 + i * 32_000, 0, HSR_CLEAR)
+        s_re, st, _ = step_hsr_stream(s_re, [pkt_i], now_us=1_066_000 + i * 32_000)
+        assert s_re.rebase_streak == i
+        assert st is None
+
+    # Tick 5 completes the required 5-tick dwell
+    pkt_5 = HSRTelemetryPacket(8, 1_224_000, 1_225_000, 1_226_000, 0, HSR_CLEAR)
+    s_re, st, stamp = step_hsr_stream(s_re, [pkt_5], now_us=1_226_000)
+    assert s_re.rebase_in_progress is False
+    assert s_re.rebase_streak == 0
+    assert st == HSR_CLEAR and stamp == 1_224_000, "5th clean tick must complete rebase and emit CLEAR"
+
+    print("[HSR TELEMETRY CONTRACT] All 8 assertion suites PASSED cleanly.")
