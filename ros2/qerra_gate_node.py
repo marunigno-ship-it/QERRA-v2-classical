@@ -219,6 +219,7 @@ def format_gate_state_json(
     t_react_us: int = 96_000,
     flight_log_active: bool = False,
     flight_log_seq: Optional[int] = None,
+    log_write_failed: bool = False,
     hsr_source: str = "none",
     hsr_required: bool = False,
     hsr_drained: int = 0,
@@ -230,14 +231,22 @@ def format_gate_state_json(
     fault_reason: Optional[str] = None,
 ) -> str:
     """Formats gate decision and state metrics into a clean JSON string."""
-    mode_str = "FAULT" if fault_latched else state.mode.value
-    reason_str = (
-        f"NODE_FAULT_LATCHED: {fault_reason}"
-        if fault_latched
-        else result_record.get("reason")
-    )
-    left_urad = 0 if fault_latched else result_record.get("cmd_left_urad_s")
-    right_urad = 0 if fault_latched else result_record.get("cmd_right_urad_s")
+    if fault_latched:
+        mode_str = "FAULT"
+        reason_str = f"NODE_FAULT_LATCHED: {fault_reason}"
+        left_urad = 0
+        right_urad = 0
+    elif log_write_failed:
+        # R-10 Fail-Closed: Telemetry accurately reports TRIPPED and zero commands on write failure
+        mode_str = "TRIPPED"
+        reason_str = Reason.TRIP_LOG_FAILURE
+        left_urad = 0
+        right_urad = 0
+    else:
+        mode_str = state.mode.value
+        reason_str = result_record.get("reason")
+        left_urad = result_record.get("cmd_left_urad_s")
+        right_urad = result_record.get("cmd_right_urad_s")
 
     payload = {
         "node_version": NODE_VERSION,
@@ -478,6 +487,7 @@ if ROS2_AVAILABLE:
                     t_react_us=self._t_react_us,
                     flight_log_active=(self._flight_logger is not None),
                     flight_log_seq=(self._flight_logger.seq if self._flight_logger else None),
+                    log_write_failed=self._log_write_failed,
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
@@ -567,6 +577,7 @@ if ROS2_AVAILABLE:
                     t_react_us=self._t_react_us,
                     flight_log_active=(self._flight_logger is not None),
                     flight_log_seq=(self._flight_logger.seq if self._flight_logger else None),
+                    log_write_failed=self._log_write_failed,
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=self._hsr_receiver.packets_drained_total,
