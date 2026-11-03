@@ -1,7 +1,7 @@
 """
 QERRA-v2 Classical — Layer 1B Telemetry Contract
 Module: gate.hsr_telemetry
-Version: 0.3.0 (Hardened Stream Monitor & Rebase Dwell)
+Version: 0.3.1 (Explicit Elapsed-Time Dwell Hardening)
 License: Apache-2.0
 
 Pure-standard-library telemetry contract, validation, reduction, and stream
@@ -240,6 +240,7 @@ class HSRStreamState:
         frozen_latched: True if an identical frame counter was observed (sticky freeze).
         rebase_in_progress: True if a counter regression / producer restart was detected.
         rebase_streak: Consecutive control ticks observing fresh, strictly advancing CLEAR frames.
+        rebase_start_t_obs_us: Sensor timestamp of first clean CLEAR frame in current dwell.
         last_valid_status: Most recent valid reflex state (held across nominal idle ticks).
         last_valid_stamp_us: Most recent observation timestamp (held across nominal idle ticks).
     """
@@ -248,6 +249,7 @@ class HSRStreamState:
     frozen_latched: bool = False
     rebase_in_progress: bool = False
     rebase_streak: int = 0
+    rebase_start_t_obs_us: Optional[int] = None
     last_valid_status: Optional[str] = None
     last_valid_stamp_us: Optional[int] = None
 
@@ -259,6 +261,7 @@ def step_hsr_stream(
     *,
     max_age_us: int = 96_000,
     required_streak: int = 5,
+    required_dwell_us: int = 160_000,
 ) -> Tuple[HSRStreamState, Optional[str], Optional[int]]:
     """
     Pure deterministic control-cycle step for Layer 1B HSR stream monitoring.
@@ -266,10 +269,12 @@ def step_hsr_stream(
     Enforces functional-safety requirements:
       1. Per-packet sequence inspection BEFORE batch reduction (closes Trap 2).
       2. Sticky frozen-frame latching (closes Trap 1).
-      3. Controlled producer restart recovery requiring `required_streak` (default 5)
-         consecutive ticks with strictly advancing, fresh CLEAR frames.
+      3. Controlled producer restart recovery requiring dual-gate criteria:
+         - At least `required_streak` (default 5) consecutive control ticks.
+         - At least `required_dwell_us` (default 160,000 µs = 160 ms) of elapsed
+           sensor observation time (closes fencepost interval gap).
       4. At most +1 streak credit per tick (closes 1 ms burst trap).
-      5. Any distress (MONITOR/CRITICAL), regression, or freeze during dwell resets streak to 0.
+      5. Any distress (MONITOR/CRITICAL), regression, or freeze during dwell resets streak and start timer.
       6. While latched or in rebase, output status is None (trips TRIP_HSR_INVALID in gate_core).
 
     Returns:
@@ -280,6 +285,7 @@ def step_hsr_stream(
     frozen = state.frozen_latched
     rebase = state.rebase_in_progress
     streak = state.rebase_streak
+    start_t_obs = state.rebase_start_t_obs_us
     held_status = state.last_valid_status
     held_stamp = state.last_valid_stamp_us
 
@@ -315,28 +321,38 @@ def step_hsr_stream(
 
     if batch_has_regression:
         rebase = True
-        streak = 0  # regression immediately wipes any dwell progress
+        streak = 0
+        start_t_obs = None
 
     # 3. Controlled Rebase & Sticky Fault Evaluation
     if frozen or rebase:
         if len(packets) == 0:
-            # Idle tick during fault: streak does not advance (idle ticks cannot satisfy dwell)
+            # Idle tick during fault: streak and elapsed time hold (idle ticks cannot satisfy dwell)
             pass
         elif batch_has_freeze or batch_has_regression or batch_has_distress or batch_has_stale:
-            # Any non-compliant frame during dwell resets streak
+            # Any non-compliant frame during dwell wipes streak and dwell start timestamp
             streak = 0
+            start_t_obs = None
             last_obs = current_eval_obs
             last_t_obs = current_eval_t
         else:
-            # Tick delivered fresh, strictly advancing CLEAR frames: credit exactly +1 tick
+            # Tick delivered fresh, strictly advancing CLEAR frames
             streak += 1
+            if start_t_obs is None:
+                # Latch the timestamp of the first frame that initiated the unbroken clean sequence
+                start_t_obs = packets[0].t_obs_us
+
             last_obs = current_eval_obs
             last_t_obs = current_eval_t
-            if streak >= required_streak:
-                # Dwell requirement fulfilled: rebase complete, clear latches
+
+            elapsed_us = (current_eval_t - start_t_obs) if (current_eval_t is not None and start_t_obs is not None) else 0
+
+            # Dual-gate completion: must satisfy both tick count AND elapsed physical duration
+            if streak >= required_streak and elapsed_us >= required_dwell_us:
                 frozen = False
                 rebase = False
                 streak = 0
+                start_t_obs = None
                 held_status = HSR_CLEAR
                 held_stamp = current_eval_t
 
@@ -348,6 +364,7 @@ def step_hsr_stream(
                 frozen_latched=frozen,
                 rebase_in_progress=rebase,
                 rebase_streak=streak,
+                rebase_start_t_obs_us=start_t_obs,
                 last_valid_status=None,
                 last_valid_stamp_us=None,
             )
@@ -368,6 +385,7 @@ def step_hsr_stream(
         frozen_latched=False,
         rebase_in_progress=False,
         rebase_streak=0,
+        rebase_start_t_obs_us=None,
         last_valid_status=held_status,
         last_valid_stamp_us=held_stamp,
     )
@@ -471,22 +489,23 @@ if __name__ == "__main__":
     assert s_trap2.frozen_latched is True
     assert st is None, "Within-batch duplicate must trip frozen latch"
 
-    # Producer Restart & 5-Tick Dwell Verification
-    # Initial state with high counter
+    # Producer Restart & Dual-Gate Dwell Verification (streak >= 5 AND elapsed >= 160 ms)
     s_high = HSRStreamState(last_seen_obs_id=5000, last_seen_t_obs_us=1_000_000)
     # Restart datagram: obs_id drops to 0
     p_restart = HSRTelemetryPacket(0, 1_032_000, 1_033_000, 1_034_000, 0, HSR_CLEAR)
     s_re, st, _ = step_hsr_stream(s_high, [p_restart], now_us=1_034_000)
     assert s_re.rebase_in_progress is True
     assert s_re.rebase_streak == 0
+    assert s_re.rebase_start_t_obs_us is None
     assert st is None
 
-    # Burst of 3 packets in 1 tick only credits +1 tick streak
+    # Tick 1: Burst of 3 packets in 1 tick only credits +1 tick streak, establishes start_t_obs = 1,064,000 (first packet)
     p_b1 = HSRTelemetryPacket(1, 1_064_000, 1_065_000, 1_066_000, 0, HSR_CLEAR)
     p_b2 = HSRTelemetryPacket(2, 1_064_100, 1_065_100, 1_066_000, 0, HSR_CLEAR)
     p_b3 = HSRTelemetryPacket(3, 1_064_200, 1_065_200, 1_066_000, 0, HSR_CLEAR)
     s_re, st, _ = step_hsr_stream(s_re, [p_b1, p_b2, p_b3], now_us=1_066_000)
-    assert s_re.rebase_streak == 1, "A burst of 3 packets in one tick must only credit 1 streak"
+    assert s_re.rebase_streak == 1
+    assert s_re.rebase_start_t_obs_us == 1_064_000
     assert st is None
 
     # Ticks 2, 3, 4 with advancing CLEAR packets
@@ -496,11 +515,18 @@ if __name__ == "__main__":
         assert s_re.rebase_streak == i
         assert st is None
 
-    # Tick 5 completes the required 5-tick dwell
-    pkt_5 = HSRTelemetryPacket(8, 1_224_000, 1_225_000, 1_226_000, 0, HSR_CLEAR)
-    s_re, st, stamp = step_hsr_stream(s_re, [pkt_5], now_us=1_226_000)
-    assert s_re.rebase_in_progress is False
-    assert s_re.rebase_streak == 0
-    assert st == HSR_CLEAR and stamp == 1_224_000, "5th clean tick must complete rebase and emit CLEAR"
+    # Boundary test: at 159 ms elapsed (t_obs = 1_064_000 + 159_000 = 1_223_000), dwell must NOT complete
+    pkt_boundary = HSRTelemetryPacket(8, 1_223_000, 1_224_000, 1_225_000, 0, HSR_CLEAR)
+    s_boundary, st_b, _ = step_hsr_stream(s_re, [pkt_boundary], now_us=1_225_000)
+    assert s_boundary.rebase_in_progress is True, "At 159 ms elapsed, dwell must not complete"
+    assert st_b is None
+
+    # Exact threshold: at 160 ms elapsed (t_obs = 1_064_000 + 160_000 = 1_224_000), dwell completes!
+    pkt_fin = HSRTelemetryPacket(9, 1_224_000, 1_225_000, 1_226_000, 0, HSR_CLEAR)
+    s_fin, st_fin, stamp_fin = step_hsr_stream(s_re, [pkt_fin], now_us=1_226_000)
+    assert s_fin.rebase_in_progress is False
+    assert s_fin.rebase_streak == 0
+    assert s_fin.rebase_start_t_obs_us is None
+    assert st_fin == HSR_CLEAR and stamp_fin == 1_224_000, "160 ms elapsed dwell must complete rebase and emit CLEAR"
 
     print("[HSR TELEMETRY CONTRACT] All 8 assertion suites PASSED cleanly.")
