@@ -17,6 +17,7 @@ Rules:
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import os
@@ -224,11 +225,15 @@ class GateLogger:
         self._file.write(line_bytes)
         self._file.flush()
 
-        # Force hardware sync (F5 crash resilience)
+        # Force hardware sync (R-10 / F5 crash resilience)
+        # Propagates OSError directly if physical disk sync fails
         try:
-            os.fsync(self._file.fileno())
-        except (OSError, AttributeError):
-            pass
+            fileno = self._file.fileno()
+        except (AttributeError, io.UnsupportedOperation):
+            fileno = None
+
+        if fileno is not None:
+            os.fsync(fileno)
 
         # Update state only after successful flush & fsync
         self.seq += 1
