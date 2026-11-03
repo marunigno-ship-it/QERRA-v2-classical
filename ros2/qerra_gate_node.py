@@ -350,12 +350,12 @@ if ROS2_AVAILABLE:
             self._fault_latch = NodeFaultLatch()
 
             # Hash-chained flight recorder (R-09, R-10, V8 manifest anchoring)
-            self._logger: Optional[GateLogger] = None
+            self._flight_logger: Optional[GateLogger] = None
             self._log_write_failed: bool = False
             if self._flight_log_path and self._flight_log_path.lower() != "none":
                 manifest = capture_harness_manifest()
                 manifest["params"] = asdict(self._params)
-                self._logger = GateLogger(
+                self._flight_logger = GateLogger(
                     filepath=self._flight_log_path,
                     run_id=f"ros2_{self.get_name()}_{self._get_ros_time_us()}",
                     gate_version=GATE_CORE_VERSION,
@@ -407,7 +407,7 @@ if ROS2_AVAILABLE:
                 f"t_react: {self._t_react_ms:.1f} ms ({self._t_react_us} us) | "
                 f"Lidar: {self._lidar_n_expected} beams | "
                 f"HSR: source={self._hsr_source}, port={self._hsr_port}, required={self._hsr_required} | "
-                f"Flight log: {self._flight_log_path if self._logger else 'disabled'}"
+                f"Flight log: {self._flight_log_path if self._flight_logger else 'disabled'}"
             )
 
         def _get_ros_time_us(self) -> int:
@@ -476,8 +476,8 @@ if ROS2_AVAILABLE:
                     self._state,
                     {"reason": f"NODE_FAULT_LATCHED: {self._fault_latch.fault_reason}"},
                     t_react_us=self._t_react_us,
-                    flight_log_active=(self._logger is not None),
-                    flight_log_seq=(self._logger.seq if self._logger else None),
+                    flight_log_active=(self._flight_logger is not None),
+                    flight_log_seq=(self._flight_logger.seq if self._flight_logger else None),
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
@@ -532,10 +532,10 @@ if ROS2_AVAILABLE:
                     self._hsr_receiver.reset()
 
                 # Append to SHA-256 hash-chained flight log (R-09, R-10)
-                if self._logger is not None:
+                if self._flight_logger is not None:
                     try:
                         wall_ns = self.get_clock().now().nanoseconds
-                        self._logger.append(result.record, wall_ns=wall_ns)
+                        self._flight_logger.append(result.record, wall_ns=wall_ns)
                         self._log_write_failed = False
                     except Exception as exc:
                         self.get_logger().error(f"Flight log append failed (R-10): {exc}")
@@ -565,8 +565,8 @@ if ROS2_AVAILABLE:
                     self._state,
                     result.record,
                     t_react_us=self._t_react_us,
-                    flight_log_active=(self._logger is not None),
-                    flight_log_seq=(self._logger.seq if self._logger else None),
+                    flight_log_active=(self._flight_logger is not None),
+                    flight_log_seq=(self._flight_logger.seq if self._flight_logger else None),
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=self._hsr_receiver.packets_drained_total,
@@ -591,12 +591,12 @@ if ROS2_AVAILABLE:
 
         def destroy_node(self) -> bool:
             """Releases HSR receiver, flight logger, and state sockets, cleaning up resources."""
-            if hasattr(self, "_logger") and self._logger is not None:
+            if hasattr(self, "_flight_logger") and self._flight_logger is not None:
                 try:
-                    self._logger.close()
+                    self._flight_logger.close()
                 except Exception:
                     pass
-                self._logger = None
+                self._flight_logger = None
             if hasattr(self, "_hsr_receiver"):
                 self._hsr_receiver.close()
             if hasattr(self, "_state_sock") and self._state_sock is not None:
