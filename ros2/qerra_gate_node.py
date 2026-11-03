@@ -30,7 +30,7 @@ from gate.gate_lidar import CorridorFilter, LidarPipeline
 from gate.gate_link import DEFAULT_STATE_PORT, create_state_sender, send_state
 from ros2.hsr_receiver import HsrReceiver
 
-NODE_VERSION = "0.3.0"
+NODE_VERSION = "0.3.1"
 
 # PAL Robotics TIAGo base physical dimensions & kinematics
 DEFAULT_WHEEL_RADIUS_M: float = 0.098       # 98 mm radius
@@ -214,6 +214,9 @@ def format_gate_state_json(
     hsr_required: bool = False,
     hsr_drained: int = 0,
     hsr_error: Optional[str] = None,
+    hsr_frozen: bool = False,
+    hsr_rebase: bool = False,
+    hsr_rebase_streak: int = 0,
     fault_latched: bool = False,
     fault_reason: Optional[str] = None,
 ) -> str:
@@ -239,6 +242,9 @@ def format_gate_state_json(
         "hsr_required": hsr_required,
         "hsr_drained_total": hsr_drained,
         "hsr_socket_error": hsr_error,
+        "hsr_frozen": hsr_frozen,
+        "hsr_rebase_in_progress": hsr_rebase,
+        "hsr_rebase_streak": hsr_rebase_streak,
         "fault_latched": fault_latched,
         "fault_reason": fault_reason,
         "proposal_seq": result_record.get("proposal_seq"),
@@ -319,7 +325,7 @@ if ROS2_AVAILABLE:
             # Persistent node-level fault latch
             self._fault_latch = NodeFaultLatch()
 
-            # Asynchronous HSR reflex telemetry receiver
+            # Asynchronous HSR reflex telemetry receiver with stream monitor
             self._hsr_receiver = HsrReceiver(
                 port=self._hsr_port,
                 enabled=(self._hsr_source == "udp"),
@@ -434,6 +440,9 @@ if ROS2_AVAILABLE:
                     hsr_required=self._hsr_required,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
                     hsr_error=getattr(self._hsr_receiver, "socket_error", None),
+                    hsr_frozen=getattr(self._hsr_receiver, "frozen_latched", False),
+                    hsr_rebase=getattr(self._hsr_receiver, "rebase_in_progress", False),
+                    hsr_rebase_streak=getattr(self._hsr_receiver, "rebase_streak", 0),
                     fault_latched=True,
                     fault_reason=self._fault_latch.fault_reason,
                 )
@@ -458,7 +467,7 @@ if ROS2_AVAILABLE:
                 # Echo clock to synthetic producer on port 5007
                 send_state(self._state_sock, now_us, port=self._state_port)
 
-                # Poll HSR reflex telemetry stream
+                # Poll HSR reflex telemetry stream (stream monitor & freeze detection)
                 self._hsr_status, self._hsr_stamp_us = self._hsr_receiver.poll(now_us)
 
                 inputs = GateInputs(
@@ -475,6 +484,10 @@ if ROS2_AVAILABLE:
                 result = step(self._state, self._params, inputs)
                 self._state = result.state
 
+                # Reset HSR receiver monitor if operator reset was accepted
+                if result.reason == Reason.RESET_ACCEPTED:
+                    self._hsr_receiver.reset()
+
                 # Actuator publication (fail-closed clamped)
                 safe_linear_x, safe_angular_z = wheel_speeds_to_twist(
                     result.cmd_left_urad_s,
@@ -488,7 +501,7 @@ if ROS2_AVAILABLE:
                 safe_twist.angular.z = safe_angular_z
                 self._pub_cmd_safe.publish(safe_twist)
 
-                # Publish diagnostic state telemetry (including HSR status and diagnostics)
+                # Publish diagnostic state telemetry (including HSR stream diagnostics)
                 state_msg = String()
                 state_msg.data = format_gate_state_json(
                     self._state,
@@ -497,6 +510,9 @@ if ROS2_AVAILABLE:
                     hsr_required=self._hsr_required,
                     hsr_drained=self._hsr_receiver.packets_drained_total,
                     hsr_error=self._hsr_receiver.socket_error,
+                    hsr_frozen=self._hsr_receiver.frozen_latched,
+                    hsr_rebase=self._hsr_receiver.rebase_in_progress,
+                    hsr_rebase_streak=self._hsr_receiver.rebase_streak,
                     fault_latched=False,
                     fault_reason=None,
                 )
