@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import socket
+import tempfile
 import unittest
+from dataclasses import asdict
 
 from gate.gate_config import get_live_gate_params
 from gate.gate_core import (
@@ -17,6 +20,7 @@ from gate.gate_core import (
     initial_state,
     step,
 )
+from gate.gate_log import GateLogger, capture_harness_manifest
 from ros2.hsr_receiver import HsrReceiver
 from ros2.qerra_gate_node import (
     DEFAULT_TRACK_WIDTH_M,
@@ -33,6 +37,7 @@ from ros2.qerra_gate_node import (
     twist_to_wheel_speeds,
     wheel_speeds_to_twist,
 )
+from verify_log import replay_log_file, verify_log_file
 
 
 class TestGateRos2Translators(unittest.TestCase):
@@ -116,11 +121,6 @@ class TestGateRos2Translators(unittest.TestCase):
 
     def test_reaction_time_envelope_growth_and_telemetry(self) -> None:
         """Verifies that t_react parameterization grows stopping envelope and serializes to telemetry."""
-        # Kinematic envelope comparison at cruise speed (200 mm/s)
-        # d_stop = ceil(200^2 / (2 * 500)) + ceil(200 * t_react / 1e6) + 300
-        # At 32ms: 40 + 7 + 300 = 347 mm
-        # At 96ms: 40 + 20 + 300 = 360 mm (+13 mm fail-closed buffer)
-        # At 160ms: 40 + 32 + 300 = 372 mm (+25 mm fail-closed buffer)
         p_32 = get_live_gate_params(lidar_n_expected=5, t_react_us=32_000)
         p_96 = get_live_gate_params(lidar_n_expected=5, t_react_us=96_000)
         p_160 = get_live_gate_params(lidar_n_expected=5, t_react_us=160_000)
@@ -136,11 +136,76 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(res_96.record["d_stop_mm"], 360)
         self.assertEqual(res_160.record["d_stop_mm"], 372)
 
-        # Telemetry JSON output verification
         json_str = format_gate_state_json(res_96.state, res_96.record, t_react_us=96_000)
         data = json.loads(json_str)
         self.assertEqual(data["t_react_us"], 96_000)
         self.assertEqual(DEFAULT_T_REACT_MS, 96.0)
+
+    def test_flight_logger_cryptographic_verification_and_replay(self) -> None:
+        """Verifies that GateLogger produces a valid SHA-256 hash chain that passes verify_log and bit-for-bit replay."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = os.path.join(tmpdir, "flight_test.jsonl")
+            params = get_live_gate_params(lidar_n_expected=5, hsr_required=False)
+            manifest = capture_harness_manifest()
+            manifest["params"] = asdict(params)
+
+            logger = GateLogger(
+                filepath=log_path,
+                run_id="test_run_p7",
+                gate_version="0.4",
+                manifest=manifest,
+            )
+
+            # Step gate 5 times through step() and record in flight logger
+            state = initial_state()
+            dt_us = 32_000
+            sim_t = 100_000
+            ranges = [2.0] * 5
+
+            for seq in range(1, 6):
+                sim_t += dt_us
+                prop = twist_to_proposal(seq, sim_t, 0.20, 0.0)
+                res = step(state, params, GateInputs(
+                    sim_time_us=sim_t,
+                    proposal=prop,
+                    ranges_m=ranges,
+                    lidar_stamp_us=sim_t,
+                ))
+                state = res.state
+                logger.append(res.record, wall_ns=sim_t * 1_000)
+
+            logger.close()
+
+            # 1. Cryptographic SHA-256 chain audit
+            audit_res = verify_log_file(log_path)
+            self.assertTrue(audit_res.is_valid, f"Audit failed: {audit_res.error_message}")
+            self.assertEqual(audit_res.total_records, 5)
+            self.assertEqual(audit_res.first_seq, 0)
+            self.assertEqual(audit_res.last_seq, 4)
+            self.assertIsNotNone(audit_res.head_hash)
+
+            # 2. Bit-for-bit offline deterministic replay
+            replay_ok, count, err = replay_log_file(log_path, params)
+            self.assertTrue(replay_ok, f"Replay failed: {err}")
+            self.assertEqual(count, 5)
+
+    def test_flight_logger_failure_trips_r10_fail_closed(self) -> None:
+        """Verifies that log_write_failed=True immediately trips Reason.TRIP_LOG_FAILURE (R-10)."""
+        params = get_live_gate_params(lidar_n_expected=5, hsr_required=False)
+        prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
+
+        # When shell reports log write failed, step() must trip TRIP_LOG_FAILURE
+        res = step(initial_state(), params, GateInputs(
+            sim_time_us=100_000,
+            proposal=prop,
+            ranges_m=[2.0] * 5,
+            lidar_stamp_us=100_000,
+            log_write_failed=True,
+        ))
+        self.assertEqual(res.state.mode, Mode.TRIPPED)
+        self.assertEqual(res.reason, Reason.TRIP_LOG_FAILURE)
+        self.assertEqual(res.cmd_left_urad_s, 0)
+        self.assertEqual(res.cmd_right_urad_s, 0)
 
 
 class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
