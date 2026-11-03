@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from gate.gate_config import get_live_gate_params
@@ -28,6 +29,7 @@ from gate.gate_core import (
 from gate.gate_ipc import DEFAULT_HSR_PORT
 from gate.gate_lidar import CorridorFilter, LidarPipeline
 from gate.gate_link import DEFAULT_STATE_PORT, create_state_sender, send_state
+from gate.gate_log import GateLogger, capture_harness_manifest
 from ros2.hsr_receiver import HsrReceiver
 
 NODE_VERSION = "0.3.1"
@@ -215,6 +217,8 @@ def format_gate_state_json(
     result_record: Dict[str, Any],
     *,
     t_react_us: int = 96_000,
+    flight_log_active: bool = False,
+    flight_log_seq: Optional[int] = None,
     hsr_source: str = "none",
     hsr_required: bool = False,
     hsr_drained: int = 0,
@@ -243,6 +247,8 @@ def format_gate_state_json(
         "d_stop_mm": result_record.get("d_stop_mm"),
         "lidar_min_mm": result_record.get("lidar_min_mm"),
         "t_react_us": t_react_us,
+        "flight_log_active": flight_log_active,
+        "flight_log_seq": flight_log_seq,
         "hsr_status": result_record.get("hsr_status"),
         "hsr_source": hsr_source,
         "hsr_required": hsr_required,
@@ -294,6 +300,7 @@ if ROS2_AVAILABLE:
             self.declare_parameter("lidar_n_expected", DEFAULT_LIDAR_N_EXPECTED)
             self.declare_parameter("lidar_fov_rad", DEFAULT_LIDAR_FOV_RAD)
             self.declare_parameter("t_react_ms", DEFAULT_T_REACT_MS)
+            self.declare_parameter("flight_log_path", "")
             self.declare_parameter("hsr_source", "udp")
             self.declare_parameter("hsr_port", DEFAULT_HSR_PORT)
             self.declare_parameter("hsr_required", True)
@@ -305,6 +312,7 @@ if ROS2_AVAILABLE:
             self._lidar_n_expected = int(self.get_parameter("lidar_n_expected").value)
             self._lidar_fov_rad = float(self.get_parameter("lidar_fov_rad").value)
             self._t_react_ms = float(self.get_parameter("t_react_ms").value)
+            self._flight_log_path = str(self.get_parameter("flight_log_path").value).strip()
             self._hsr_source = str(self.get_parameter("hsr_source").value).strip().lower()
             self._hsr_port = int(self.get_parameter("hsr_port").value)
             self._hsr_required = bool(self.get_parameter("hsr_required").value)
@@ -340,6 +348,19 @@ if ROS2_AVAILABLE:
 
             # Persistent node-level fault latch
             self._fault_latch = NodeFaultLatch()
+
+            # Hash-chained flight recorder (R-09, R-10, V8 manifest anchoring)
+            self._logger: Optional[GateLogger] = None
+            self._log_write_failed: bool = False
+            if self._flight_log_path and self._flight_log_path.lower() != "none":
+                manifest = capture_harness_manifest()
+                manifest["params"] = asdict(self._params)
+                self._logger = GateLogger(
+                    filepath=self._flight_log_path,
+                    run_id=f"ros2_{self.get_name()}_{self._get_ros_time_us()}",
+                    gate_version=GATE_CORE_VERSION,
+                    manifest=manifest,
+                )
 
             # Asynchronous HSR reflex telemetry receiver with stream monitor
             self._hsr_receiver = HsrReceiver(
@@ -385,7 +406,8 @@ if ROS2_AVAILABLE:
                 f"Tick period: {timer_period_s * 1000:.1f} ms | "
                 f"t_react: {self._t_react_ms:.1f} ms ({self._t_react_us} us) | "
                 f"Lidar: {self._lidar_n_expected} beams | "
-                f"HSR: source={self._hsr_source}, port={self._hsr_port}, required={self._hsr_required}"
+                f"HSR: source={self._hsr_source}, port={self._hsr_port}, required={self._hsr_required} | "
+                f"Flight log: {self._flight_log_path if self._logger else 'disabled'}"
             )
 
         def _get_ros_time_us(self) -> int:
@@ -454,6 +476,8 @@ if ROS2_AVAILABLE:
                     self._state,
                     {"reason": f"NODE_FAULT_LATCHED: {self._fault_latch.fault_reason}"},
                     t_react_us=self._t_react_us,
+                    flight_log_active=(self._logger is not None),
+                    flight_log_seq=(self._logger.seq if self._logger else None),
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
@@ -494,6 +518,7 @@ if ROS2_AVAILABLE:
                     ranges_m=self._latest_ranges,
                     lidar_stamp_us=self._lidar_stamp_us,
                     reset_source=reset_source,
+                    log_write_failed=self._log_write_failed,
                     raw_valid_points=self._raw_valid_points,
                     hsr_status=self._hsr_status,
                     hsr_stamp_us=self._hsr_stamp_us,
@@ -506,25 +531,42 @@ if ROS2_AVAILABLE:
                 if result.reason == Reason.RESET_ACCEPTED:
                     self._hsr_receiver.reset()
 
+                # Append to SHA-256 hash-chained flight log (R-09, R-10)
+                if self._logger is not None:
+                    try:
+                        wall_ns = self.get_clock().now().nanoseconds
+                        self._logger.append(result.record, wall_ns=wall_ns)
+                        self._log_write_failed = False
+                    except Exception as exc:
+                        self.get_logger().error(f"Flight log append failed (R-10): {exc}")
+                        self._log_write_failed = True
+
                 # Actuator publication (fail-closed clamped)
-                safe_linear_x, safe_angular_z = wheel_speeds_to_twist(
-                    result.cmd_left_urad_s,
-                    result.cmd_right_urad_s,
-                    track_width_m=self._track_width_m,
-                    wheel_radius_m=self._wheel_radius_m,
-                )
+                if self._log_write_failed:
+                    # R-10 Fail-Closed: if audit log write failed, immediately zero actuator command
+                    safe_linear_x = 0.0
+                    safe_angular_z = 0.0
+                else:
+                    safe_linear_x, safe_angular_z = wheel_speeds_to_twist(
+                        result.cmd_left_urad_s,
+                        result.cmd_right_urad_s,
+                        track_width_m=self._track_width_m,
+                        wheel_radius_m=self._wheel_radius_m,
+                    )
 
                 safe_twist = Twist()
                 safe_twist.linear.x = safe_linear_x
                 safe_twist.angular.z = safe_angular_z
                 self._pub_cmd_safe.publish(safe_twist)
 
-                # Publish diagnostic state telemetry (including t_react and HSR diagnostics)
+                # Publish diagnostic state telemetry (including t_react, HSR, and flight log diagnostics)
                 state_msg = String()
                 state_msg.data = format_gate_state_json(
                     self._state,
                     result.record,
                     t_react_us=self._t_react_us,
+                    flight_log_active=(self._logger is not None),
+                    flight_log_seq=(self._logger.seq if self._logger else None),
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=self._hsr_receiver.packets_drained_total,
@@ -548,7 +590,13 @@ if ROS2_AVAILABLE:
                 self._publish_fault_state()
 
         def destroy_node(self) -> bool:
-            """Releases HSR receiver and state sockets, cleaning up resources."""
+            """Releases HSR receiver, flight logger, and state sockets, cleaning up resources."""
+            if hasattr(self, "_logger") and self._logger is not None:
+                try:
+                    self._logger.close()
+                except Exception:
+                    pass
+                self._logger = None
             if hasattr(self, "_hsr_receiver"):
                 self._hsr_receiver.close()
             if hasattr(self, "_state_sock") and self._state_sock is not None:
