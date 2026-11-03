@@ -38,7 +38,7 @@ class TestGateRos2Translators(unittest.TestCase):
 
     def test_version_and_import_guard(self) -> None:
         """Confirms node metadata and that require_ros2 fails loudly on Windows."""
-        self.assertEqual(NODE_VERSION, "0.3.0")
+        self.assertEqual(NODE_VERSION, "0.3.1")
         if not ROS2_AVAILABLE:
             with self.assertRaises(RuntimeError):
                 require_ros2()
@@ -134,7 +134,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         RUN tick (Reason.PASS).
         """
         test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # HsrReceiver does not close a socket that was handed to it, so the test owns it.
         self.addCleanup(test_sock.close)
         test_sock.setblocking(False)
         test_sock.bind(("127.0.0.1", 0))
@@ -277,6 +276,147 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         ))
         self.assertEqual(res_stale.state.mode, Mode.TRIPPED)
         self.assertEqual(res_stale.reason, Reason.TRIP_HSR_STALE)
+
+    def test_hsr_receiver_frozen_frame_trips_gate_core(self) -> None:
+        """Verifies that a repeated obs_id triggers sticky freeze and trips gate fail-closed."""
+        test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.addCleanup(test_sock.close)
+        test_sock.setblocking(False)
+        test_sock.bind(("127.0.0.1", 0))
+        port = test_sock.getsockname()[1]
+
+        rx = HsrReceiver(port=port, enabled=True, sock=test_sock)
+        self.addCleanup(rx.close)
+        sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.addCleanup(sender.close)
+
+        params = get_live_gate_params(lidar_n_expected=5, hsr_required=True)
+        prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
+
+        # 1. Initial valid CLEAR packet (obs_id=10)
+        p_init = json.dumps({
+            "obs_id": 10,
+            "t_obs_us": 100_000,
+            "t_emit_us": 101_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+        }).encode("utf-8")
+        sender.sendto(p_init, ("127.0.0.1", port))
+
+        status, stamp = rx.poll(now_us=102_000)
+        self.assertEqual(status, "CLEAR")
+        self.assertEqual(stamp, 100_000)
+
+        # 2. Frozen packet: repeated obs_id=10 at fresh timestamp
+        p_frozen = json.dumps({
+            "obs_id": 10,
+            "t_obs_us": 132_000,
+            "t_emit_us": 133_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+        }).encode("utf-8")
+        sender.sendto(p_frozen, ("127.0.0.1", port))
+
+        status, stamp = rx.poll(now_us=134_000)
+        self.assertIsNone(status)
+        self.assertIsNone(stamp)
+        self.assertTrue(rx.frozen_latched)
+
+        # 3. GateInputs fed with None -> Gate trips TRIP_HSR_INVALID
+        res = step(initial_state(), params, GateInputs(
+            sim_time_us=134_000,
+            proposal=prop,
+            ranges_m=[2.0] * 5,
+            lidar_stamp_us=134_000,
+            hsr_status=status,
+            hsr_stamp_us=stamp,
+        ))
+        self.assertEqual(res.state.mode, Mode.TRIPPED)
+        self.assertEqual(res.reason, Reason.TRIP_HSR_INVALID)
+        self.assertEqual(res.cmd_left_urad_s, 0)
+        self.assertEqual(res.cmd_right_urad_s, 0)
+
+    def test_hsr_receiver_producer_restart_dwell(self) -> None:
+        """Verifies that counter regression triggers rebase dwell requiring 5 distinct ticks."""
+        test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.addCleanup(test_sock.close)
+        test_sock.setblocking(False)
+        test_sock.bind(("127.0.0.1", 0))
+        port = test_sock.getsockname()[1]
+
+        rx = HsrReceiver(port=port, enabled=True, sock=test_sock)
+        self.addCleanup(rx.close)
+        sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.addCleanup(sender.close)
+
+        # 1. Establish initial high counter
+        p_init = json.dumps({
+            "obs_id": 100,
+            "t_obs_us": 100_000,
+            "t_emit_us": 101_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+        }).encode("utf-8")
+        sender.sendto(p_init, ("127.0.0.1", port))
+        status, _ = rx.poll(now_us=102_000)
+        self.assertEqual(status, "CLEAR")
+
+        # 2. Producer restart: obs_id drops to 0
+        p_rst = json.dumps({
+            "obs_id": 0,
+            "t_obs_us": 132_000,
+            "t_emit_us": 133_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+        }).encode("utf-8")
+        sender.sendto(p_rst, ("127.0.0.1", port))
+        status, _ = rx.poll(now_us=134_000)
+        self.assertIsNone(status)
+        self.assertTrue(rx.rebase_in_progress)
+
+        # 3. Burst of 3 packets in 1 tick only credits 1 streak
+        for i in (1, 2, 3):
+            p = json.dumps({
+                "obs_id": i,
+                "t_obs_us": 164_000,
+                "t_emit_us": 165_000,
+                "distress_permille": 0,
+                "state": "CLEAR",
+            }).encode("utf-8")
+            sender.sendto(p, ("127.0.0.1", port))
+        status, _ = rx.poll(now_us=166_000)
+        self.assertEqual(rx.rebase_streak, 1)
+        self.assertIsNone(status)
+
+        # 4. Advance through ticks 2, 3, 4
+        for i in range(2, 5):
+            t_sim = 164_000 + i * 32_000
+            p = json.dumps({
+                "obs_id": 3 + i,
+                "t_obs_us": t_sim,
+                "t_emit_us": t_sim + 1_000,
+                "distress_permille": 0,
+                "state": "CLEAR",
+            }).encode("utf-8")
+            sender.sendto(p, ("127.0.0.1", port))
+            status, _ = rx.poll(now_us=t_sim + 2_000)
+            self.assertEqual(rx.rebase_streak, i)
+            self.assertIsNone(status)
+
+        # 5. 5th tick completes dwell and restores CLEAR
+        t_fin = 164_000 + 5 * 32_000
+        p_fin = json.dumps({
+            "obs_id": 8,
+            "t_obs_us": t_fin,
+            "t_emit_us": t_fin + 1_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+        }).encode("utf-8")
+        sender.sendto(p_fin, ("127.0.0.1", port))
+        status, stamp = rx.poll(now_us=t_fin + 2_000)
+        self.assertFalse(rx.rebase_in_progress)
+        self.assertEqual(status, "CLEAR")
+        self.assertEqual(stamp, t_fin)
 
 
 if __name__ == "__main__":
