@@ -27,6 +27,8 @@ from ros2.qerra_gate_node import (
     DEFAULT_WHEEL_RADIUS_M,
     DEFAULT_ROBOT_HALF_WIDTH_M,
     DEFAULT_T_REACT_MS,
+    DEFAULT_LIDAR_PERIOD_MS,
+    DEFAULT_LIDAR_STALE_MS,
     NODE_VERSION,
     ROS2_AVAILABLE,
     create_lidar_pipeline,
@@ -141,6 +143,47 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(data["t_react_us"], 96_000)
         self.assertEqual(DEFAULT_T_REACT_MS, 96.0)
 
+    def test_hardware_profile_timing_parameters_and_invariant_guard(self) -> None:
+        """Verifies separation of 10 Hz hardware vs 32 ms simulation timing profiles."""
+        # 1. 10 Hz Physical Hardware Profile (Hokuyo URG-04LX)
+        # Period = 100 ms (100,000 us), Stale = 300 ms (300,000 us), t_react = 160 ms (160,000 us)
+        hw_params = get_live_gate_params(
+            lidar_n_expected=682,
+            dt_us=32_000,
+            lidar_period_us=100_000,
+            t_stale_us=300_000,
+            t_react_us=160_000,
+        )
+        self.assertEqual(hw_params.lidar_period_us, 100_000)
+        self.assertEqual(hw_params.t_stale_us, 300_000)
+        self.assertEqual(hw_params.t_react_us, 160_000)
+        self.assertGreaterEqual(hw_params.t_stale_us, 2 * hw_params.lidar_period_us + hw_params.dt_us)
+
+        # 2. Invariant guard: t_stale_us < 2 * lidar_period_us + dt_us must fail closed
+        with self.assertRaises(ValueError):
+            get_live_gate_params(
+                lidar_n_expected=682,
+                dt_us=32_000,
+                lidar_period_us=100_000,
+                t_stale_us=96_000,  # Invalid: 96,000 < 2 * 100,000 + 32,000 = 232,000
+            )
+
+        # 3. Telemetry serialization verifies inclusion of Lidar timing metrics
+        res = step(initial_state(), hw_params, GateInputs(sim_time_us=100_000))
+        json_str = format_gate_state_json(
+            res.state,
+            res.record,
+            t_react_us=160_000,
+            lidar_stale_us=300_000,
+            lidar_period_us=100_000,
+        )
+        data = json.loads(json_str)
+        self.assertEqual(data["lidar_period_us"], 100_000)
+        self.assertEqual(data["lidar_stale_us"], 300_000)
+        self.assertEqual(data["t_react_us"], 160_000)
+        self.assertEqual(DEFAULT_LIDAR_PERIOD_MS, 32.0)
+        self.assertEqual(DEFAULT_LIDAR_STALE_MS, 96.0)
+
     def test_flight_logger_cryptographic_verification_and_replay(self) -> None:
         """Verifies that GateLogger produces a valid SHA-256 hash chain that passes verify_log and bit-for-bit replay."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -156,7 +199,6 @@ class TestGateRos2Translators(unittest.TestCase):
                 manifest=manifest,
             )
 
-            # Step gate 5 times through step() and record in flight logger
             state = initial_state()
             dt_us = 32_000
             sim_t = 100_000
@@ -194,7 +236,6 @@ class TestGateRos2Translators(unittest.TestCase):
         params = get_live_gate_params(lidar_n_expected=5, hsr_required=False)
         prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
 
-        # When shell reports log write failed, step() must trip TRIP_LOG_FAILURE
         res = step(initial_state(), params, GateInputs(
             sim_time_us=100_000,
             proposal=prop,
