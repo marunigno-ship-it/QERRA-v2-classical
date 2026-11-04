@@ -3,11 +3,61 @@
 All changes are additive. SEMEV-12 vectors are maintained as a stable core
 across versions.
 
+## [Unreleased] — Standalone ROS 2 Gate Node: Packaging, Native Jazzy CI, Fault Latch, Perception Stream Monitor, Timing Profiles and Flight Log (2026-10-30 to 2026-11-04)
+
+Gate Core stays at v0.4. The ROS 2 node `qerra_gate_node` goes from v0.3.0 to v0.3.1, and the HSR telemetry contract (`gate/hsr_telemetry.py`) goes from v0.2.0 to v0.3.1. This section also records node work from 30 October that the 2.3.1 entry below does not cover. No release number has been assigned yet: package metadata is still 2.2.1.
+
+Reference baselines (GitHub Actions on `main`, all passing). Counts are the author's reported results; the workflow logs are authoritative.
+
+| Date | Commit | Test Suite run | ROS 2 Jazzy Validation run | Host unit tests (Windows) | ROS 2 node tests in the Jazzy container |
+|------|--------|----------------|----------------------------|---------------------------|------------------------------------------|
+| 2026-11-01 | `a7a00ba` | #742 | #7 | 192 | not recorded |
+| 2026-11-03 | `fb03b85` | #760 | #25 | 197 | 19 (16 + 3) |
+| 2026-11-04 | `a511d1e` | #766 | #31 | 203 | 25 (17 + 8) |
+
+### Added
+- **Standalone ROS 2 supervisory gate node (30 Oct) (`ros2/qerra_gate_node.py`, package `qerra_core`):** Wraps the pure gate core in a ROS 2 Jazzy node. Subscribes to `/cmd_vel` (`Twist`), `/scan` (`LaserScan`) and `/gate/reset` (`String`); publishes `/cmd_vel_safe` (`Twist`) and `/gate/state` (JSON `String`) on a nominal 31.25 Hz timer. The module imports without `rclpy`, so the pure logic is unit-tested on Windows.
+- **Pure translators (30 Oct):** Differential-drive kinematics between `Twist` and integer wheel speeds in µrad/s (TIAGo defaults: wheel radius 0.098 m, track width 0.4044 m), with NaN and Infinity rejected. `LaserScan` to corridor returns through the existing `CorridorFilter` and `LidarPipeline`.
+- **Single clock domain (30 Oct):** All node timestamps come from the ROS clock (`use_sim_time` is respected), replacing a mix of process time and message time found in review.
+- **Fixed lidar geometry (30 Oct):** `lidar_n_expected` (682) and `lidar_fov_rad` (4.1887902) are startup parameters, replacing configuration from the first scan received, which made the length check compare a message with itself.
+- **Packaging (30–31 Oct):** `ros2` registered in `setup.py` packages with the console script `qerra_gate_node = ros2.qerra_gate_node:main`; runtime dependencies `geometry_msgs`, `sensor_msgs` and `std_msgs` declared in `package.xml`; root `setup.cfg` placing installed scripts under `$base/lib/qerra_core`, where `ros2 run` looks; `src/qerra_msgs/package.xml` gained `<depend>action_msgs</depend>` and `<depend>service_msgs</depend>`, required by Jazzy's interface generation.
+- **Node unit tests (30 Oct) (`tests/test_gate_ros2_node.py`):** Initially 8 tests covering the version and import guard, kinematics, proposal structure, NaN/Infinity rejection, the corridor filter and timestamps, a stalled sensor, and negative timestamps.
+- **Node observability (31 Oct):** `/gate/state` reports `hsr_source`, `hsr_required`, `hsr_drained_total` and `hsr_socket_error`, so obstacle-only mode cannot be mistaken for the full gate.
+- **Wiring tests (31 Oct) (`tests/test_gate_ros2_node_wiring.py`):** Initially 3 tests: gate parameters built the way the node builds them (matching the Webots controller's `dt_us` and `t_react_us`), a discarded scan trips a running gate, and the `/gate/state` HSR configuration fields.
+- **Native ROS 2 Jazzy CI (31 Oct onward) (`.github/workflows/ros2_jazzy.yml`, "ROS 2 Jazzy Validation"):** Runs on push to `main` in the `ros:jazzy` container (Ubuntu 24.04). First run #1 on commit `7a43f9b`. The workflow builds `qerra_core` with `colcon`, confirms `qerra_gate_node` is listed by `ros2 pkg executables`, starts the installed executable from a neutral directory, captures a `/gate/state` sample with `ros2 topic echo --once`, sends SIGINT and asserts exit code 0 with no `Tick exception` in the log, and runs the node unit and wiring tests.
+- **Node fault latch (1 Nov) (`NodeFaultLatch`, `tests/test_gate_ros2_node_latch.py`):** An unhandled exception in the control tick latches a node fault. The node then publishes a zero command every tick, `/gate/state` reports mode `FAULT` with `NODE_FAULT_LATCHED: <reason>`, the first reason is kept, and only a process restart clears it; `/gate/reset` does not. 6 tests.
+- **Perception stream monitor with controlled rebase (3–4 Nov) (`step_hsr_stream` and `HSRStreamState` in `gate/hsr_telemetry.py`, wrapped by `ros2/hsr_receiver.py`):** Drains the raw datagrams in arrival order and checks sequence continuity before worst-severity reduction. A repeated `obs_id` sets a sticky frozen-frame fault, so the receiver presents no valid status and the gate trips `TRIP_HSR_INVALID` when HSR is required. A counter regression trips fail-closed and flushes the operating-system UDP receive buffer. After a regression the receiver accepts the new sequence only after at least 5 control ticks (at most one streak credit per tick) and at least 160,000 µs of observed duration; any `MONITOR`, `CRITICAL` or non-advancing packet resets the streak. A boundary test checks that 159 ms is rejected and 160 ms accepted. The gate core keeps its own 1.0 s continuous-clear dwell and the operator reset.
+- **Timing profiles (3–4 Nov):** Node parameters `t_react_ms` (default 96.0), `lidar_period_ms` (default 32.0) and `lidar_stale_ms` (default 96.0), converted to microseconds for the gate parameters. A startup invariant, `lidar_stale_ms >= 2 * lidar_period_ms + dt_ms`, is enforced fail-closed, so the node refuses to start if it is violated. Two documented profiles: simulation (32 / 96 / 96 ms, `d_stop` 358 mm at 196 mm/s) and a 10 Hz Hokuyo URG-04LX (100 / 300 / 160 ms, `d_stop` 371 mm at 196 mm/s). The values are engineering estimates, not measurements. `/gate/state` reports `t_react_us`, `lidar_stale_us` and `lidar_period_us`.
+- **Hash-chained flight log in the node (3–4 Nov):** `GateLogger` (`gate/gate_log.py`, schema v1) is integrated as `self._flight_logger` and controlled by the parameter `flight_log_path` (empty means disabled). Record 0 embeds the gate parameters and is anchored to the genesis hash. Requirement R-10: if the append or its `os.fsync()` fails, the node clamps the command to zero on the current tick and feeds `log_write_failed=True` into the gate inputs, which produces `TRIP_LOG_FAILURE`. `/gate/state` reports the trip and zero commands in the same tick. `destroy_node()` flushes and closes the file. Offline replay with `verify_log.py --replay` reproduces the recorded decisions bit-for-bit.
+- **`qerra_msgs` build in CI (3 Nov):** The workflow builds the interface package with `colcon build --paths src/qerra_core src/qerra_core/src/qerra_msgs --packages-select qerra_msgs qerra_core`, then the step `Verify qerra_msgs action interface generation` compiles the `QerraEvaluate` action IDL and instantiates the generated Goal, Result and Feedback types under ROS 2 Jazzy. The action server in `ros2_bridge.py` is not run in CI.
+- **Forged-input and fault-injection tests (4 Nov) (`tests/test_gate_ros2_node_wiring.py`, now 8 tests):** A reset from a source other than `operator` gives `RESET_REJECTED_CHANNEL`; a reset during the clear dwell gives `RESET_REJECTED_NOT_READY`; a reset during an obstacle breach or active distress gives `RESET_REJECTED_HAZARD`; malformed, non-JSON and causality-violating UDP packets are dropped fail-closed; a lidar beam count of 500 where 682 is expected gives `TRIP_SENSOR_INVALID`; a backward jump in simulation time gives `TRIP_CLOCK_ANOMALY`; several simultaneous hazards resolve fail-closed deterministically.
+
+### Changed
+- **Reaction-time allowance in the ROS 2 node (3–4 Nov):** The node default is 96 ms (`t_react_ms`), replacing the 32 ms Webots lockstep assumption. The Webots controller still passes 32 ms.
+- **Node version:** `NODE_VERSION` is now 0.3.1.
+- **HSR telemetry contract:** `gate/hsr_telemetry.py` is now v0.3.1.
+- **Flight log durability (4 Nov):** `GateLogger.append()` now propagates real `os.fsync()` errors to the caller.
+- **`/gate/state`:** Adds the fault fields (`fault_latched`, `fault_reason`; mode `FAULT`), the HSR configuration fields, and the timing fields listed above.
+
+### Fixed
+- **Missing `setup.cfg` (31 Oct):** CI run #2 found that `ros2 pkg executables qerra_core` printed nothing, because console scripts were installed under `bin/`. Fixed in commit `a21aabe`; run #3 passed.
+- **SIGINT shutdown crash (1 Nov):** SIGINT raised `ExternalShutdownException`, and an unguarded `rclpy.shutdown()` then raised `RCLError` (exit code 1, found by CI run #4). `main()` now catches `ExternalShutdownException` and `KeyboardInterrupt` and calls `rclpy.shutdown()` only if `rclpy.ok()`. The shutdown zero-publish was removed, because it cannot work after a signal-driven shutdown; a base controller needs its own command timeout.
+- **CI exit-code check (1 Nov):** A `timeout` exit status of 124 had been read as proof of a clean shutdown; it only shows that the timer fired. The workflow now starts the node in the background, sends SIGINT, waits, and asserts the real exit status.
+- **Rebase dwell interval (4 Nov):** The first dwell implementation of the stream monitor had an off-by-one interval defect, now removed by requiring both the 5-tick streak and the 160 ms observed duration.
+- **Test off-by-one (30 Oct) (`tests/test_synthetic_hsr_telemetry.py`):** The reset assertion now checks both ticks of the recovery: the wheels stay at zero on the `RESET_ACCEPTED` tick, and cruise speed resumes on the next `PASS` tick.
+
+### Documentation
+- `SAFETY_CONCEPT.md` v0.7 (30 Oct), v0.8 (31 Oct) and v0.9 (1 Nov): node packaging, clock and geometry hardening, HSR wiring, fault latch (AR-13, claim C-9), SIGINT lifecycle, and the open reaction-time limitation.
+- `README.md`, `QERRA_FOR_ROBOTICS.md` and `QERRA-HSR-Design-v0.1.md` updated (1 Nov), including replacing "independently verified at 0.0 ms" with the same-tick reflex wording and adding the perception-boundary non-claim.
+- `TECHNICAL_BRIEF_ROS2_GATE.md` added (2 Nov) and revised for commit `a511d1e` (4 Nov). It documents localhost as an assumed trusted process boundary, so a hostile local process spoofing UDP datagrams or publishing to `/cmd_vel_safe` is not defended against; mitigation belongs to operating-system permissions and SROS2.
+
+---
+
 ## [2.3.1] - 2026-10-31 — ROS 2 Gate Node QERRA-HSR Reflex Telemetry Integration
 
 ### Added
 - **Asynchronous HSR Telemetry Ingestion (`ros2/hsr_receiver.py`):** Created pure-Python, zero-`rclpy` UDP receiver on port 5008 with worst-severity batch reduction per 32 ms tick matching Webots controller parity.
-- **Simulation Clock Echo (`gate_link.py`, `ros2/qerra_gate_node.py`):** Added non-blocking transmission of current ROS time on UDP port 5007 (`send_state()`), enabling external perception stress-testing scripts (`synthetic_hsr_producer.py`) to synchronize observation timestamps without drift.
+- **Simulation Clock Echo (`gate_link.py`, `ros2/qerra_gate_node.py`):** Added non-blocking transmission of current ROS time on UDP port 5007 (`send_state()`), so the synthetic producer (`synthetic_hsr_producer.py`) stamps its observations in the node's clock domain.
 - **Layer 1B Unit & Integration Tests (`tests/test_gate_ros2_node.py`):** Added 3 unit tests (11 tests total) verifying disabled receiver returns, UDP acute distress (`CRITICAL`) tripping to 0.0 m/s fail-closed, and `hsr_required` stale/missing heartbeat tripping. All 203 project tests pass green.
 
 ### Fixed
