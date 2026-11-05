@@ -1,7 +1,7 @@
 # LIMITATIONS of QERRA-v2 Classical
 
-**Last updated:** October 2026  
-**Engine version:** v1.9.2 + QERRA-HSR v0.1 + QERRA-THRIVE v2.0.0
+**Last updated:** November 2026  
+**Engine version:** Gate Core v0.4 + QERRA-HSR v0.3.1 + ROS 2 Node v0.3.1 (Package metadata v2.2.1)
 
 This document is maintained with full transparency as part of QERRA's
 commitment to explainability. The same honesty that applies to the system's
@@ -48,18 +48,35 @@ datasets.
 ## 2. QERRA-HSR Physical Safety Layer Limitations
 
 **Sensor dependency.**
-QERRA-HSR v0.1 processes normalized signals from the robot's perception
+QERRA-HSR v0.3.1 processes normalized signals from the robot's perception
 stack. It does not perform physical sensing itself. Output quality is entirely
 bounded by the quality and freshness of the robot platform's perception stack.
 A platform with poor fall detection or delayed lidar streams will produce poor
 QERRA-HSR outcomes regardless of the layer's internal logic.
 
 **Activation thresholds are design estimates.**
-The three thresholds (`distress_confidence` ≥ 0.75 for CRITICAL,
-≥ 0.45 for MONITOR, `persons_nearby_count` ≤ 1 for isolation) are
-design estimates, not empirically validated values. They must be
+The three thresholds (`distress_permille` ≥ 750 for CRITICAL,
+≥ 450 for MONITOR, `persons_nearby_count` ≤ 1 for isolation) are
+integer permille design estimates, not empirically validated values. They must be
 calibrated against real physical sensor streams and target platform dynamics
 before any deployment claim is made.
+
+**Perception stream monitor sequence-only scope (Gap 4.4).**
+The Layer 1B perception stream monitor (`step_hsr_stream`) validates frame
+continuity by checking monotonic `obs_id` sequence counters and timestamps. It
+detects sequence freezes (identical counter) and regressions (counter drops).
+However, it cannot detect an optically frozen sensor if an upstream producer
+node continues running and regenerating fresh sequence counters and timestamps.
+Furthermore, in synthetic testing, producer timestamps reflect echoed gate
+clock time rather than optical sensor exposure intervals.
+
+**Reflex enforcement coupling (`hsr_required`).**
+The stream monitor trips fail-closed (emitting `None` status) during rebase
+dwells and sticky freezes. However, `gate_core.py` acts upon this only when
+`hsr_required=True` (tripping `TRIP_HSR_INVALID`). If `hsr_required=False` is
+configured, corrupt or frozen reflex telemetry emits `(None, None)`, which is
+silently ignored by the Gate Core, allowing the robot to continue operating
+solely on lidar.
 
 **Chassis-local fail-closed contract vs. HTTP API.**
 On the ROS 2 Action Server bridge (`ros2_bridge.py`), missing, `None`, or empty
@@ -68,18 +85,18 @@ by design, preventing unmonitored physical actuation. On the live reference HTTP
 API (`/analyze`), omitting `hsr_signals` evaluates prospective text deliberation
 only, allowing standalone ethical analysis.
 
-**Interpersonal threat detection is out of scope for v0.1.**
+**Interpersonal threat detection is out of scope for v0.3.**
 Detecting that an interpersonal situation is escalating toward violence
 requires complex social inference with a high false-positive rate in real
 environments. This vector (`escalating_threat`) was deliberately excluded
-from v0.1 and remains a candidate for future research after v0.1 is validated.
+from the reflex layer and remains a candidate for future research.
 
 ---
 
 ## 3. Supervisory Gate (Layer 1A) Empirical Limitations
 
 **Commanded vs. measured velocity & reaction time in stopping envelope.**
-The dynamic stopping distance $d_{stop}(v) = \lceil v^2 / (2 \cdot a_{design}) \rceil + \lceil v \cdot t_{react} / 10^6 \rceil + margin$ calculates deceleration requirements using the commanded velocity proposal, not measured wheel encoder odometry. In Demo 7 telemetry (`RUN_1791713619`), wheel encoders recorded slip and caster drag between $t = 5.76\text{ s}$ and $t = 14.40\text{ s}$ where commanded speed was 2.0 rad/s but physical displacement was delayed. If a robot is skidding with momentum while the planner commands zero speed, $d_{stop}$ evaluates strictly to the static margin ($300\text{ mm}$), underestimating true physical stopping distance. In live deployment, `t_react_us` is configured to $32\,000\ \mu\text{s}$ ($32\text{ ms}$, 1 tick), expanding the stop envelope at cruise speed ($0.196\text{ m/s}$) from $339\text{ mm}$ to $346\text{ mm}$ ($+7\text{ mm}$). At higher velocities ($\ge 1.0\text{ m/s}$), integrators must configure `t_react_us >= dt_us` to prevent reaction latency from eroding the standoff margin.
+The dynamic stopping distance $d_{\text{stop}}(v) = \lceil v^2 / (2 \cdot a_{\text{design}}) \rceil + \lceil v \cdot t_{\text{react}} / 10^6 \rceil + margin$ calculates deceleration requirements using the commanded velocity proposal, not measured wheel encoder odometry. In Demo 7 telemetry (`RUN_1791713619`), wheel encoders recorded slip and caster drag between $t = 5.76\text{ s}$ and $t = 14.40\text{ s}$ where commanded speed was 2.0 rad/s but physical displacement was delayed. If a robot is skidding with momentum while the planner commands zero speed, $d_{\text{stop}}$ evaluates strictly to the static margin ($300\text{ mm}$), underestimating true physical stopping distance. In live deployment, `t_react_us` is configured to $32\,000\ \mu\text{s}$ ($32\text{ ms}$, 1 tick) in the Webots simulation controller, expanding the stop envelope at cruise speed ($0.196\text{ m/s}$) from $339\text{ mm}$ to $346\text{ mm}$ ($+7\text{ mm}$, or $347\text{ mm}$ at $200\text{ mm/s}$). In the ROS 2 simulation profile, `t_react_us` is parameterized to $96\,000\ \mu\text{s}$ ($96\text{ ms}$, stopping envelope $358\text{ mm}$ at $196\text{ mm/s}$ or $360\text{ mm}$ at $200\text{ mm/s}$). In the 10 Hz Hokuyo hardware profile, `t_react_us` is $160\,000\ \mu\text{s}$ ($160\text{ ms}$, stopping envelope $371\text{ mm}$ at $196\text{ mm/s}$ or $372\text{ mm}$ at $200\text{ mm/s}$). At higher velocities ($\ge 1.0\text{ m/s}$), integrators must configure `t_react_us >= dt_us` to prevent reaction latency from eroding the standoff margin. The 96 ms and 160 ms budgets are engineering cycle estimates, not physically measured latency distributions.
 
 **Rotational sweep is unmodeled (Arcs about stationary wheel).**
 The corridor filter (`gate_lidar.CorridorFilter`) projects laser returns across a forward translation corridor matching base half-width ($0.32\text{ m}$). With `w_min = 0` (no reverse), any proposed reverse wheel command is clamped to zero. Consequently, a proposed differential pivot $(+w, -w)$ produces an **arc about the stationary wheel** $(+w, 0)$ rather than a center pivot in place. The straight forward corridor filter does not compute swept circular polygonal volumes during turning arcs. An obstacle on the curved sweep adjacent to the swinging chassis flank evaluates as clear (`PASS`), because lateral beams outside the straight forward corridor are masked.
@@ -91,10 +108,10 @@ Under QERRA's strict fail-closed contract, any **single invalid lidar sample** (
 *(Resolved in Gate v0.3 / F1)*: Previously, a scan containing all $+inf$ values returned `(True, None)`, treating a blind sensor as an empty corridor. In v0.3, sensor liveness is verified by requiring `min_raw_lidar_returns >= 5` across the raw 240° scan before corridor masking, tripping `TRIP_SENSOR_INVALID` if the sensor is taped over or disconnected.
 
 **LiDAR freshness watchdog relies on simulated fault injection (V5).**
-In simulation, `LidarPipeline.process()` stamps scan freshness using the current simulation timestamp unless the caller passes `stalled=True`. The Webots controller sets `stalled=True` only when the fault injection switch `QERRA_LIDAR_FAULT` is configured (`freeze` or `stale`) and simulation time exceeds `QERRA_LIDAR_FAULT_SIM_S`. The stale watchdog ($T_{stale} = 96\text{ ms}$) therefore exercises software timeout recovery under simulated fault injection; it does **not** track real hardware sensor acquisition intervals, hardware bus packet timestamps, or serial driver latencies.
+In simulation, `LidarPipeline.process()` stamps scan freshness using the current simulation timestamp unless the caller passes `stalled=True`. The Webots controller sets `stalled=True` only when the fault injection switch `QERRA_LIDAR_FAULT` is configured (`freeze` or `stale`) and simulation time exceeds `QERRA_LIDAR_FAULT_SIM_S`. The stale watchdog ($T_{\text{stale}} = 96\text{ ms}$) therefore exercises software timeout recovery under simulated fault injection; it does **not** track real hardware sensor acquisition intervals, hardware bus packet timestamps, or serial driver latencies.
 
 **Global raw returns vs. forward-arc occlusion boundary (V6).**
-The raw return liveness threshold (`min_raw_lidar_returns >= 5`) counts finite laser returns across the entire 240° Hokuyo scan (667 beams). In a corridor or room, reflections off lateral walls satisfy this threshold even if the forward-facing center arc is completely obscured, taped over, or blinded. While an obstacle directly ahead in the forward corridor will trigger `TRIP_OBSTACLE` when detected, a dead forward sensor arc with live side walls will not trigger `TRIP_SENSOR_INVALID`.
+The raw return liveness threshold (`min_raw_lidar_returns >= 5`) counts finite laser returns across the entire 240° Hokuyo scan (667 or 682 beams). In a corridor or room, reflections off lateral walls satisfy this threshold even if the forward-facing center arc is completely obscured, taped over, or blinded. While an obstacle directly ahead in the forward corridor will trigger `TRIP_OBSTACLE` when detected, a dead forward sensor arc with live side walls will not trigger `TRIP_SENSOR_INVALID`.
 
 **Proposer session arbitration & restart lockout boundaries (F3 / V4).**
 The process restart arbitration mechanism introduced in Gate v0.3 / F3 uses a `session_id` in proposal datagrams to allow a newly spawned proposer (`seq = 0`) to supersede a terminated proposer that left high sequence numbers (`seq = 500+`) in the socket buffer. This mechanism has four documented boundaries:
@@ -128,9 +145,9 @@ cannot guarantee deterministic real-time scheduling bounds.
 
 **Simulation vs. physical robot deployment.**
 The ROS 2 integration and kinematics have been validated in physics
-simulation (Webots R2025a on the PAL Robotics TIAGo mobile manipulator).
-It has not been validated on physical humanoid hardware in an unstructured
-physical deployment environment.
+simulation (Webots R2025a on the PAL Robotics TIAGo mobile manipulator) and
+in a Linux ROS 2 Jazzy container. It has not been validated on physical
+humanoid or mobile manipulator hardware in an unstructured physical environment.
 
 **Free-tier reference hosting constraints.**
 The public reference API runs on Hugging Face Spaces free-tier infrastructure.
@@ -140,7 +157,36 @@ infrastructure resource constraint, not an engine algorithmic delay.
 
 ---
 
-## 5. Scope, Human Agency, and Regulatory Boundaries
+## 5. Adversarial & Security Boundaries (Verified in Test Suite)
+
+**Localhost is an assumed trusted process boundary (Section 4.6).**
+Localhost UDP ports (5005, 5006, 5007, 5008) and ROS 2 topics are unauthenticated and unencrypted. QERRA does not defend against hostile local processes running under the same OS user. Two concrete vulnerabilities have been proven through executable unit tests (`tests/test_adversarial_hsr.py`):
+1. **Masked-distress re-arm exploit (Section 4.6a):** If a legitimate perception producer is silenced after a real distress stop, an unauthenticated local attacker can transmit a counter regression (`obs_id = 0`), supply 5 clean ticks spaced to reach $\ge 160\text{ ms}$ elapsed dwell, maintain `CLEAR` for the 1.0 s Gate dwell, and issue an operator reset string (`"operator"`). The Gate returns to `Mode.RUN` despite genuine distress having occurred. (Verified in `test_adversarial_masked_distress_rearm_succeeds_without_auth`).
+2. **Ingestion buffer crowding exploit (Section 4.6b):** Ingestion from UDP sockets is bounded by `MAX_DRAIN_PER_CALL = 256` datagrams per tick. If an attacker floods $\ge 260$ valid `CLEAR` datagrams into the socket queue, a trailing legitimate `CRITICAL` datagram is left unread in the OS buffer, delaying the protective stop across control cycles. (Verified in `test_adversarial_flood_above_max_drain_delays_critical`).
+3. **Actuator authority non-claim in ROS 2:** The ROS 2 DDS transport does not enforce sole-publisher authority. Any local node publishing to `/cmd_vel_safe` bypasses the supervisory gate entirely. SROS2 permissions and OS-level containerization are required to enforce write authority.
+
+---
+
+## 6. ROS 2 Node Architecture Limitations
+
+**Twist interface lacks planner generation timestamp.**
+`QerraGateNode` subscribes to standard `geometry_msgs/msg/Twist` on `/cmd_vel`. Because `Twist` carries no header stamp, the node assigns `sim_stamp_us = now_us` upon message receipt. Consequently, the proposal watchdog ($150\text{ ms}$) measures transport and subscription callback delay at the Gate, but cannot detect compute lag or stalled cycles inside the upstream planner before publication.
+
+**No zero command on node termination.**
+In `QerraGateNode.destroy_node()`, network sockets and flight logger file descriptors are cleanly closed, but no final zero-velocity command is published to `/cmd_vel_safe`. Actuator safety upon node death depends entirely on downstream base controller command watchdogs.
+
+**Synchronous disk `fsync` inside the 32 ms tick (Requirement R-10).**
+When `flight_log_path` is enabled, `GateLogger.append()` executes synchronous `os.fsync()` inside `_tick_callback()`. On spinning disks, saturated SSDs, or virtualized storage, an `fsync` blocking longer than 32 ms delays subsequent control cycles without raising an error.
+
+**Permanent process latching (`NodeFaultLatch`).**
+Any unhandled tick exception latches `NodeFaultLatch` permanently for the lifetime of the process, continuously holding 0.0 m/s wheel output. The latch cannot be cleared by `/gate/reset`. Automatic node respawning in launch configurations must be disabled, as process restarts erase in-memory latch states.
+
+**LaserScan metadata validation.**
+In `_scan_callback()`, length integrity is strictly enforced (`len(ranges) == lidar_n_expected`), but scan geometry metadata (`angle_min`, `angle_increment`, `frame_id`) is not validated.
+
+---
+
+## 7. Scope, Human Agency, and Regulatory Boundaries
 
 **Deterministic Execution Boundary, Not an Autonomous Moral Authority.**
 QERRA-v2 is an inspectable execution firewall and deliberation middleware.
@@ -172,7 +218,7 @@ EU AI Act (Regulation (EU) 2024/1689):
 
 ---
 
-## 6. Known Technical Notes
+## 8. Known Technical Notes
 
 **v001 detection scope.**
 The `coherence_protection` vector detects emotional distress signals
