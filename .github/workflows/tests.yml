@@ -26,13 +26,13 @@ jobs:
           pip install sentence-transformers fastapi uvicorn python-dotenv pydantic slowapi
           pip install -e . --no-deps
 
-      - name: Run Supervisory Gate Test Suite (stdlib only)
+      - name: Run Full Host Test Suite (211 tests)
         env:
           PYTHONPATH: .
         run: |
-          python -m unittest discover -s tests -p "test_gate_*.py" -v
+          python -m unittest discover -s tests -p "test_*.py" -v
 
-      - name: Run QERRA-HSR Test Suite
+      - name: Run QERRA-HSR Test Suite (20 tests)
         env:
           PYTHONPATH: .
         run: |
