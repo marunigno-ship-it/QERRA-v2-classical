@@ -14,17 +14,17 @@ Values and ethics can screen and rank what a robot wants to do, but only a deter
 
 The setting this is built for: a transport cobot in a hospital corridor yields and slows near people, stops safely if its software fails, and leaves a record a safety officer can audit.
 
-> **Status in one paragraph.** QERRA is a simulation-based research prototype. It is not a certified safety system, it has not been tested on hardware, and a 0.0 wheel command is a software setpoint, not an emergency stop. The deterministic gate is demonstrated in Webots and, as a standalone ROS 2 node (`qerra_gate_node` v0.3.1), is built, executed, and tested under ROS 2 Jazzy in GitHub Actions (25 container tests, 203 host tests). See the formal [Technical Brief](./TECHNICAL_BRIEF_ROS2_GATE.md) and [Known limitations](#known-limitations--honesty-boundaries).
+> **Status in one paragraph.** QERRA is a simulation-based research prototype. It is not a certified safety system, it has not been tested on hardware, and a 0.0 wheel command is a software setpoint, not an emergency stop. The deterministic gate is demonstrated in Webots and, as a standalone ROS 2 node (`qerra_gate_node` v0.3.1), is built, executed and tested under ROS 2 Jazzy in GitHub Actions (25 container tests; 211 host unit tests in the author's local run). Localhost is an assumed trusted process boundary, and two documented exploit scenarios show what that assumption leaves open. See the formal [Technical Brief](./TECHNICAL_BRIEF_ROS2_GATE.md) and [Known limitations](#known-limitations--honesty-boundaries).
 
 | Layer | Role | Evidence today |
 |-------|------|----------------|
-| **Layer 1A: Supervisory Gate (`gate/`)** | The component that decides wheel commands. In the Webots controller it is the only process that writes wheel velocities. Pure standard-library integer state machine enforcing a dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Both the Webots controller and the ROS 2 node support logging every tick to a SHA-256 rolling hash chain with an R-10 fail-closed trip. | Demonstrated in simulation: Demos 7, 8 and 9. Flight log verifiable offline with `verify_log.py --replay`. Also packaged as a standalone ROS 2 node (`qerra_gate_node` v0.3.1) with parameterised timing profiles (96 ms simulation / 160 ms hardware), built and tested under ROS 2 Jazzy in CI. At commit `a511d1e`, the project reports 203 host unit tests and 25 ROS 2 container integration tests. Simulation and CI evidence only. |
-| **Layer 1B: QERRA-HSR (`hsr/`)** | A 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 as an informative design reference for assistive and healthcare mobile cobots. The Gate acts on it when it is wired in (`CRITICAL` trips the gate). The pure-function stream monitor (`step_hsr_stream`) checks packet sequence monotonicity, detects frozen frames, and only permits controlled counter rebase after both at least 5 qualifying control ticks and at least 160 ms of elapsed observation time. Pure Python, Apache-2.0. | Built and unit-tested (20 tests in `hsr/`). Evaluated in Webots Demos 6 and 9 with a stabilised 1.0 s dwell and Property HSR-5 recovery directives. Sequence checks and the dual-gate rebase boundary are verified in CI. |
+| **Layer 1A: Supervisory Gate (`gate/`)** | The component that decides wheel commands. In the Webots controller it is the only process that writes wheel velocities. Pure standard-library integer state machine enforcing a dynamic stopping envelope $d_{stop}(v)$, watchdog liveness (150 ms), and fail-closed latched recovery with operator reset. Both the Webots controller and the ROS 2 node can log every tick to a SHA-256 rolling hash chain, and the node trips fail-closed if a log write fails (requirement R-10). | Demonstrated in simulation: Demos 7, 8 and 9. Flight log verifiable offline with `verify_log.py --replay`. Also packaged as a standalone ROS 2 node (`qerra_gate_node` v0.3.1) with parameterised timing profiles (96 ms simulation, 160 ms for a 10 Hz scanner), built and tested under ROS 2 Jazzy in CI. Local Windows run of 5 Nov 2026: 211 unit tests. ROS 2 Jazzy container at commit `a511d1e`: 25 integration tests. Simulation and CI evidence only. |
+| **Layer 1B: QERRA-HSR (`hsr/`)** | A 3-vector reflex signal (`immediate_physical_distress`, `human_isolation`, `environmental_hazard_proximity`) under ISO 13482 as an informative design reference for assistive and healthcare mobile cobots. The Gate acts on it when it is wired in (`CRITICAL` trips the gate). In the ROS 2 node a pure-function stream monitor (`step_hsr_stream`) checks packet sequence order, detects frozen frames, and allows a counter rebase only after both at least 5 qualifying control ticks and at least 160 ms of elapsed observation time. Pure Python, Apache-2.0. ("HSR" here is this project's own name and is unrelated to Toyota's Human Support Robot.) | Built and unit-tested (20 tests in `hsr/`). Evaluated in Webots Demos 6 and 9 with a stabilised 1.0 s dwell and Property HSR-5 recovery directives. The stream monitor has edge-case matrix tests and a 159 ms / 160 ms rebase boundary test in the host suite. All HSR input in the demonstrations is injected or synthetic. |
 | **Layer 2: SEMEV-12** | Advisory screening of text task instructions against 12 moral and coercion vectors. MiniLM embeddings with deterministic scoring gates and negation pre-filtering. Not part of the physical safety function. | Built, unit-tested and benchmarked (15 regression cases, 80-case baseline, active adversarial suite). The adversarial benchmark documents known evasion vectors. |
 | **Layer 3: QERRA-THRIVE** | Advisory values ranking for actions that have passed safety and moral screening (pacing, personal space, clear signalling, flora/animal protection). Native PyTrees integration. | Built and unit-tested across human-centered and ecological suites. Heuristic weights; not yet evaluated with human participants. |
 
 **Where to start:**
-- Safety and robotics engineers: [`TECHNICAL_BRIEF_ROS2_GATE.md`](./TECHNICAL_BRIEF_ROS2_GATE.md) (formal ROS 2 Jazzy systems-engineering brief), [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, the [ROS 2 Integration](#ros-2-integration) section, and the Demo 7, 8 and 9 sections below.
+- Safety and robotics engineers: [`TECHNICAL_BRIEF_ROS2_GATE.md`](./TECHNICAL_BRIEF_ROS2_GATE.md) (formal ROS 2 Jazzy systems-engineering brief), [`SAFETY_CONCEPT.md`](./SAFETY_CONCEPT.md) (v0.10), [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md), [`QERRA-HSR-Design-v0.1.md`](./QERRA-HSR-Design-v0.1.md), [`LIMITATIONS.md`](./LIMITATIONS.md), `verify_log.py`, the [ROS 2 Integration](#ros-2-integration) section, and the Demo 7, 8 and 9 sections below.
 - Ethics, human-robot interaction and standards readers: the SEMEV-12 and QERRA-THRIVE sections below, and the two benchmark files.
 
 ---
@@ -38,8 +38,8 @@ A mobile robot should never rely on an unpredictable neural network to make life
 QERRA addresses this by splitting safety into three separate, accountable jobs that run in a strict sequence:
 
 1. **The Deterministic Gate & Assistive Reflex (Layer 1A & 1B):**
-   - **Layer 1A — The Supervisory Gate (`gate/`):** Pure-function, standard-library-only integer state machine that decides velocity commands. It evaluates velocity proposals from untrusted planners against a dynamic kinematic stopping envelope ($d_{stop} = \lceil v^2 / (2a_{design}) \rceil + \lceil v \cdot t_{react} \rceil + margin$, with $a_{design} = 0.5\ \text{m/s}^2$ (500 mm/s$^2$) and $margin = 300\ \text{mm}$; use $v$ in mm/s, $a_{design}$ in mm/s$^2$, and $t_{react}$ in seconds to obtain millimetres). Reaction time is parameterised: the Webots controller used a 32 ms lockstep allowance ($d_{stop} = 346\ \text{mm}$ at 196 mm/s cruise), while the ROS 2 node exposes a 96 ms simulation profile ($d_{stop} = 358\ \text{mm}$ at 196 mm/s / 360 mm at 200 mm/s) and a 160 ms hardware profile for a 10 Hz scanner ($d_{stop} = 371\ \text{mm}$ at 196 mm/s / 372 mm at 200 mm/s). The gate trips fail-closed on obstacle breach, clock anomalies, invalid sensor scans, proposer stalls ($\ge 150\ \text{ms}$), or configured flight-log write/fsync failures (Requirement R-10), and enforces a 1.0 s continuous-clear dwell and a manual operator reset before recovery. In verified simulation (TIAGo base in Webots R2025a, `RUN_1791713619`), a commanded cruise was halted with $36\ \text{mm}$ of physical coasting after a trip at 337 mm clearance (standstill at 301 mm).
-   - **Layer 1B — QERRA-HSR Reflex (`hsr/`):** Pure Python threshold reflex under ISO 13482 as an informative design reference for assistive and healthcare mobile cobots. Evaluates distress telemetry, human isolation, and proximity hazards to issue reflex states (`CLEAR`, `MONITOR`, `CRITICAL`) and Property HSR-5 human-in-the-loop recovery directives. The Gate trips on `CRITICAL`. In the ROS 2 node, incoming telemetry passes through a pure stream monitor (`step_hsr_stream`) that checks packet sequence monotonicity, detects frozen frames, and only allows controlled counter rebase after both at least 5 qualifying control ticks and at least 160 ms of elapsed observation time.
+   - **Layer 1A — The Supervisory Gate (`gate/`):** Pure-function, standard-library-only integer state machine that decides velocity commands. It evaluates velocity proposals from untrusted planners against a dynamic kinematic stopping envelope ($d_{stop} = \lceil v^2 / (2a_{design}) \rceil + \lceil v \cdot t_{react} \rceil + margin$, with $a_{design} = 0.5\ \text{m/s}^2$ (500 mm/s$^2$) and $margin = 300\ \text{mm}$; use $v$ in mm/s, $a_{design}$ in mm/s$^2$, and $t_{react}$ in seconds to obtain millimetres). Reaction time is parameterised: the Webots controller used a 32 ms lockstep allowance ($d_{stop} = 346\ \text{mm}$ at 196 mm/s cruise, 347 mm at 200 mm/s), while the ROS 2 node exposes a 96 ms simulation profile ($d_{stop} = 358\ \text{mm}$ at 196 mm/s, 360 mm at 200 mm/s) and a 160 ms profile for a 10 Hz scanner ($d_{stop} = 371\ \text{mm}$ at 196 mm/s, 372 mm at 200 mm/s). The 96 ms and 160 ms values are engineering estimates, not measured latencies. The gate trips fail-closed on obstacle breach, clock anomalies, invalid sensor scans, proposer stalls ($\ge 150\ \text{ms}$), or, when a flight log is configured, a failed log write or `fsync` (requirement R-10), and enforces a 1.0 s continuous-clear dwell and a manual operator reset before recovery. In verified simulation (TIAGo base in Webots R2025a, `RUN_1791713619`), a commanded cruise was halted with $36\ \text{mm}$ of physical coasting after a trip at 337 mm clearance (standstill at 301 mm).
+   - **Layer 1B — QERRA-HSR Reflex (`hsr/`):** Pure Python threshold reflex under ISO 13482 as an informative design reference for assistive and healthcare mobile cobots. Evaluates distress telemetry, human isolation, and proximity hazards to issue reflex states (`CLEAR`, `MONITOR`, `CRITICAL`) and Property HSR-5 human-in-the-loop recovery directives. The Gate trips on `CRITICAL`. In the ROS 2 node, incoming telemetry passes through a pure stream monitor (`step_hsr_stream`) that checks packet order, detects frozen frames, and presents no valid status (`(None, None)`) during a fault or a rebase dwell. With `hsr_required=true` the gate core turns that into `TRIP_HSR_INVALID`.
 
 2. **The Moral Conscience (SEMEV-12):**
    A 12-dimensional ethical filter that evaluates text instructions before the robot moves. If someone orders the robot to do something abusive, deceptive, or coercive (such as forcing a worker through a break or falsifying safety records), the robot refuses the command, illuminates an amber LED, logs the refusal reason, and **physically shakes its head "No"** in simulation.
@@ -308,16 +308,16 @@ values/
 
 ## Features
 
-- **Deterministic Supervisory Gate (Layer 1A):** Pure-function integer state machine. Clamps wheel velocities into a dynamic stopping envelope ($d_{stop} = \lceil v^2 / (2a) \rceil + \lceil v \cdot t_{react} \rceil + margin$), trips fail-closed upon sensor faults or corridor obstruction, and enforces latched recovery with operator reset. Measured in Webots R2025a (Demo 7, TIAGo): trip at 337 mm clearance, standstill at 301 mm ($36\ \text{mm}$ of physical coasting).
-- **Standalone ROS 2 Gate Node (`qerra_gate_node` v0.3.1):** The gate wrapped as a ROS 2 Jazzy node between an untrusted planner and the base controller, with parameterised timing profiles (96 ms simulation / 160 ms hardware), separate lidar period and stale-age settings, an asynchronous UDP distress input (Layer 1B) protected by a sequence-checking stream monitor with a dual-gate restart rebase requirement (at least 5 qualifying ticks and at least 160 ms elapsed observation time), a node-level fault latch, and a CI workflow that builds the ROS 2 packages and executes 25 container tests. Simulation and CI evidence only; see [ROS 2 Integration](#ros-2-integration).
-- **Tamper-Evident SHA-256 Flight Recorder:** Every discrete control decision can be appended to a canonical JSONL flight log chained via rolling SHA-256 digests ($hash = \text{SHA256}(prev\_hash + canonical\_bytes)$) starting from a 64-zero genesis anchor for offline auditing via `verify_log.py --replay`. Supported in both the Webots controller and the ROS 2 node (`flight_log_path`). When node logging is enabled, a write or `os.fsync()` failure propagates to the gate and causes an immediate same-tick 0.0 m/s fail-closed command and `TRIP_LOG_FAILURE` (Requirement R-10).
+- **Deterministic Supervisory Gate (Layer 1A):** Pure-function integer state machine. Clamps wheel velocities into a dynamic stopping envelope ($d_{stop} = \lceil v^2 / (2a) \rceil + \lceil v \cdot t_{react} \rceil + margin$, with $t_{react}$ in seconds), trips fail-closed upon sensor faults or corridor obstruction, and enforces latched recovery with operator reset. Measured in Webots R2025a (Demo 7, TIAGo): trip at 337 mm clearance, standstill at 301 mm ($36\ \text{mm}$ of physical coasting).
+- **Standalone ROS 2 Gate Node (`qerra_gate_node` v0.3.1):** The gate wrapped as a ROS 2 Jazzy node between an untrusted planner and the base controller, with parameterised timing profiles (96 ms simulation, 160 ms for a 10 Hz scanner; both estimates), separate lidar period and stale-age settings with a fail-closed startup check, an asynchronous UDP distress input (Layer 1B) read through a sequence-checking stream monitor, a node-level fault latch, an optional hash-chained flight log, and a CI workflow that builds the ROS 2 packages and runs 25 container tests. Simulation and CI evidence only; see [ROS 2 Integration](#ros-2-integration).
+- **Tamper-Evident SHA-256 Flight Recorder:** Every discrete control decision can be appended to a canonical JSONL flight log chained via rolling SHA-256 digests ($hash = \text{SHA256}(prev\_hash + canonical\_bytes)$) from a 64-zero genesis anchor, for offline auditing with `verify_log.py --replay`. Supported in the Webots controller and in the ROS 2 node (parameter `flight_log_path`). Record 0 embeds the gate parameters (in the Webots controller also the fault-injection manifest). When node logging is enabled, a write, flush or `os.fsync()` failure clamps the command to 0.0 m/s on the same tick and reports `TRIP_LOG_FAILURE` (requirement R-10).
 - **Assistive Safety Reflex (Layer 1B / QERRA-HSR v0.1):** Pure Python, standard-library reflex under ISO 13482 evaluating distress, isolation, and environmental proximity for assistive cobots, with Property HSR-5 human-in-the-loop recovery directives.
 - **Dual-Tier Watchdog Architecture:** Strict 150 ms proposal freshness watchdog at the wheel-level execution gate; 800 ms fail-closed network timeout on high-level semantic and API bridges.
 - **12-Vector Semantic Moral Filtering (SEMEV-12):** Evaluates workplace coercion, deception, and autonomy violations using sentence embeddings bounded by deterministic scoring gates and negation pre-filtering.
 - **Physical Refusal Gesture:** Commands the robot's head to physically shake "No" in simulation when refusing an unethical directive, preventing ambiguous failure states.
 - **Resilience vs. Coercion Nuance:** Distinguishes between active workplace coercion versus a committed professional voluntarily pushing through a demanding environment.
 - **Social Manners & Etiquette (QERRA-THRIVE v2.0.0):** 12 value vectors ranking candidate actions for human courtesy (quiet "whisper mode" in corridors, lawn/flora protection) with native PyTrees integration.
-- **Tested and CI-checked:** Ground truth at commit `a511d1e`: **203/203 host unit tests** passed on the Windows 11 host (Python 3.12/3.14); **25/25 ROS 2 container integration tests** passed in the official `ros:jazzy` Docker container (17 node tests + 8 wiring/fault-injection tests). The CI run also builds `qerra_msgs` and `qerra_core` and checks the generated action Goal, Result and Feedback Python bindings. The 15-case SEMEV-12 regression script also passed. Both GitHub Actions pipelines are green at the reported commit (`QERRA-v2 Classical Test Suite #766` and `ROS 2 Jazzy Validation #31`).
+- **Tested and CI-checked:** In the author's local run on the Windows 11 host (Python 3.12 and 3.14, 5 Nov 2026), 211 unit tests under `tests/` passed with 0 failures. They include 6 stream-monitor edge-case matrix tests and 2 adversarial exploit tests added after commit `a511d1e`. Also reported: 20 tests in `hsr/` and the 15-case SEMEV-12 regression script. At commit `a511d1e`, `QERRA-v2 Classical Test Suite #766` and `ROS 2 Jazzy Validation #31` both passed. The Jazzy job ran 25 container tests (17 node tests and 8 wiring and fault-injection tests), built `qerra_msgs` and `qerra_core`, and checked the generated action bindings. Counts change as tests are added; the workflow runs are the source of truth.
 
 ---
 
@@ -384,9 +384,9 @@ Explicit obstacle-only mode (no HSR input):
 ros2 run qerra_core qerra_gate_node --ros-args -p hsr_source:=none -p hsr_required:=false
 ```
 
-**Timing profiles and sensor geometry:** the simulation defaults use `t_react_ms=96.0`, `lidar_period_ms=32.0` and `lidar_stale_ms=96.0`. At 196 mm/s / 200 mm/s, the configured stopping envelope is 358 mm / 360 mm. The 10 Hz Hokuyo URG-04LX hardware profile uses `t_react_ms=160.0`, `lidar_period_ms=100.0` and `lidar_stale_ms=300.0`; at 196 mm/s / 200 mm/s, the configured stopping envelope is 371 mm / 372 mm. These are engineering timing profiles, not measured worst-case physical bounds. The node defaults to 682 beams over 240°; the Webots TIAGo in Demos 7–9 reports 667 samples, so for that simulation set `-p lidar_n_expected:=667`. A scan with any other beam count is discarded and the gate trips.
+**Timing profiles and sensor geometry:** the simulation defaults use `t_react_ms=96.0`, `lidar_period_ms=32.0` and `lidar_stale_ms=96.0`. At 196 mm/s / 200 mm/s, the configured stopping envelope is 358 mm / 360 mm. The 10 Hz Hokuyo URG-04LX hardware profile uses `t_react_ms=160.0`, `lidar_period_ms=100.0` and `lidar_stale_ms=300.0`; at 196 mm/s / 200 mm/s, the configured stopping envelope is 371 mm / 372 mm. These are engineering estimates of the signal chain, not measured worst-case physical bounds. The node defaults to 682 beams over 240°; the Webots TIAGo in Demos 7–9 reports 667 samples, so for that simulation set `-p lidar_n_expected:=667`. A scan with any other beam count is discarded and the gate trips.
 
-The node validates at startup that `lidar_stale_ms >= 2 * lidar_period_ms + dt_ms`, where `dt_ms` is the nominal control-tick period derived from `rate_hz`. The reaction-time parameter must be finite and non-negative. The default simulation profile satisfies the lidar freshness invariant at 96 ms = 2 × 32 ms + 32 ms; the stated 10 Hz hardware profile uses a 300 ms stale limit. Parameter changes are not a runtime safety-reconfiguration mechanism; use a validated startup configuration.
+The node validates at startup that `lidar_stale_ms >= 2 * lidar_period_ms + dt_ms`, where `dt_ms` is the nominal control-tick period derived from `rate_hz`, and refuses to start if it does not hold. The reaction-time parameter must be finite and non-negative. The default simulation profile satisfies the invariant at 96 ms = 2 × 32 ms + 32 ms; the hardware profile uses a 300 ms stale limit. Parameters are read at startup; use a validated startup configuration, not runtime reconfiguration.
 
 **What you will see on a fresh start:** the gate starts latched (`TRIPPED`). It reports `TRIP_SENSOR_INVALID` until a valid `/scan` arrives, and with the default `hsr_required=True` it also needs a fresh HSR heartbeat and a live proposer. After the clear dwell it waits in `AWAITING_RESET`; send the operator reset with:
 
@@ -404,7 +404,7 @@ ros2 topic pub --once /gate/reset std_msgs/msg/String "{data: operator}"
 - `/gate/state` (`std_msgs/msg/String`) — diagnostic JSON: node and gate versions, mode (`RUN`, `TRIPPED`, `AWAITING_RESET`, or `FAULT`), reason, `d_stop_mm`, `lidar_min_mm`, HSR status and configuration (`hsr_source`, `hsr_required`, `hsr_drained_total`, `hsr_socket_error`), timing configuration (`t_react_us`, `lidar_period_us`, `lidar_stale_us`), `fault_latched` and `fault_reason`, proposal sequence and age, and the wheel commands in urad/s.
 
 **Asynchronous UDP channels (localhost only):**
-- **HSR distress input (port 5008):** non-blocking `HSRTelemetryPacket` datagrams read by `HsrReceiver`. The receiver validates packet sequence monotonicity in arrival order before applying worst-severity reduction per tick. Repeated/frozen observations and sequence faults invalidate the stream; packet counter regression triggers socket backlog flushing. The stream monitor permits counter rebase only after at least 5 qualifying CLEAR control ticks **and** at least 160,000 µs of elapsed observation time. The Gate separately retains its own 1.0 s continuous-clear dwell and explicit operator reset. The gate trips on `CRITICAL` (`TRIP_HSR_CRITICAL`), invalid telemetry (`TRIP_HSR_INVALID`) and a stale heartbeat (`TRIP_HSR_STALE`, older than 96 ms) when `hsr_required` is true.
+- **HSR distress input (port 5008):** non-blocking `HSRTelemetryPacket` datagrams read by `HsrReceiver`. The stream monitor examines the raw datagrams in arrival order before worst-severity reduction is applied per tick. A repeated `obs_id` latches a sticky freeze, and a counter regression (a producer restart) flushes the operating-system receive buffer and starts a rebase dwell. The rebase completes only after at least 5 qualifying control ticks (`rebase_streak >= 5`, at most one credit per tick) **and** at least 160,000 µs of elapsed observation time; any `MONITOR`, `CRITICAL` or non-advancing packet resets the streak. During a fault or rebase dwell the receiver emits `(None, None)`, which the gate core turns into `TRIP_HSR_INVALID` when `hsr_required` is true. The gate also trips on `CRITICAL` (`TRIP_HSR_CRITICAL`) and on a stale heartbeat (`TRIP_HSR_STALE`, older than 96 ms). It keeps its own 1.0 s continuous-clear dwell and still needs an explicit operator reset.
 - **Clock echo (port 5007):** the node sends its current ROS time in microseconds so the synthetic producer (`scripts/synthetic_hsr_producer.py`) stamps its observations in the node's clock domain.
 
 **Parameters:**
@@ -413,7 +413,7 @@ ros2 topic pub --once /gate/reset std_msgs/msg/String "{data: operator}"
 |-----------|---------|---------|
 | `rate_hz` | `31.25` | Nominal tick rate (32 ms period) |
 | `hsr_source` | `"udp"` | `"udp"` or `"none"` (explicit obstacle-only mode) |
-| `hsr_required` | `true` | Trip if HSR telemetry is missing or stale |
+| `hsr_required` | `true` | Trip if HSR telemetry is missing, stale or invalid |
 | `hsr_port` | `5008` | UDP port for HSR datagrams |
 | `state_port` | `5007` | UDP port for the clock echo |
 | `lidar_n_expected` | `682` | Required beam count per scan |
@@ -421,44 +421,47 @@ ros2 topic pub --once /gate/reset std_msgs/msg/String "{data: operator}"
 | `robot_half_width_m` | `0.32` | Corridor half-width |
 | `track_width_m` | `0.4044` | TIAGo base track width |
 | `wheel_radius_m` | `0.098` | TIAGo wheel radius |
-| `t_react_ms` | `96.0` | Reaction-time profile in milliseconds; set to `160.0` for the stated 10 Hz hardware profile |
-| `lidar_period_ms` | `32.0` | Expected lidar scan period; set to `100.0` for the stated 10 Hz hardware profile |
-| `lidar_stale_ms` | `96.0` | Maximum accepted scan age; startup invariant requires at least `2 * lidar_period_ms + dt_ms`; set to `300.0` for the stated hardware profile |
+| `t_react_ms` | `96.0` | Reaction-time profile in milliseconds; `160.0` for the stated 10 Hz hardware profile |
+| `lidar_period_ms` | `32.0` | Expected lidar scan period; `100.0` for the stated hardware profile |
+| `lidar_stale_ms` | `96.0` | Maximum accepted scan age; must be at least `2 * lidar_period_ms + dt_ms`; `300.0` for the stated hardware profile |
 | `flight_log_path` | `""` | JSONL flight-log path; empty disables node flight logging |
 
 **Fail-closed behaviour:**
 - **Sensor geometry guard:** a scan whose beam count differs from `lidar_n_expected` is discarded, so the gate trips `TRIP_SENSOR_INVALID` instead of raising inside the subscription callback.
-- **HSR stream guard:** packet sequence faults, frozen/repeated observations and invalid or causality-violating datagrams do not become fresh CLEAR state. A counter rebase needs both at least 5 qualifying CLEAR ticks and at least 160 ms elapsed observation time; the Gate's separate 1.0 s clear dwell and operator reset remain mandatory.
+- **HSR stream guard:** sequence faults, frozen or repeated observations, and invalid or causality-violating datagrams never become fresh `CLEAR` state. The monitor protects only when `hsr_required` is true: with `hsr_required=false` the gate ignores a `None` reflex status, so counter faults do not stop the robot.
 - **Configuration and timing guards:** startup is refused if `hsr_source="none"` while `hsr_required=true`, if `t_react_ms` is non-finite or negative, or if `lidar_stale_ms < 2 * lidar_period_ms + dt_ms`.
-- **R-10 flight-log trip:** when `flight_log_path` is configured, a log write or `os.fsync()` I/O failure propagates to the node. On that same control tick, `/cmd_vel_safe` is clamped to zero and `/gate/state` reports `mode: "TRIPPED"`, `reason: "TRIP_LOG_FAILURE"`, and zero wheel commands. An empty path disables node flight logging.
+- **R-10 flight-log trip:** when `flight_log_path` is configured, a log write, flush or `os.fsync()` failure propagates to the node. On that same control tick, `/cmd_vel_safe` is clamped to zero and `/gate/state` reports `mode: "TRIPPED"`, `reason: "TRIP_LOG_FAILURE"` and zero wheel commands. An empty path disables node flight logging.
 - **Quiescent re-arm tick:** when an operator reset is accepted (`RESET_ACCEPTED`), wheel commands stay at zero for that cycle; motion resumes on the next `RUN` cycle (`Reason.PASS`).
 - **Unified clock domain:** timestamps come from the node's ROS clock, so `use_sim_time` is respected. HSR observation timestamps must be produced in that same clock domain.
 - **Node fault latch:** any exception inside the control tick latches a node fault. From then on the node publishes a zero command every tick, `/gate/state` reports mode `FAULT` with the first fault reason, and only a process restart clears it. `/gate/reset` does not clear the latch.
-- **Clean shutdown:** on SIGINT the node exits with code 0 (checked in CI). It does not publish a final zero command on shutdown. If the gate process dies or stops ticking, the base keeps its last command unless the base controller has its own command timeout, so configure one.
+- **Clean shutdown:** on SIGINT the node exits with code 0 (checked in CI). `destroy_node()` publishes no final zero command. If the gate process dies or stops ticking, the base keeps its last command unless the base controller has its own command timeout, so configure one.
 
 **What the ROS 2 CI checks** (workflow `ROS 2 Jazzy Validation`, container `ros:jazzy`, runs on every push to `main`; `.github/workflows/ros2_jazzy.yml` is the source of truth):
-- `qerra_msgs` and `qerra_core` build under ROS 2 Jazzy using the nested package paths required by this repository layout.
+- `qerra_msgs` and `qerra_core` build under ROS 2 Jazzy using the nested package paths this repository layout requires.
 - The `qerra_msgs/action/QerraEvaluate` Goal, Result and Feedback Python bindings are generated, imported and instantiated.
 - `qerra_gate_node` is discoverable under `lib/qerra_core`; the installed executable starts from a neutral directory and runs under real `rclpy`.
 - The node constructs and ticks, and a sample of `/gate/state` is captured with `ros2 topic echo --once`.
 - A SIGINT produces exit code 0, and the captured log contains no `Tick exception`.
-- **25 container integration tests** run in the Jazzy container: 17 node tests and 8 wiring/fault-injection tests. These include reset-channel and reset-state rejection cases, malformed or causality-violating UDP packet handling, lidar beam-count mismatch, backward simulation-time handling and deterministic multi-hazard resolution.
+- **25 container integration tests** run in the Jazzy container: 17 node tests and 8 wiring and fault-injection tests. These include reset-channel and reset-state rejection cases, malformed or causality-violating UDP packet handling, lidar beam-count mismatch, backward simulation-time handling and deterministic multi-hazard resolution.
 
-**What it does not check:** physical sensor performance, real actuator stopping behavior, hardware timing bounds, timing under representative CPU and I/O load, hardware-in-the-loop behavior, or enforcement of exclusive ROS graph access to `/cmd_vel_safe`. The CI results establish the reported build, interface-generation and test results in the container; they do not establish physical safety performance.
+**What it does not check:** physical sensor performance, real actuator stopping behavior, hardware timing bounds, timing under representative CPU and I/O load, hardware-in-the-loop behavior, enforcement of exclusive ROS graph access to `/cmd_vel_safe`, or the `qerra_msgs` action server. The CI results establish the reported build, interface-generation and test results in the container; they do not establish physical safety performance.
 
 ### Known limitations of the ROS 2 node
 
-1. **Reaction-time estimates are not WCET bounds.** The node exposes a 96 ms simulation profile and a 160 ms hardware profile. These settings parameterise the stopping-distance calculation, but the component values are engineering estimates, not measured worst-case timing bounds. Scanner acquisition, transport, executor delay, operating-system scheduling and actuator response still require measurement on the target system.
-2. **General-purpose scheduling.** The tick is a ROS timer in Python on a general-purpose OS. It is nominally 31.25 Hz; garbage collection, disk I/O and scheduling can delay it. Green CI does not prove a hard real-time deadline or a bounded maximum callback latency.
-3. **Lidar freshness trade-off.** The 10 Hz hardware profile uses a 300 ms `lidar_stale_ms` limit to accommodate the configured 100 ms scan period and timing invariant. This is a looser accepted scan-age limit than the 96 ms simulation profile; it is a configuration choice, not evidence that a 300 ms-old scan is safe in every operating condition. The sensor profile must be justified for the actual scanner and robot dynamics.
-4. **Optional flight logging and audit anchoring.** The ROS 2 node supports the SHA-256 JSONL flight recorder and R-10 fail-closed handling when `flight_log_path` is configured. An empty path disables node logging. A hash chain detects alteration relative to a trusted anchor; a hash chain stored only alongside its own log is not an independent tamper-proof record.
-5. **Localhost is an assumed trusted process boundary, not authentication.** HSR UDP and the clock-echo channel are localhost-only, but the UDP packets are not authenticated. `/gate/reset` accepts the operator string from any publisher able to reach the topic. A same-user local attacker may also be able to inspect process data or publish directly to `/cmd_vel_safe`; application-level HMAC on localhost UDP would not protect against that threat. Real process separation requires operating-system access controls, user separation and, where appropriate, SROS2/DDS security.
-6. **Known masked-distress re-arm limitation.** The HSR restart/re-arm path has a documented unauthenticated masked-distress re-arm sequence. The localhost trust assumption does not eliminate this limitation; it remains a security and trust-boundary issue for future work.
-7. **One forward corridor.** A single lidar with fixed geometry parameters; no lateral or rear protection and no TF handling.
-8. **Message types.** `Twist` only, in and out.
-9. **Latch coverage.** The node fault latch covers exceptions in the control tick. It does not by itself guarantee recovery from process termination, operating-system failure, or every possible subscription-callback failure.
-10. **No comparison with other safety monitors.** QERRA has not been benchmarked against `nav2_collision_monitor` or similar, and no claim of superiority is made.
-11. **No hardware testing, and not certified.** See [Known limitations & honesty boundaries](#known-limitations--honesty-boundaries).
+1. **Reaction-time estimates are not WCET bounds.** The node exposes a 96 ms simulation profile and a 160 ms hardware profile. The component values behind them (scan period, transport, gate tick, scheduling jitter, actuator response) are engineering estimates, not measurements. The estimated chains total roughly 86 to 98 ms and 154 to 166 ms, so the profile values are mid-range, not upper bounds. Scanner acquisition, transport, executor delay, operating-system scheduling and actuator response still require measurement on the target system.
+2. **General-purpose scheduling.** The tick is a ROS timer in Python on a general-purpose OS. It is nominally 31.25 Hz; garbage collection, disk I/O and scheduling can delay it. When the flight log is enabled, its write and `fsync` run inside the tick, and a slow disk delays the tick without raising an error; that latency has not been measured. Green CI does not prove a hard real-time deadline or a bounded maximum callback latency.
+3. **Lidar freshness trade-off.** The 10 Hz hardware profile uses a 300 ms `lidar_stale_ms` limit to accommodate the configured 100 ms scan period and the timing invariant, which is looser than the 96 ms simulation limit. The reaction-time budget counts one scan period, while the accepted scan age is three periods (96 ms in simulation, 300 ms on hardware), so a scan older than the budget assumes can still be accepted. This is a configuration choice, not evidence that a 300 ms-old scan is safe in every operating condition.
+4. **Optional flight logging and audit anchoring.** The node supports the SHA-256 JSONL flight recorder and R-10 fail-closed handling when `flight_log_path` is configured; an empty path disables it. A hash chain detects alteration relative to a trusted anchor, and a chain stored only alongside its own log is not an independent tamper-proof record. The node does not anchor its head hash anywhere else.
+5. **Localhost is an assumed trusted process boundary, not authentication.** The localhost UDP channels (5005 proposals and 5006 operator reset in the Webots controller, 5007 clock echo and 5008 HSR telemetry) and the ROS 2 topics are unauthenticated, and ROS 2 DDS does not enforce sole-publisher authority on `/cmd_vel_safe`. `/gate/reset` accepts the operator string from any publisher that can reach the topic. A same-user local attacker can publish directly to `/cmd_vel_safe`, which bypasses the gate, and application-level HMAC on localhost UDP would not stop that attacker. Real protection needs operating-system access controls, user separation and, where appropriate, SROS2.
+6. **Two executable exploit scenarios.** `tests/test_adversarial_hsr.py` demonstrates two behaviours the current design does not prevent:
+   - **Masked-distress re-arm.** An attacker who silences the genuine producer can forge a counter regression, the 160 ms rebase, the 1.0 s clear dwell and an operator reset, and force the gate to `RUN` while real distress persists. The robot stays inside the stopping envelope and subject to every other trip.
+   - **Ingestion crowding.** A flood of more than 256 datagrams per tick delays evaluation of a trailing `CRITICAL` datagram across ticks.
+7. **Stream monitor scope.** The monitor detects counter and sequence faults. It cannot detect a frozen sensor behind a producer that keeps publishing fresh counters and timestamps, and the synthetic producer stamps from the clock echo, not from sensor capture.
+8. **Proposal stamping and message type.** `Twist` has no header, so proposals are stamped at node receipt. The 150 ms watchdog therefore detects stalls at the gate, and planner compute lag is unmeasured. `Twist` only, in and out; no `TwistStamped` support.
+9. **One forward corridor.** A single lidar with fixed geometry parameters; no lateral or rear protection and no TF handling. `LaserScan` metadata beyond the beam count is not validated, and the envelope uses commanded, not measured, velocity.
+10. **Latch coverage.** The node fault latch covers exceptions in the control tick. It does not by itself guarantee recovery from process termination, operating-system failure, or every possible subscription-callback failure.
+11. **No comparison with other safety monitors.** QERRA has not been benchmarked against `nav2_collision_monitor` or similar, and no claim of superiority is made.
+12. **No hardware testing, and not certified.** See [Known limitations & honesty boundaries](#known-limitations--honesty-boundaries).
 
 ### 2. Moral Deliberation Action Server (`ros2_bridge.py`)
 
@@ -478,7 +481,7 @@ A bridge (`ros2_bridge.py`) is included in the repository. When `rclpy` and the 
 - Runs on a `MultiThreadedExecutor` with a `ReentrantCallbackGroup`.
 - Uses a hybrid strategy: remote API first (strict 800 ms timeout), then falls back to a locally pre-loaded model.
 
-The custom `qerra_msgs` interface package (`src/qerra_msgs`) is built by the ROS 2 Jazzy CI workflow. CI generates and instantiates the Python Goal, Result and Feedback bindings for `QerraEvaluate`; this confirms interface generation, not a hardware-integrated ethical safety function. See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration details.
+The custom `qerra_msgs` interface package (`src/qerra_msgs`) is built by the ROS 2 Jazzy CI workflow. CI generates and instantiates the Python Goal, Result and Feedback bindings for `QerraEvaluate`; this confirms interface generation, not a running action server or a hardware-integrated ethical safety function. See [`QERRA_FOR_ROBOTICS.md`](./QERRA_FOR_ROBOTICS.md) for full integration details.
 
 ---
 
@@ -624,7 +627,7 @@ What the take shows (every reason code and event is printed by the gate itself i
 
 ```
 ├── hsr/                                     # Layer 1B: QERRA-HSR v0.1 physical safety reflex (3 vectors)
-├── gate/                                    # Layer 1A: supervisory gate (pure-function core, IPC, lidar corridor, HSR telemetry contract, hash-chained log)
+├── gate/                                    # Layer 1A: supervisory gate (pure-function core, IPC, lidar corridor, HSR telemetry contract and stream monitor, hash-chained log)
 ├── ros2/                                    # Standalone ROS 2 gate node (qerra_gate_node.py) and HSR UDP receiver (hsr_receiver.py)
 ├── src/qerra_msgs/                          # ROS 2 QerraEvaluate action interface package (built and generated in Jazzy CI)
 ├── .github/workflows/                       # CI: Python test suite, ROS 2 Jazzy validation
@@ -653,14 +656,18 @@ What the take shows (every reason code and event is printed by the gate itself i
 │   ├── test_vectors.py                      # Vector unit tests
 │   ├── test_verify_manifest.py              # Replay-from-manifest tests for verify_log.py
 │   ├── test_gate_*.py                       # Supervisory gate tests (core, IPC, lidar, link, log) and ROS 2 node tests (translators, HSR receiver, wiring, fault latch)
+│   ├── test_hsr_stream_matrix.py            # Stream-monitor edge-case matrix (6 tests)
+│   ├── test_adversarial_hsr.py              # Executable exploit scenarios: masked-distress re-arm, ingestion crowding (2 tests)
 │   ├── test_synthetic_hsr_telemetry.py      # Asynchronous HSR telemetry pipeline tests
 │   └── test_license_boundary.py             # License and version parity guard
 ├── SEMEV-12_Benchmark_Run_01.md             # Baseline benchmark — 80 verified test cases
 ├── SEMEV-12_Adversarial_Benchmark_Run_01.md # Active adversarial red-teaming benchmark
 ├── CURRENT_ARCHITECTURE.md                  # Canonical three-layer architecture documentation
 ├── SEMEV-12_Framework_Documentation.md      # Full framework documentation
+├── QERRA-HSR-Design-v0.1.md                 # QERRA-HSR design: activation logic, LTL properties, gate telemetry contract
 ├── QERRA_FOR_ROBOTICS.md                    # Technical brief for the robotics community
-├── SAFETY_CONCEPT.md                        # Supervisory gate safety concept: claims, hazards, parameters
+├── TECHNICAL_BRIEF_ROS2_GATE.md             # Formal ROS 2 Jazzy systems-engineering brief
+├── SAFETY_CONCEPT.md                        # Supervisory gate safety concept (v0.10): claims, hazards, parameters
 ├── LIMITATIONS.md                           # Known limitations
 ├── COMMERCIAL-LICENSE.md                    # Commercial licensing terms
 ├── CHANGELOG.md                             # Version history
@@ -697,7 +704,7 @@ Everything under `tests/` (use this exact form; `tests/` is not a package, so do
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-**Verified at commit `a511d1e`:** the local Windows 11 host suite passed **203/203 unit tests**. The ROS 2 Jazzy container suite passed **25/25 integration tests** (17 in `test_gate_ros2_node.py` and 8 in `test_gate_ros2_node_wiring.py`). The `QERRA-v2 Classical Test Suite #766` and `ROS 2 Jazzy Validation #31` GitHub Actions pipelines both passed. The ROS 2 container build includes both `qerra_msgs` and `qerra_core`.
+**Reported results.** Local Windows 11 run (Python 3.12 and 3.14, 5 Nov 2026): 211 unit tests under `tests/` passed with 0 failures. This count includes 6 stream-monitor edge-case matrix tests (`tests/test_hsr_stream_matrix.py`) and 2 adversarial exploit tests (`tests/test_adversarial_hsr.py`) added after commit `a511d1e`. ROS 2 Jazzy container at commit `a511d1e`: 25 integration tests passed (17 in `test_gate_ros2_node.py` and 8 in `test_gate_ros2_node_wiring.py`), and the `QERRA-v2 Classical Test Suite #766` and `ROS 2 Jazzy Validation #31` GitHub Actions pipelines both passed. The ROS 2 container build includes both `qerra_msgs` and `qerra_core`.
 
 The ROS 2 node itself (`QerraGateNode`) needs `rclpy`, so it is exercised in the `ROS 2 Jazzy Validation` GitHub Actions workflow, not on a host without ROS 2.
 
@@ -712,21 +719,22 @@ python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 -
 ## Project Status
 
 **Version:** 2.2.1  
-**Engine:** Supervisory Gate `v0.4` · ROS 2 gate node `v0.3.1` · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0`
+**Engine:** Supervisory Gate `v0.4` · ROS 2 gate node `v0.3.1` · HSR telemetry contract `v0.3.1` · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0` · Safety Concept `v0.10`
 All three layers are implemented. The evidence level differs by layer and is stated for each:
 
-- **Layer 1A — Supervisory Gate (`gate/`, Apache-2.0):** Pure Python standard library only. The local Windows 11 host suite passed 203/203 unit tests at commit `a511d1e`. The tests cover the gate core, stopping envelopes, IPC, lidar corridor, HSR telemetry, logging and related node logic. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Replayable offline via `verify_log.py --replay`.
-- **ROS 2 gate node (`ros2/`, Apache-2.0):** Node v0.3.1. Built and exercised under ROS 2 Jazzy in GitHub Actions; the CI build includes `qerra_msgs` and `qerra_core`. The container integration suite passed 25/25 tests (17 node tests and 8 wiring/fault-injection tests) at commit `a511d1e`. The node has optional SHA-256 flight logging with an R-10 same-tick fail-closed trip on write/fsync failure. Never run on a robot. See [Known limitations of the ROS 2 node](#known-limitations-of-the-ros-2-node).
-- **Layer 1B — QERRA-HSR (`hsr/`, Apache-2.0):** Implemented and unit-tested (20 tests in `hsr/`). Pure Python standard library only. Activation thresholds are design estimates and have not been calibrated against physical sensor streams. Human-in-the-Loop recovery directives are implemented. The ROS 2 stream monitor checks sequence progression and frozen observations, with a controlled counter rebase requiring both 5 qualifying ticks and at least 160 ms elapsed observation time.
+- **Layer 1A — Supervisory Gate (`gate/`, Apache-2.0):** Pure Python standard library only. In the author's local Windows 11 run of 5 Nov 2026, 211 unit tests under `tests/` passed. They cover the gate core, stopping envelopes, IPC, lidar corridor, HSR telemetry and stream monitor, logging and the ROS 2 node logic. Demonstrated in simulation only (Webots R2025a, PAL Robotics TIAGo base, Windows 11 non-real-time host). Replayable offline via `verify_log.py --replay`.
+- **ROS 2 gate node (`ros2/`, Apache-2.0):** Node v0.3.1. Built and exercised under ROS 2 Jazzy in GitHub Actions; the CI build includes `qerra_msgs` and `qerra_core`. The container integration suite passed 25/25 tests (17 node tests and 8 wiring and fault-injection tests) at commit `a511d1e`. The node has optional SHA-256 flight logging with an R-10 same-tick fail-closed trip on write or `fsync` failure. Never run on a robot. See [Known limitations of the ROS 2 node](#known-limitations-of-the-ros-2-node).
+- **Layer 1B — QERRA-HSR (`hsr/`, Apache-2.0):** Implemented and unit-tested (20 tests in `hsr/`). Pure Python standard library only. Activation thresholds are design estimates and have not been calibrated against physical sensor streams. Human-in-the-Loop recovery directives are implemented. The ROS 2 stream monitor checks sequence order and frozen observations, with a controlled counter rebase requiring both 5 qualifying ticks and at least 160 ms of elapsed observation time. It does not detect a frozen sensor behind a live producer, and two exploit scenarios in `tests/test_adversarial_hsr.py` show what unauthenticated localhost channels leave open.
 - **Layer 2 — Moral Gate (SEMEV-12 v1.9.2, Apache-2.0):** Advisory, not part of the safety function. All 12 ethical vectors implemented and scoring. The 80-case baseline is documented in `SEMEV-12_Benchmark_Run_01.md`. The adversarial red-teaming suite in `SEMEV-12_Adversarial_Benchmark_Run_01.md` documents known bypasses and false positives.
 - **Layer 3 — Values Ranker (QERRA-THRIVE v2.0.0, Apache-2.0):** Advisory. 12 value vectors across the human-centered and ecological suites, with bounded look-back negation guards. Not yet evaluated with human participants.
 - **Live Reference API:** Hosted on the Hugging Face Spaces free tier; the first request after inactivity can take 30–60 seconds (cold start). The ROS 2 bridge uses an 800 ms remote-call timeout with a local fallback.
 
 ### Known limitations & honesty boundaries
 
-- **Simulation and CI only.** The current evidence consists of Webots R2025a simulation, standard-library host tests, and Linux ROS 2 Jazzy container tests in GitHub Actions. There is no hardware-in-the-loop or real-robot testing, and no real sensor noise, actuator latency, wheel slip or payload effects have been measured.
+- **Simulation and CI only.** The current evidence consists of Webots R2025a simulation, host unit tests, and Linux ROS 2 Jazzy container tests in GitHub Actions. There is no hardware-in-the-loop or real-robot testing, and no real sensor noise, actuator latency, wheel slip or payload effects have been measured.
 - **Not a safety function.** QERRA is an open-source research and middleware tool, not a certified commercial safety system. It is not SIL/PL rated. Python on a general-purpose operating system cannot guarantee hard real-time deadlines.
 - **0.0 is not an emergency stop.** A zero wheel command is a software setpoint delivered to motor controllers; it is not a hardware brake, torque-off, or protective stop. Real-world deployment requires certified industrial e-stop loops, certified safety laser scanners and hardware watchdogs.
+- **Trust boundary.** Localhost is an assumed trusted process boundary. The UDP channels and ROS 2 topics are unauthenticated, and the gate does not defend against a hostile local process (see item 5 and item 6 of the ROS 2 node limitations).
 - **Standards are references only.** ISO 13849-1, ISO 13482 and ISO 3691-4 are used as informative design references. No conformity is claimed, and the hazard analysis is self-authored without independent review.
 - **Semantic detection limits.** Highly implicit, metaphorical, or indirect phrasing can fall below semantic thresholds.
 - **Perception is not validated.** The HSR distress signal is injected or synthetic in all demonstrations; there is no validated live perception pipeline.
@@ -735,49 +743,18 @@ All three layers are implemented. The evidence level differs by layer and is sta
 ---
 ## Development Reality: Constraints and Transparency
 
-This section is included deliberately. Clarity about real conditions is part
-of QERRA's commitment to explainability — and it applies to the project
-itself, not only to the systems it evaluates.
+This section states real working conditions. The same standard of explicitness applies to the project as to the systems it evaluates.
 
-**Solo development, zero institutional support.**
-QERRA-v2 Classical is developed and maintained by one independent researcher
-with no team, no institutional affiliation, no grant funding, and no
-organisational infrastructure. Every design decision and the direction of the
-project are the work of a single person operating as an independent,
-self-funded developer; AI tools assisted with implementation (see
-[Development Tools & AI Assistance](#development-tools--ai-assistance)).
+**One developer, no institution.** QERRA-v2 Classical is developed and maintained by one independent researcher, with no team, institutional affiliation, grant funding or organisational infrastructure. Every design decision and the direction of the project are the author's; AI tools assisted with implementation (see [Development Tools & AI Assistance](#development-tools--ai-assistance)).
 
-**Severe resource limitations.**
-The project runs on the Hugging Face free tier, which imposes real
-restrictions on uptime, deployment reliability, and the ability to expand
-the detection engine. Stable paid hosting would directly improve API
-reliability and unlock the next stage of development, but is not currently
-financially possible without external support. Progress is made in careful,
-iterative stages rather than continuous deployment cycles. This is an accurate
-description of working conditions, not a limitation of vision or commitment.
+**Free-tier infrastructure.** The public API runs on the Hugging Face free tier, which limits uptime and deployment reliability. All testing is Webots simulation, a Windows development machine and GitHub Actions containers. There is no robot hardware.
 
-**What this means in practice.**
-The core engine is stable at its tested scope, and the SEMEV-12 calibration and
-known gaps are documented in the benchmark files. What is not yet possible
-under current conditions is rapid iteration, sustained testing across diverse
-hardware, or active community management at scale. The project moves one
-small, safe step at a time.
+**What this limits.** Rapid iteration, testing across diverse hardware, and active community management.
 
-**What would change with support.**
-Stable hosting would eliminate current API reliability issues and make the
-public endpoint consistently available to testers and collaborators.
-Additional time — freed by even modest financial support — would accelerate
-hardware-in-the-loop testing, ROS 2 interface validation (`qerra_msgs`), and
-the creation of an evaluation dataset for cross-cultural validation of the
-SEMEV-12 vectors.
+**What would change with support.** Stable hosting for the public endpoint; hardware-in-the-loop testing; measured reaction-time and deceleration data for the ROS 2 node; and an evaluation dataset for cross-cultural validation of the SEMEV-12 vectors.
 
-**Why this is stated openly.**
-Independent research is legitimate research. Stating these constraints
-clearly is not an apology — it is an invitation for collaboration from
-anyone who finds the framework useful or interesting, on whatever terms
-are realistic for both sides. If you are a robotics engineer, researcher,
-or developer who wants to discuss integration or contribution, the best
-first step is to open a GitHub issue or contact directly by email.
+**How to engage.** If you are a robotics engineer, researcher or developer who wants to discuss integration or contribution, open a GitHub issue or contact the author by email.
+
 ---
 
 ## Feedback and Collaboration
@@ -786,7 +763,7 @@ Input from researchers, developers, robotics engineers, and practitioners
 is welcome at any stage.
 
 **Marussa Metocharaki**
-Independent solo developer based in Greece, building deterministic
+Independent solo developer, building deterministic
 supervisory software and classical ethical frameworks for mobile robots.
 
 Issues, pull requests, and integration experiments welcome.
