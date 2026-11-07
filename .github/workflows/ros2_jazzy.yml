@@ -169,3 +169,11 @@ jobs:
           cd ros2_ws/src/qerra_core
           python3 -m unittest tests/test_gate_ros2_node.py
           python3 -m unittest tests/test_gate_ros2_node_wiring.py
+
+      - name: Run live ROS 2 topic traffic integration tests in Jazzy (Priority P9)
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          cd ros2_ws/src/qerra_core
+          python3 -m unittest tests/test_gate_ros2_live_traffic.py
