@@ -116,9 +116,11 @@ if ROS2_AVAILABLE:
 @unittest.skipUnless(ROS2_AVAILABLE, "Requires native ROS 2 (rclpy) installation")
 class TestGateRos2LiveTopicTraffic(unittest.TestCase):
     """
-    Live pub/sub topic traffic integration tests verifying DDS communication,
-    startup dwell, operator reset, cruise passthrough, obstacle clamping,
-    sensor-loss fail-closed watchdog, and active hazard reset refusal.
+    Live pub/sub topic traffic integration tests verifying DDS communication:
+    1. Lifecycle, dwell, operator reset, cruise passthrough, and obstacle clamping.
+    2. Negative Path A: Sensor loss watchdog (96 ms staleness ceiling).
+    3. Negative Path C: Active hazard reset refusal (RESET_REJECTED_HAZARD event).
+    4. Negative Path B: Proposer timeout watchdog (150 ms freshness ceiling).
     """
 
     def setUp(self) -> None:
@@ -310,6 +312,35 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
             _is_reset_rejected,
             3.0,
             "RESET_REJECTED_HAZARD event while obstacle persists",
+        )
+
+    def test_live_topic_traffic_proposer_timeout_watchdog(self) -> None:
+        """
+        Verifies Negative Path B: cutting the /cmd_vel topic feed while in Mode.RUN
+        triggers the 150 ms proposal freshness watchdog (TRIP_PROPOSER_STALE)
+        and forces /cmd_vel_safe to 0.0 m/s fail-closed while sensor scans remain healthy.
+        """
+        clear_ranges = [3.0] * 682
+
+        # 1. Bring gate to Mode.RUN
+        self._drive_to_run(clear_ranges)
+
+        # 2. Stop publishing /cmd_vel completely; continue publishing healthy /scan
+        def _is_proposer_stale(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_scan(clear_ranges)
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "TRIPPED"
+                and state.get("reason") == "TRIP_PROPOSER_STALE"
+                and math.isclose(twist.linear.x, 0.0, abs_tol=1e-6)
+                and math.isclose(twist.angular.z, 0.0, abs_tol=1e-6)
+            )
+
+        self._wait_until(
+            _is_proposer_stale,
+            3.0,
+            "TRIP_PROPOSER_STALE watchdog clamp on /cmd_vel silence",
         )
 
 
