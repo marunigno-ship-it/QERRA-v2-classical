@@ -56,6 +56,7 @@ try:
     import rclpy
     from rclpy.executors import ExternalShutdownException
     from rclpy.node import Node
+    from rclpy.qos import qos_profile_sensor_data
     from geometry_msgs.msg import Twist
     from sensor_msgs.msg import LaserScan
     from std_msgs.msg import String
@@ -66,6 +67,7 @@ except ImportError as exc:
     rclpy = None
     ExternalShutdownException = Exception
     Node = object  # Fallback base class for linting on non-ROS hosts
+    qos_profile_sensor_data = None
     Twist = None
     LaserScan = None
     String = None
@@ -241,16 +243,20 @@ def format_gate_state_json(
     if fault_latched:
         mode_str = "FAULT"
         reason_str = f"NODE_FAULT_LATCHED: {fault_reason}"
+        events_list = []
         left_urad = 0
         right_urad = 0
     elif log_write_failed:
         mode_str = "TRIPPED"
         reason_str = Reason.TRIP_LOG_FAILURE
+        events_list = []
         left_urad = 0
         right_urad = 0
     else:
         mode_str = state.mode.value
         reason_str = result_record.get("reason")
+        events_raw = result_record.get("events", [])
+        events_list = list(events_raw) if isinstance(events_raw, (list, tuple)) else []
         left_urad = result_record.get("cmd_left_urad_s")
         right_urad = result_record.get("cmd_right_urad_s")
 
@@ -259,6 +265,7 @@ def format_gate_state_json(
         "gate_version": GATE_CORE_VERSION,
         "mode": mode_str,
         "reason": reason_str,
+        "events": events_list,
         "d_stop_mm": result_record.get("d_stop_mm"),
         "lidar_min_mm": result_record.get("lidar_min_mm"),
         "t_react_us": t_react_us,
@@ -431,8 +438,9 @@ if ROS2_AVAILABLE:
             self._sub_cmd = self.create_subscription(
                 Twist, "/cmd_vel", self._cmd_vel_callback, 10
             )
+            # Standard sensor-data profile (Best Effort + Volatile) for physical LiDAR interoperability
             self._sub_scan = self.create_subscription(
-                LaserScan, "/scan", self._scan_callback, 10
+                LaserScan, "/scan", self._scan_callback, qos_profile_sensor_data
             )
             self._sub_reset = self.create_subscription(
                 String, "/gate/reset", self._reset_callback, 10
@@ -518,7 +526,7 @@ if ROS2_AVAILABLE:
                 state_msg = String()
                 state_msg.data = format_gate_state_json(
                     self._state,
-                    {"reason": f"NODE_FAULT_LATCHED: {self._fault_latch.fault_reason}"},
+                    {"reason": f"NODE_FAULT_LATCHED: {self._fault_latch.fault_reason}", "events": []},
                     t_react_us=self._t_react_us,
                     lidar_stale_us=self._lidar_stale_us,
                     lidar_period_us=self._lidar_period_us,
@@ -606,7 +614,7 @@ if ROS2_AVAILABLE:
                 safe_twist.angular.z = safe_angular_z
                 self._pub_cmd_safe.publish(safe_twist)
 
-                # Publish diagnostic state telemetry (including t_react, HSR, and flight log diagnostics)
+                # Publish diagnostic state telemetry (including t_react, HSR, flight log, and events)
                 state_msg = String()
                 state_msg.data = format_gate_state_json(
                     self._state,
