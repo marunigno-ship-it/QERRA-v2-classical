@@ -19,6 +19,7 @@ try:
     import rclpy
     from rclpy.executors import SingleThreadedExecutor
     from rclpy.node import Node
+    from rclpy.qos import qos_profile_sensor_data
     from geometry_msgs.msg import Twist
     from sensor_msgs.msg import LaserScan
     from std_msgs.msg import String
@@ -30,6 +31,7 @@ except ImportError:
     rclpy = None
     SingleThreadedExecutor = None
     Node = Any
+    qos_profile_sensor_data = Any
     Twist = Any
     LaserScan = Any
     String = Any
@@ -46,9 +48,9 @@ if ROS2_AVAILABLE:
             super().__init__("traffic_harness_node")
             self._lock = threading.Lock()
 
-            # Publishers
+            # Publishers: explicit sensor-data profile (Best Effort) for scan interoperability
             self.pub_cmd = self.create_publisher(Twist, "/cmd_vel", 10)
-            self.pub_scan = self.create_publisher(LaserScan, "/scan", 10)
+            self.pub_scan = self.create_publisher(LaserScan, "/scan", qos_profile_sensor_data)
             self.pub_reset = self.create_publisher(String, "/gate/reset", 10)
 
             # Telemetry subscribers
@@ -114,12 +116,13 @@ if ROS2_AVAILABLE:
 @unittest.skipUnless(ROS2_AVAILABLE, "Requires native ROS 2 (rclpy) installation")
 class TestGateRos2LiveTopicTraffic(unittest.TestCase):
     """
-    Live pub/sub topic traffic integration test verifying real DDS communication,
-    startup dwell, operator reset, clear-corridor cruise, and obstacle clamping.
+    Live pub/sub topic traffic integration tests verifying DDS communication,
+    startup dwell, operator reset, cruise passthrough, obstacle clamping,
+    and sensor-loss fail-closed watchdog tripping.
     """
 
     def setUp(self) -> None:
-        # Initialize rclpy with explicit Layer 1A configuration (HSR disabled for pure topic test)
+        # Initialize rclpy with explicit Layer 1A configuration (HSR disabled for pure topic tests)
         rclpy.init(args=[
             "--ros-args",
             "-p", "hsr_required:=false",
@@ -153,103 +156,64 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         while not self._stop_event.is_set():
             self.executor.spin_once(timeout_sec=0.01)
 
-    def test_live_topic_traffic_lifecycle_and_obstacle_trip(self) -> None:
-        """
-        Executes end-to-end pub/sub verification:
-        1. Emits continuous clear corridor scans and proposals to satisfy 1.0s dwell.
-        2. Asserts transition to AWAITING_RESET.
-        3. Emits operator reset string and asserts transition to RUN.
-        4. Verifies non-zero proposal passthrough on /cmd_vel_safe.
-        5. Injects obstacle breaching stopping distance and verifies fail-closed 0.0 m/s clamp.
-        """
-        clear_ranges = [3.0] * 682      # 3.0m clear corridor across all 682 beams
-        hazard_ranges = [0.15] * 682    # 150mm obstacle (< 360mm stopping envelope)
-
-        # --------------------------------------------------------------------
-        # Phase 1: Clear Corridor Startup Dwell (Must reach AWAITING_RESET)
-        # --------------------------------------------------------------------
+    def _drive_to_run(self, clear_ranges: List[float]) -> None:
+        """Helper driving the gate from initial latch through 1.0s dwell into Mode.RUN."""
         t_start = time.monotonic()
-        awaiting_reset_reached = False
-        last_state = None
-
+        awaiting_reset = False
         while time.monotonic() - t_start < 5.0:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
-            time.sleep(0.02)  # ~50 Hz stream rate
-
+            time.sleep(0.02)
             _, state = self.harness_node.get_telemetry_snapshot()
-            if state is not None:
-                last_state = state
-                if state.get("mode") == "AWAITING_RESET":
-                    awaiting_reset_reached = True
-                    break
+            if state is not None and state.get("mode") == "AWAITING_RESET":
+                awaiting_reset = True
+                break
+        self.assertTrue(awaiting_reset, "Gate failed to reach AWAITING_RESET during clear dwell.")
 
-        self.assertTrue(
-            awaiting_reset_reached,
-            f"Gate failed to reach AWAITING_RESET within 5.0s. Last state: {last_state}",
-        )
-
-        # --------------------------------------------------------------------
-        # Phase 2: Operator Reset to Enter Mode.RUN
-        # --------------------------------------------------------------------
         t_reset = time.monotonic()
-        run_mode_reached = False
-
+        run_mode = False
         while time.monotonic() - t_reset < 3.0:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
             self.harness_node.publish_reset("operator")
             time.sleep(0.02)
-
             _, state = self.harness_node.get_telemetry_snapshot()
-            if state is not None:
-                last_state = state
-                if state.get("mode") == "RUN":
-                    run_mode_reached = True
-                    break
+            if state is not None and state.get("mode") == "RUN":
+                run_mode = True
+                break
+        self.assertTrue(run_mode, "Gate failed to enter Mode.RUN after operator reset.")
 
-        self.assertTrue(
-            run_mode_reached,
-            f"Gate failed to enter Mode.RUN after operator reset. Last state: {last_state}",
-        )
+    def test_live_topic_traffic_lifecycle_and_obstacle_trip(self) -> None:
+        """Verifies clear-corridor cruise followed by immediate fail-closed obstacle stop."""
+        clear_ranges = [3.0] * 682
+        hazard_ranges = [0.15] * 682
 
-        # --------------------------------------------------------------------
-        # Phase 3: Verify Clear-Corridor Cruise on /cmd_vel_safe
-        # --------------------------------------------------------------------
+        # 1. Bring gate to Mode.RUN
+        self._drive_to_run(clear_ranges)
+
+        # 2. Verify forward cruise output on /cmd_vel_safe
         t_cruise = time.monotonic()
-        cruise_command_verified = False
+        cruise_verified = False
         last_safe_twist = None
-
         while time.monotonic() - t_cruise < 2.0:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
             time.sleep(0.02)
-
-            safe_twist, state = self.harness_node.get_telemetry_snapshot()
+            safe_twist, _ = self.harness_node.get_telemetry_snapshot()
             if safe_twist is not None:
                 last_safe_twist = safe_twist
-                # At 0.20 m/s linear proposal, linear.x must reflect forward motion (> 0.15 m/s)
                 if safe_twist.linear.x > 0.15 and math.isclose(safe_twist.angular.z, 0.0, abs_tol=1e-3):
-                    cruise_command_verified = True
+                    cruise_verified = True
                     break
+        self.assertTrue(cruise_verified, f"Gate did not cruise in Mode.RUN. Last twist: {last_safe_twist}")
 
-        self.assertTrue(
-            cruise_command_verified,
-            f"Gate did not output forward safe twist in Mode.RUN. Last twist: {last_safe_twist}",
-        )
-
-        # --------------------------------------------------------------------
-        # Phase 4: Inject Obstacle Hazard and Verify Immediate Clamping to 0.0
-        # --------------------------------------------------------------------
+        # 3. Inject obstacle breach and verify immediate 0.0 m/s clamp
         t_hazard = time.monotonic()
-        obstacle_trip_verified = False
-
+        obstacle_trip = False
         while time.monotonic() - t_hazard < 3.0:
-            # Continue proposing forward velocity, but inject breach on /scan
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(hazard_ranges)
             time.sleep(0.02)
-
             safe_twist, state = self.harness_node.get_telemetry_snapshot()
             if state is not None and safe_twist is not None:
                 if (
@@ -258,12 +222,50 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
                     and math.isclose(safe_twist.linear.x, 0.0, abs_tol=1e-6)
                     and math.isclose(safe_twist.angular.z, 0.0, abs_tol=1e-6)
                 ):
-                    obstacle_trip_verified = True
+                    obstacle_trip = True
+                    break
+        self.assertTrue(obstacle_trip, "Gate failed to clamp fail-closed on obstacle breach.")
+
+    def test_live_topic_traffic_sensor_loss_watchdog(self) -> None:
+        """
+        Verifies Negative Path A: cutting the /scan topic feed while in Mode.RUN
+        triggers the 96 ms sensor staleness watchdog (TRIP_SENSOR_INVALID)
+        and forces /cmd_vel_safe to 0.0 m/s fail-closed.
+        """
+        clear_ranges = [3.0] * 682
+
+        # 1. Bring gate to Mode.RUN
+        self._drive_to_run(clear_ranges)
+
+        # 2. Stop publishing /scan completely, but continue publishing proposals
+        t_cut = time.monotonic()
+        sensor_watchdog_tripped = False
+        last_state = None
+        last_safe_twist = None
+
+        while time.monotonic() - t_cut < 3.0:
+            # ONLY publish proposal; zero scan messages emitted
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            time.sleep(0.02)
+
+            safe_twist, state = self.harness_node.get_telemetry_snapshot()
+            if state is not None and safe_twist is not None:
+                last_state = state
+                last_safe_twist = safe_twist
+                # Once scan age > 96 ms (3 ticks), gate must trip with TRIP_SENSOR_INVALID
+                if (
+                    state.get("mode") == "TRIPPED"
+                    and state.get("reason") == "TRIP_SENSOR_INVALID"
+                    and math.isclose(safe_twist.linear.x, 0.0, abs_tol=1e-6)
+                    and math.isclose(safe_twist.angular.z, 0.0, abs_tol=1e-6)
+                ):
+                    sensor_watchdog_tripped = True
                     break
 
         self.assertTrue(
-            obstacle_trip_verified,
-            f"Gate failed to clamp fail-closed on obstacle breach. Last state: {state}, Twist: {safe_twist}",
+            sensor_watchdog_tripped,
+            f"Gate failed to trip TRIP_SENSOR_INVALID on scan loss. "
+            f"Last state: {last_state}, Twist: {last_safe_twist}",
         )
 
 
