@@ -13,7 +13,7 @@ import math
 import threading
 import time
 import unittest
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 try:
     import rclpy
@@ -118,7 +118,7 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
     """
     Live pub/sub topic traffic integration tests verifying DDS communication,
     startup dwell, operator reset, cruise passthrough, obstacle clamping,
-    and sensor-loss fail-closed watchdog tripping.
+    sensor-loss fail-closed watchdog, and active hazard reset refusal.
     """
 
     def setUp(self) -> None:
@@ -138,6 +138,7 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         self.executor.add_node(self.harness_node)
 
         self._stop_event = threading.Event()
+        self._spin_error: Optional[Exception] = None
         self._spin_thread = threading.Thread(target=self._spin_loop, daemon=True)
         self._spin_thread.start()
 
@@ -153,35 +154,60 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
             rclpy.shutdown()
 
     def _spin_loop(self) -> None:
-        while not self._stop_event.is_set():
-            self.executor.spin_once(timeout_sec=0.01)
+        try:
+            while not self._stop_event.is_set():
+                self.executor.spin_once(timeout_sec=0.01)
+        except Exception as exc:
+            self._spin_error = exc
+
+    def _wait_until(
+        self,
+        predicate: Callable[[Optional[Twist], Optional[Dict[str, Any]]], bool],
+        timeout_s: float,
+        description: str,
+    ) -> Tuple[Optional[Twist], Optional[Dict[str, Any]]]:
+        """
+        Bounded polling helper with explicit monotonic deadline and exception propagation.
+        Guarantees deterministic failure reporting without silent hangs.
+        """
+        deadline = time.monotonic() + timeout_s
+        last_snapshot: Tuple[Optional[Twist], Optional[Dict[str, Any]]] = (None, None)
+
+        while True:
+            if self._spin_error is not None:
+                self.fail(f"Background spin thread died with exception: {self._spin_error}")
+
+            last_snapshot = self.harness_node.get_telemetry_snapshot()
+            if predicate(*last_snapshot):
+                return last_snapshot
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.fail(
+                    f"Timeout waiting for {description} within {timeout_s:.1f}s. "
+                    f"Last snapshot: {last_snapshot}"
+                )
+
+            time.sleep(min(0.02, remaining))
 
     def _drive_to_run(self, clear_ranges: List[float]) -> None:
         """Helper driving the gate from initial latch through 1.0s dwell into Mode.RUN."""
-        t_start = time.monotonic()
-        awaiting_reset = False
-        while time.monotonic() - t_start < 5.0:
+        # 1. Drive clear dwell until AWAITING_RESET
+        def _is_awaiting_reset(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
-            time.sleep(0.02)
-            _, state = self.harness_node.get_telemetry_snapshot()
-            if state is not None and state.get("mode") == "AWAITING_RESET":
-                awaiting_reset = True
-                break
-        self.assertTrue(awaiting_reset, "Gate failed to reach AWAITING_RESET during clear dwell.")
+            return state is not None and state.get("mode") == "AWAITING_RESET"
 
-        t_reset = time.monotonic()
-        run_mode = False
-        while time.monotonic() - t_reset < 3.0:
+        self._wait_until(_is_awaiting_reset, 5.0, "Gate to reach AWAITING_RESET during clear dwell")
+
+        # 2. Emit operator reset until Mode.RUN is reached
+        def _is_running(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
             self.harness_node.publish_reset("operator")
-            time.sleep(0.02)
-            _, state = self.harness_node.get_telemetry_snapshot()
-            if state is not None and state.get("mode") == "RUN":
-                run_mode = True
-                break
-        self.assertTrue(run_mode, "Gate failed to enter Mode.RUN after operator reset.")
+            return state is not None and state.get("mode") == "RUN"
+
+        self._wait_until(_is_running, 3.0, "Gate to enter Mode.RUN after operator reset")
 
     def test_live_topic_traffic_lifecycle_and_obstacle_trip(self) -> None:
         """Verifies clear-corridor cruise followed by immediate fail-closed obstacle stop."""
@@ -192,39 +218,27 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         self._drive_to_run(clear_ranges)
 
         # 2. Verify forward cruise output on /cmd_vel_safe
-        t_cruise = time.monotonic()
-        cruise_verified = False
-        last_safe_twist = None
-        while time.monotonic() - t_cruise < 2.0:
+        def _is_cruising(twist: Optional[Twist], _state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
-            time.sleep(0.02)
-            safe_twist, _ = self.harness_node.get_telemetry_snapshot()
-            if safe_twist is not None:
-                last_safe_twist = safe_twist
-                if safe_twist.linear.x > 0.15 and math.isclose(safe_twist.angular.z, 0.0, abs_tol=1e-3):
-                    cruise_verified = True
-                    break
-        self.assertTrue(cruise_verified, f"Gate did not cruise in Mode.RUN. Last twist: {last_safe_twist}")
+            return twist is not None and twist.linear.x > 0.15 and math.isclose(twist.angular.z, 0.0, abs_tol=1e-3)
+
+        self._wait_until(_is_cruising, 2.0, "forward cruise output on /cmd_vel_safe")
 
         # 3. Inject obstacle breach and verify immediate 0.0 m/s clamp
-        t_hazard = time.monotonic()
-        obstacle_trip = False
-        while time.monotonic() - t_hazard < 3.0:
+        def _is_obstacle_tripped(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(hazard_ranges)
-            time.sleep(0.02)
-            safe_twist, state = self.harness_node.get_telemetry_snapshot()
-            if state is not None and safe_twist is not None:
-                if (
-                    state.get("mode") == "TRIPPED"
-                    and state.get("reason") == "TRIP_OBSTACLE"
-                    and math.isclose(safe_twist.linear.x, 0.0, abs_tol=1e-6)
-                    and math.isclose(safe_twist.angular.z, 0.0, abs_tol=1e-6)
-                ):
-                    obstacle_trip = True
-                    break
-        self.assertTrue(obstacle_trip, "Gate failed to clamp fail-closed on obstacle breach.")
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "TRIPPED"
+                and state.get("reason") == "TRIP_OBSTACLE"
+                and math.isclose(twist.linear.x, 0.0, abs_tol=1e-6)
+                and math.isclose(twist.angular.z, 0.0, abs_tol=1e-6)
+            )
+
+        self._wait_until(_is_obstacle_tripped, 3.0, "TRIP_OBSTACLE fail-closed clamp on obstacle breach")
 
     def test_live_topic_traffic_sensor_loss_watchdog(self) -> None:
         """
@@ -237,35 +251,65 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         # 1. Bring gate to Mode.RUN
         self._drive_to_run(clear_ranges)
 
-        # 2. Stop publishing /scan completely, but continue publishing proposals
-        t_cut = time.monotonic()
-        sensor_watchdog_tripped = False
-        last_state = None
-        last_safe_twist = None
-
-        while time.monotonic() - t_cut < 3.0:
-            # ONLY publish proposal; zero scan messages emitted
+        # 2. Stop publishing /scan completely; only publish velocity proposals
+        def _is_sensor_invalid(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
-            time.sleep(0.02)
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "TRIPPED"
+                and state.get("reason") == "TRIP_SENSOR_INVALID"
+                and math.isclose(twist.linear.x, 0.0, abs_tol=1e-6)
+                and math.isclose(twist.angular.z, 0.0, abs_tol=1e-6)
+            )
 
-            safe_twist, state = self.harness_node.get_telemetry_snapshot()
-            if state is not None and safe_twist is not None:
-                last_state = state
-                last_safe_twist = safe_twist
-                # Once scan age > 96 ms (3 ticks), gate must trip with TRIP_SENSOR_INVALID
-                if (
-                    state.get("mode") == "TRIPPED"
-                    and state.get("reason") == "TRIP_SENSOR_INVALID"
-                    and math.isclose(safe_twist.linear.x, 0.0, abs_tol=1e-6)
-                    and math.isclose(safe_twist.angular.z, 0.0, abs_tol=1e-6)
-                ):
-                    sensor_watchdog_tripped = True
-                    break
+        self._wait_until(_is_sensor_invalid, 3.0, "TRIP_SENSOR_INVALID watchdog clamp on scan loss")
 
-        self.assertTrue(
-            sensor_watchdog_tripped,
-            f"Gate failed to trip TRIP_SENSOR_INVALID on scan loss. "
-            f"Last state: {last_state}, Twist: {last_safe_twist}",
+    def test_live_topic_traffic_reset_rejected_under_active_obstacle(self) -> None:
+        """
+        Verifies Negative Path C: an operator reset cannot override an active physical hazard.
+        While an obstacle is present, publishing 'operator' to /gate/reset must be rejected:
+        Gate remains TRIPPED, reason remains TRIP_OBSTACLE, wheels remain clamped to 0.0 m/s,
+        and RESET_REJECTED_HAZARD is recorded in /gate/state events.
+        """
+        clear_ranges = [3.0] * 682
+        hazard_ranges = [0.15] * 682
+
+        # 1. Bring gate to Mode.RUN
+        self._drive_to_run(clear_ranges)
+
+        # 2. Trip the gate on obstacle breach
+        def _is_tripped_on_obstacle(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(hazard_ranges)
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "TRIPPED"
+                and state.get("reason") == "TRIP_OBSTACLE"
+            )
+
+        self._wait_until(_is_tripped_on_obstacle, 3.0, "Gate to trip on obstacle breach")
+
+        # 3. Emit operator reset while obstacle breach persists and assert rejection
+        def _is_reset_rejected(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(hazard_ranges)
+            self.harness_node.publish_reset("operator")
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "TRIPPED"
+                and state.get("reason") == "TRIP_OBSTACLE"
+                and "RESET_REJECTED_HAZARD" in state.get("events", [])
+                and math.isclose(twist.linear.x, 0.0, abs_tol=1e-6)
+                and math.isclose(twist.angular.z, 0.0, abs_tol=1e-6)
+            )
+
+        self._wait_until(
+            _is_reset_rejected,
+            3.0,
+            "RESET_REJECTED_HAZARD event while obstacle persists",
         )
 
 
