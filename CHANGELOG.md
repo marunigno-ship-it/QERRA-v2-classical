@@ -3,7 +3,7 @@
 All changes are additive. SEMEV-12 vectors are maintained as a stable core
 across versions.
 
-## [Unreleased] — Standalone ROS 2 Gate Node: Packaging, Native Jazzy CI, Fault Latch, Perception Stream Monitor, Timing Profiles, Flight Log & Adversarial Verifications (2026-10-30 to 2026-11-06)
+## [Unreleased] — Standalone ROS 2 Gate Node: Packaging, Native Jazzy CI, Fault Latch, Perception Stream Monitor, Timing Profiles, Flight Log, Adversarial Verifications & Live Topic Traffic (2026-10-30 to 2026-11-07)
 
 Gate Core stays at v0.4. The ROS 2 node `qerra_gate_node` is v0.3.1, and the HSR telemetry contract (`gate/hsr_telemetry.py`) is v0.3.1. Package metadata remains at 2.2.1.
 
@@ -15,8 +15,10 @@ Reference baselines (GitHub Actions on `main`, all passing). Counts are the auth
 | 2026-11-03 | `fb03b85` | #760 | #25 | 197 | 19 (16 + 3) |
 | 2026-11-04 | `a511d1e` | #766 | #31 | 203 | 25 (17 + 8) |
 | 2026-11-05 | `docs(sc)` | #773 | #31 | 211 | 25 (17 + 8) |
+| 2026-11-07 | `ci(ros2)` | #781 | #47 | 212 (211 pass, 1 skip) | 26 (17 + 8 + 1) |
 
 ### Added
+- **Live ROS 2 pub/sub topic traffic integration in CI (Priority P9) (7 Nov) (`tests/test_gate_ros2_live_traffic.py`, `.github/workflows/ros2_jazzy.yml`):** Multi-node DDS integration test running under native `rclpy` in the official `ros:jazzy` container. Verifies 1.0 s clear-corridor startup dwell (`AWAITING_RESET`), operator reset string acceptance (`Mode.RUN`), forward cruise proposal passthrough on `/cmd_vel_safe` (0.20 m/s), and immediate fail-closed clamping to 0.0 m/s (`Reason.TRIP_OBSTACLE`, `Mode.TRIPPED`) upon injecting a 150 mm obstacle breaching the dynamic envelope ($d_{\text{stop}} \approx 360\text{ mm}$). Guarded against missing `rclpy` to preserve 100% green discovery on non-ROS hosts.
 - **Standalone ROS 2 supervisory gate node (30 Oct) (`ros2/qerra_gate_node.py`, package `qerra_core`):** Wraps the pure gate core in a ROS 2 Jazzy node. Subscribes to `/cmd_vel` (`Twist`), `/scan` (`LaserScan`) and `/gate/reset` (`String`); publishes `/cmd_vel_safe` (`Twist`) and `/gate/state` (JSON `String`) on a nominal 31.25 Hz timer. The module imports without `rclpy`, so the pure logic is unit-tested on Windows.
 - **Pure translators (30 Oct):** Differential-drive kinematics between `Twist` and integer wheel speeds in µrad/s (TIAGo defaults: wheel radius 0.098 m, track width 0.4044 m), with NaN and Infinity rejected. `LaserScan` to corridor returns through the existing `CorridorFilter` and `LidarPipeline`.
 - **Single clock domain (30 Oct):** All node timestamps come from the ROS clock (`use_sim_time` is respected), replacing a mix of process time and message time found in review.
@@ -36,7 +38,7 @@ Reference baselines (GitHub Actions on `main`, all passing). Counts are the auth
 - **Forged-input and fault-injection tests (4 Nov) (`tests/test_gate_ros2_node_wiring.py`, 8 tests):** Channel validation, dwell reset rejection, hazard reset rejection, malformed/non-JSON UDP rejection, lidar beam-count mismatch, clock reversal (`TRIP_CLOCK_ANOMALY`), and deterministic multi-hazard resolution.
 
 ### Changed
-- **Host test baseline (5 Nov):** Total host unit tests under `tests/` increased from 203 to 211 passing tests (Python 3.12/3.14 on Windows 11 host).
+- **Host and container test baselines (7 Nov):** Total host unit tests under `tests/` increased to 212 tests (211 passing, 1 skipped cleanly on Windows 11 host and Ubuntu CI). Container integration tests under native ROS 2 Jazzy increased to 26 tests (17 translators + 8 wiring + 1 live pub/sub topic traffic).
 - **Reaction-time allowance in the ROS 2 node (3–5 Nov):** The node default is 96 ms (`t_react_ms`), replacing the 32 ms Webots lockstep assumption.
 - **Node version:** `NODE_VERSION` is 0.3.1.
 - **HSR telemetry contract:** `gate/hsr_telemetry.py` is v0.3.1.
