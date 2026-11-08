@@ -3,7 +3,7 @@
 All changes are additive. SEMEV-12 vectors are maintained as a stable core
 across versions.
 
-## [Unreleased] — Standalone ROS 2 Gate Node: Packaging, Native Jazzy CI, Fault Latch, Perception Stream Monitor, Timing Profiles, Flight Log, Adversarial Verifications & Live Topic Traffic Watchdogs (2026-10-30 to 2026-11-07)
+## [Unreleased] — Standalone ROS 2 Gate Node: Packaging, Native Jazzy CI, Fault Latch, Perception Stream Monitor, Timing Profiles, Flight Log, Adversarial Verifications, Live Topic Traffic & Dual-Protocol Watchdogs (2026-10-30 to 2026-11-08)
 
 Gate Core stays at v0.4. The ROS 2 node `qerra_gate_node` is v0.3.1, and the HSR telemetry contract (`gate/hsr_telemetry.py`) is v0.3.1. Package metadata remains at 2.2.1.
 
@@ -16,8 +16,10 @@ Reference baselines (GitHub Actions on `main`, all passing). Counts are the auth
 | 2026-11-04 | `a511d1e` | #766 | #31 | 203 | 25 (17 + 8) |
 | 2026-11-05 | `docs(sc)` | #773 | #31 | 211 | 25 (17 + 8) |
 | 2026-11-07 | `test(ros2)` | #781 | #50 | 215 (211 pass, 4 skip) | 29 (17 + 8 + 4) |
+| 2026-11-08 | `ci(ros2)` | #790 | #56 | 217 (211 pass, 6 skip) | 31 (17 + 8 + 4 + 2) |
 
 ### Added
+- **Live dual-protocol integration suite (Priority P10) (8 Nov) (`tests/test_gate_ros2_dual_protocol.py`, `.github/workflows/ros2_jazzy.yml`):** Implemented multi-node DDS topic traffic co-executing concurrently with Layer 1B UDP reflex telemetry on port 5008 under `hsr_required=true` (2 tests in 2.52s in `ros:jazzy`). Verifies: (1) dual-dwell clear recovery and immediate fail-closed clamping to 0.0 m/s (`Reason.TRIP_HSR_CRITICAL`) upon injecting an acute distress UDP datagram while DDS cruise remains active; (2) stale heartbeat watchdog trip (`Reason.TRIP_HSR_STALE`) within 96 ms when UDP stream is severed while DDS topics remain healthy. Guarded against missing `rclpy` to preserve 100% green discovery on non-ROS hosts.
 - **Live ROS 2 pub/sub topic traffic and watchdog suite (Priority P9) (7 Nov) (`tests/test_gate_ros2_live_traffic.py`, `.github/workflows/ros2_jazzy.yml`):** Implemented multi-node DDS integration test suite running under native `rclpy` in the official `ros:jazzy` container (4 tests in 4.93s). Verifies: (1) 1.0 s clear-corridor startup dwell (`AWAITING_RESET`), operator reset acceptance (`Mode.RUN`), forward cruise passthrough on `/cmd_vel_safe` (0.20 m/s), and obstacle clamping fail-closed; (2) Negative Path A sensor loss watchdog (cutting `/scan` trips `TRIP_SENSOR_INVALID` within 96 ms); (3) Negative Path C active hazard reset refusal (operator reset facing obstacle breach records `RESET_REJECTED_HAZARD` in `events` and holds 0.0 m/s); and (4) Negative Path B proposer timeout watchdog (cutting `/cmd_vel` while cruising trips `TRIP_PROPOSER_STALE` within 150 ms and holds 0.0 m/s). Guarded against missing `rclpy` to preserve 100% green discovery on non-ROS hosts.
 - **Standalone ROS 2 supervisory gate node (30 Oct) (`ros2/qerra_gate_node.py`, package `qerra_core`):** Wraps the pure gate core in a ROS 2 Jazzy node. Subscribes to `/cmd_vel` (`Twist`), `/scan` (`LaserScan`) and `/gate/reset` (`String`); publishes `/cmd_vel_safe` (`Twist`) and `/gate/state` (JSON `String`) on a nominal 31.25 Hz timer. The module imports without `rclpy`, so the pure logic is unit-tested on Windows.
 - **Pure translators (30 Oct):** Differential-drive kinematics between `Twist` and integer wheel speeds in µrad/s (TIAGo defaults: wheel radius 0.098 m, track width 0.4044 m), with NaN and Infinity rejected. `LaserScan` to corridor returns through the existing `CorridorFilter` and `LidarPipeline`.
@@ -38,7 +40,7 @@ Reference baselines (GitHub Actions on `main`, all passing). Counts are the auth
 - **Forged-input and fault-injection tests (4 Nov) (`tests/test_gate_ros2_node_wiring.py`, 8 tests):** Channel validation, dwell reset rejection, hazard reset rejection, malformed/non-JSON UDP rejection, lidar beam-count mismatch, clock reversal (`TRIP_CLOCK_ANOMALY`), and deterministic multi-hazard resolution.
 
 ### Changed
-- **Host and container test baselines (7 Nov):** Total host unit tests under `tests/` increased to 215 tests (211 passing, 4 skipped cleanly on Windows 11 host and Ubuntu CI). Container integration tests under native ROS 2 Jazzy increased to 29 tests (17 translators + 8 wiring + 4 live pub/sub topic traffic).
+- **Host and container test baselines (8 Nov):** Total host unit tests under `tests/` increased to 217 tests (211 passing, 6 skipped cleanly on Windows 11 host and Ubuntu CI). Container integration tests under native ROS 2 Jazzy increased to 31 tests (17 translators + 8 wiring + 4 live topic traffic + 2 live dual-protocol).
 - **LiDAR subscription QoS (7 Nov):** Switched `/scan` subscriber and harness publisher to `qos_profile_sensor_data` (Best Effort + Volatile) in `ros2/qerra_gate_node.py` for direct interoperability with physical LiDAR drivers.
 - **`/gate/state` telemetry events (7 Nov):** Added `"events"` list to the JSON state payload to expose secondary gate events (e.g. `RESET_REJECTED_HAZARD`) over ROS topics.
 - **Reaction-time allowance in the ROS 2 node (3–5 Nov):** The node default is 96 ms (`t_react_ms`), replacing the 32 ms Webots lockstep assumption.
@@ -58,7 +60,7 @@ Reference baselines (GitHub Actions on `main`, all passing). Counts are the auth
 - `SAFETY_CONCEPT.md` updated to v0.10 (5 Nov): Layer 1B stream monitor (dual-gate dwell, sticky freeze), parameterised timing profiles (346/358/371 mm stopping envelopes), startup invariant, R-10 flight logger failure clamp, persistent `NodeFaultLatch`, and documented adversarial exploit boundaries.
 - `LIMITATIONS.md` updated (5 Nov): Stream monitor sequence-only scope, 96/160 ms reaction budget cycle estimates, and executable exploit boundaries.
 - `QERRA_FOR_ROBOTICS.md` and `QERRA-HSR-Design-v0.1.md` updated (5 Nov): Colcon `--paths` syntax, node flight log integration, stream monitor state machine, and test inventory clarification.
-- `README.md` updated (6 Nov): Test baseline bumped to 211 host tests, stopping profiles aligned, and author nationality reference removed per public text standards.
+- `README.md` updated (6–7 Nov): Test baseline bumped to 215 host tests and 29 container tests, stopping profiles aligned, and author nationality reference removed per public text standards.
 
 ---
 
