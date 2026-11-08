@@ -5,7 +5,7 @@ Physical safety (Supervisory Gate + QERRA-HSR) → moral filtering (SEMEV-12) �
 
 [![Live API](https://img.shields.io/badge/API-Live-brightgreen)](https://qerra-v2-api-classical-qerra-v2-api-classical.hf.space/docs)
 
-[![Version](https://img.shields.io/badge/version-2.2.1-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
+[![Version](https://img.shields.io/badge/version-2.4.0-blue)](https://github.com/marunigno-ship-it/QERRA-v2-classical/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ## The Idea in One Sentence
@@ -59,7 +59,7 @@ The decision logic is deterministic, inspectable, and auditable. Every result ou
 - **Permissive Robotics Architecture:** Permissive for chassis-local ROS 2 integration, academic research, and commercial robotics adoption.
 - **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are timestamped and permanently archived on Zenodo.
 
-  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.23836773
+  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.24053163
   **ORCID:** https://orcid.org/0009-0009-4100-9881
 
 ## Quickstart
@@ -716,7 +716,7 @@ python verify_log.py results/RUN_1791713619/gate_audit.jsonl --anchor-seq 1484 -
 
 ## Project Status
 
-**Version:** 2.2.1  
+**Version:** 2.4.0
 **Engine:** Supervisory Gate `v0.4` · ROS 2 gate node `v0.3.1` · HSR telemetry contract `v0.3.1` · SEMEV-12 `v1.9.2` · QERRA-HSR `v0.1` · QERRA-THRIVE `v2.0.0` · Safety Concept `v0.10`
 All three layers are implemented. The evidence level differs by layer and is stated for each:
 
