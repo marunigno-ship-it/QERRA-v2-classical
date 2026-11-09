@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
 
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 package_name = "qerra_core"
 
 setup(
     name=package_name,
-    version="2.2.1",
+    version="2.4.0",
     py_modules=[
         "verify_log",
         "ros2_bridge",
