@@ -87,6 +87,65 @@ jobs:
           echo "[CI-TEST] Inspecting launch arguments via ros2 launch --show-args:"
           ros2 launch qerra_core qerra_gate.launch.py --show-args
 
+      - name: Verify live launch execution, remapping, and clean SIGINT shutdown
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          cd /tmp
+
+          set +e
+          # Start gate node via official ros2 launch in background with Pattern B remappings
+          PYTHONUNBUFFERED=1 ros2 launch qerra_core qerra_gate.launch.py \
+            hsr_source:=none \
+            hsr_required:=false \
+            cmd_vel_in:=/cmd_vel_nav \
+            cmd_vel_out:=/base/cmd_vel > /tmp/ros2_launch.log 2>&1 &
+          LAUNCH_PID=$!
+
+          # Capture exactly one diagnostic message from /gate/state (timeout after 12s)
+          timeout 12 ros2 topic echo --once /gate/state > /tmp/launch_gate_state.txt
+          ECHO_CODE=$?
+
+          # Signal launch process to stop cleanly via SIGINT
+          kill -INT "$LAUNCH_PID" 2>/dev/null || true
+          for i in $(seq 1 50); do
+            if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          if kill -0 "$LAUNCH_PID" 2>/dev/null; then
+            echo "[CI-TEST] WARNING: Launch process did not terminate within 5s; sending SIGKILL"
+            kill -KILL "$LAUNCH_PID" 2>/dev/null || true
+          fi
+          wait "$LAUNCH_PID" 2>/dev/null
+          LAUNCH_EXIT=$?
+
+          echo "=== [CI-TEST] /tmp/ros2_launch.log ==="
+          cat /tmp/ros2_launch.log
+          echo "=== [CI-TEST] /tmp/launch_gate_state.txt ==="
+          cat /tmp/launch_gate_state.txt
+          echo "[CI-TEST] Launch exit code: $LAUNCH_EXIT, Topic echo exit code: $ECHO_CODE"
+
+          # 1. Topic echo must succeed
+          if [ "$ECHO_CODE" -ne 0 ]; then
+            echo "[CI-TEST] FAILURE: Failed to capture /gate/state message from launched node within 12s!"
+            exit 1
+          fi
+
+          # 2. Gate state message must be non-empty
+          if [ ! -s /tmp/launch_gate_state.txt ]; then
+            echo "[CI-TEST] FAILURE: Captured /gate/state message is empty!"
+            exit 1
+          fi
+
+          # 3. No tick exceptions in launch log
+          if grep -q "Tick exception" /tmp/ros2_launch.log; then
+            echo "[CI-TEST] FAILURE: Launch log reported tick exception(s)!"
+            exit 1
+          fi
+
       - name: Verify installed executable starts, ticks without exception, and publishes gate state
         shell: bash
         run: |
