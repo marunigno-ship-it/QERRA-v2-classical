@@ -196,3 +196,11 @@ jobs:
           . ros2_ws/install/setup.bash
           cd ros2_ws/src/qerra_core
           python3 -m unittest tests/test_gate_ros2_dual_protocol.py
+
+      - name: Run live ROS 2 topic remapping integration test in Jazzy (Pattern B)
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          cd ros2_ws/src/qerra_core
+          python3 -m unittest tests/test_gate_ros2_remapping.py
