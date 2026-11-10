@@ -76,6 +76,17 @@ jobs:
           echo "$EXEC_LIST"
           echo "$EXEC_LIST" | grep -q "qerra_gate_node"
 
+      - name: Verify ROS 2 launch file discovery and arguments
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          PREFIX="$(ros2 pkg prefix qerra_core)"
+          echo "[CI-TEST] Checking installed launch file at $PREFIX/share/qerra_core/launch/qerra_gate.launch.py"
+          test -f "$PREFIX/share/qerra_core/launch/qerra_gate.launch.py"
+          echo "[CI-TEST] Inspecting launch arguments via ros2 launch --show-args:"
+          ros2 launch qerra_core qerra_gate.launch.py --show-args
+
       - name: Verify installed executable starts, ticks without exception, and publishes gate state
         shell: bash
         run: |
