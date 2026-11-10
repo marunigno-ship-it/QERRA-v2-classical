@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           apt-get update
-          apt-get install -y python3-colcon-common-extensions python3-pip
+          apt-get install -y python3-colcon-common-extensions python3-pip procps
           rosdep update
           cd ros2_ws
           rosdep install --from-paths src/qerra_core src/qerra_core/src/qerra_msgs --ignore-src -r -y --rosdistro jazzy
@@ -107,18 +107,24 @@ jobs:
           timeout 12 ros2 topic echo --once /gate/state > /tmp/launch_gate_state.txt
           ECHO_CODE=$?
 
-          # Signal launch process to stop cleanly via SIGINT
-          kill -INT "$LAUNCH_PID" 2>/dev/null || true
-          for i in $(seq 1 50); do
+          # Graceful shutdown: send SIGINT to child node and SIGTERM to launch parent
+          pkill -INT -P "$LAUNCH_PID" 2>/dev/null || true
+          kill -TERM "$LAUNCH_PID" 2>/dev/null || kill -INT "$LAUNCH_PID" 2>/dev/null || true
+
+          for i in $(seq 1 80); do
             if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
               break
             fi
             sleep 0.1
           done
+
           if kill -0 "$LAUNCH_PID" 2>/dev/null; then
-            echo "[CI-TEST] WARNING: Launch process did not terminate within 5s; sending SIGKILL"
+            echo "[CI-TEST] FAILURE: Launch process did not terminate gracefully within 8s; force-killing"
             kill -KILL "$LAUNCH_PID" 2>/dev/null || true
+            wait "$LAUNCH_PID" 2>/dev/null
+            exit 1
           fi
+
           wait "$LAUNCH_PID" 2>/dev/null
           LAUNCH_EXIT=$?
 
@@ -143,6 +149,12 @@ jobs:
           # 3. No tick exceptions in launch log
           if grep -q "Tick exception" /tmp/ros2_launch.log; then
             echo "[CI-TEST] FAILURE: Launch log reported tick exception(s)!"
+            exit 1
+          fi
+
+          # 4. Assert clean termination: must exit cleanly (0 or standard signal codes 130/143)
+          if [ "$LAUNCH_EXIT" -ne 0 ] && [ "$LAUNCH_EXIT" -ne 130 ] && [ "$LAUNCH_EXIT" -ne 143 ]; then
+            echo "[CI-TEST] FAILURE: Launch process did not shut down cleanly (exit code $LAUNCH_EXIT)!"
             exit 1
           fi
 
