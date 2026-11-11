@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ros:jazzy
+    env:
+      # Fail-closed guard: prevent silent test skipping inside official ROS 2 container
+      QERRA_REQUIRE_ROS2: "1"
 
     steps:
       - name: Checkout repository into workspace
@@ -87,7 +90,7 @@ jobs:
           echo "[CI-TEST] Inspecting launch arguments via ros2 launch --show-args:"
           ros2 launch qerra_core qerra_gate.launch.py --show-args
 
-      - name: Verify live launch execution, remapping, and clean SIGINT shutdown
+      - name: Verify live launch execution, remapping, and graceful termination
         shell: bash
         run: |
           . /opt/ros/jazzy/setup.bash
@@ -107,9 +110,8 @@ jobs:
           timeout 12 ros2 topic echo --once /gate/state > /tmp/launch_gate_state.txt
           ECHO_CODE=$?
 
-          # Graceful shutdown: send SIGINT to child node and SIGTERM to launch parent
-          pkill -INT -P "$LAUNCH_PID" 2>/dev/null || true
-          kill -TERM "$LAUNCH_PID" 2>/dev/null || kill -INT "$LAUNCH_PID" 2>/dev/null || true
+          # Initiate graceful shutdown: send SIGINT directly to launch process parent
+          kill -INT "$LAUNCH_PID" 2>/dev/null || true
 
           for i in $(seq 1 80); do
             if ! kill -0 "$LAUNCH_PID" 2>/dev/null; then
@@ -118,8 +120,15 @@ jobs:
             sleep 0.1
           done
 
+          # Fallback escalation if launch process fails to stop within 8s
           if kill -0 "$LAUNCH_PID" 2>/dev/null; then
-            echo "[CI-TEST] FAILURE: Launch process did not terminate gracefully within 8s; force-killing"
+            echo "[CI-TEST] WARNING: Launch process did not terminate within 8s after SIGINT; sending SIGTERM"
+            kill -TERM "$LAUNCH_PID" 2>/dev/null || true
+            sleep 1
+          fi
+
+          if kill -0 "$LAUNCH_PID" 2>/dev/null; then
+            echo "[CI-TEST] FAILURE: Launch process did not terminate gracefully; force-killing"
             kill -KILL "$LAUNCH_PID" 2>/dev/null || true
             wait "$LAUNCH_PID" 2>/dev/null
             exit 1
@@ -249,8 +258,8 @@ jobs:
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
           cd ros2_ws/src/qerra_core
-          python3 -m unittest tests/test_gate_ros2_node.py
-          python3 -m unittest tests/test_gate_ros2_node_wiring.py
+          python3 -m unittest -v tests/test_gate_ros2_node.py
+          python3 -m unittest -v tests/test_gate_ros2_node_wiring.py
 
       - name: Run live ROS 2 topic traffic integration tests in Jazzy (Priority P9)
         shell: bash
@@ -258,7 +267,7 @@ jobs:
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
           cd ros2_ws/src/qerra_core
-          python3 -m unittest tests/test_gate_ros2_live_traffic.py
+          python3 -m unittest -v tests/test_gate_ros2_live_traffic.py
 
       - name: Run live dual-protocol integration tests in Jazzy (Priority P10)
         shell: bash
@@ -266,7 +275,7 @@ jobs:
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
           cd ros2_ws/src/qerra_core
-          python3 -m unittest tests/test_gate_ros2_dual_protocol.py
+          python3 -m unittest -v tests/test_gate_ros2_dual_protocol.py
 
       - name: Run live ROS 2 topic remapping integration test in Jazzy (Pattern B)
         shell: bash
@@ -274,4 +283,12 @@ jobs:
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
           cd ros2_ws/src/qerra_core
-          python3 -m unittest tests/test_gate_ros2_remapping.py
+          python3 -m unittest -v tests/test_gate_ros2_remapping.py
+
+      - name: Run live Nav2 exterior integration tests in Jazzy (Pattern B / Nav2)
+        shell: bash
+        run: |
+          . /opt/ros/jazzy/setup.bash
+          . ros2_ws/install/setup.bash
+          cd ros2_ws/src/qerra_core
+          python3 -m unittest -v tests/test_gate_ros2_nav2_exterior.py
