@@ -24,8 +24,42 @@ jobs:
       - name: Install build tools and message dependencies
         shell: bash
         run: |
-          apt-get update
-          apt-get install -y python3-colcon-common-extensions python3-pip procps
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+
+          # 1. Resilient DNS fallback inside container (bypass transient runner DNS proxy dropouts)
+          echo "nameserver 8.8.8.8" > /etc/resolv.conf || true
+          echo "nameserver 1.1.1.1" >> /etc/resolv.conf || true
+
+          # 2. Bounded retries and timeouts for package manager
+          APT_OPTS=(
+            -o Acquire::Retries=3
+            -o Acquire::http::Timeout=20
+            -o Acquire::https::Timeout=20
+          )
+
+          UPDATED=0
+          for attempt in 1 2 3; do
+            echo "[CI] apt-get update attempt ${attempt}/3"
+            if apt-get "${APT_OPTS[@]}" update; then
+              UPDATED=1
+              break
+            fi
+            echo "[CI] apt-get update attempt ${attempt} failed; retrying in 5s..."
+            sleep 5
+          done
+
+          if [ "$UPDATED" -ne 1 ]; then
+            echo "[CI] ERROR: Ubuntu package indexes could not be updated after 3 attempts."
+            exit 1
+          fi
+
+          # 3. Install required build tools and utilities
+          apt-get "${APT_OPTS[@]}" install -y --no-install-recommends \
+            python3-colcon-common-extensions \
+            python3-pip \
+            procps
+
           rosdep update
           cd ros2_ws
           rosdep install --from-paths src/qerra_core src/qerra_core/src/qerra_msgs --ignore-src -r -y --rosdistro jazzy
