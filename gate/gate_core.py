@@ -323,7 +323,14 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
             held, last_seq, last_session_id = cand, cand.seq, cand.session_id
 
     # 2. clamp the newest accepted proposal into the envelope (AR-2, R-05)
-    clamped = clamp_to_envelope(params, held.left_urad_s, held.right_urad_s) if held else (0, 0)
+    # Symmetrical Fail-Closed (Option A): If either wheel requires negative
+    # rotation (reverse) without rearward sensor coverage, both wheels clamp
+    # to (0, 0) fail-closed to preserve body linear velocity bounds and prevent
+    # unmonitored blind rotation.
+    if held is not None and (held.left_urad_s < params.w_min_urad_s or held.right_urad_s < params.w_min_urad_s):
+        clamped = (0, 0)
+    else:
+        clamped = clamp_to_envelope(params, held.left_urad_s, held.right_urad_s) if held else (0, 0)
 
     # 3. speed bound and stop distance (F4 reaction-time inclusion)
     v_ref = max(
