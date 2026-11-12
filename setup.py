@@ -3,32 +3,19 @@
 
 import os
 from glob import glob
-from setuptools import find_packages, setup
+from setuptools import setup
 
 package_name = "qerra_core"
 
 setup(
     name=package_name,
-    version="2.4.0",
+    version="2.4.1",
     py_modules=[
         "verify_log",
-        "ros2_bridge",
-        "ethical_core",
-        "vectors",
-        "classical_analyze",
-        "qerra_condition_node",
-        "qerra_action_ranker_node",
-        "qerra_standalone_remote_node",
     ],
     packages=[
         "gate",
         "hsr",
-        "values",
-        "values.human_centered",
-        "values.ecological",
-        "auth",
-        "models",
-        "utils",
         "ros2",
     ],
     data_files=[
@@ -51,7 +38,6 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "bridge = ros2_bridge:main",
             "qerra_gate_node = ros2.qerra_gate_node:main",
         ],
     },
