@@ -522,6 +522,8 @@ if ROS2_AVAILABLE:
 
         def _publish_fault_state(self) -> None:
             """Publishes /gate/state telemetry indicating persistent latched fault."""
+            if not rclpy.ok():
+                return
             try:
                 state_msg = String()
                 state_msg.data = format_gate_state_json(
@@ -549,11 +551,19 @@ if ROS2_AVAILABLE:
 
         def _tick_callback(self) -> None:
             """Deterministic Gate evaluation tick (Fail-Closed Guarantees)."""
+            # Early exit if ROS 2 context is shutting down (SIGINT / Ctrl+C)
+            if not rclpy.ok():
+                return
+
             # Node fault latch: if previously tripped, remain fail-closed permanently
             if self._fault_latch.is_latched:
-                zero_twist = Twist()
-                self._pub_cmd_safe.publish(zero_twist)
-                self._publish_fault_state()
+                if rclpy.ok():
+                    try:
+                        zero_twist = Twist()
+                        self._pub_cmd_safe.publish(zero_twist)
+                        self._publish_fault_state()
+                    except Exception:
+                        pass
                 return
 
             try:
@@ -609,6 +619,9 @@ if ROS2_AVAILABLE:
                         wheel_radius_m=self._wheel_radius_m,
                     )
 
+                if not rclpy.ok():
+                    return
+
                 safe_twist = Twist()
                 safe_twist.linear.x = safe_linear_x
                 safe_twist.angular.z = safe_angular_z
@@ -638,14 +651,24 @@ if ROS2_AVAILABLE:
                 self._pub_state.publish(state_msg)
 
             except Exception as exc:
+                # If context was already shut down by SIGINT, exit cleanly without logging/publishing
+                if not rclpy.ok():
+                    return
                 # Trip persistent node-level fault latch fail-closed
                 self._fault_latch.trip(exc)
-                self.get_logger().error(
-                    f"Tick exception: latching permanent node fault (holding 0.0 m/s fail-closed): {exc}"
-                )
-                zero_twist = Twist()
-                self._pub_cmd_safe.publish(zero_twist)
-                self._publish_fault_state()
+                try:
+                    self.get_logger().error(
+                        f"Tick exception: latching permanent node fault (holding 0.0 m/s fail-closed): {exc}"
+                    )
+                except Exception:
+                    pass
+                if rclpy.ok():
+                    try:
+                        zero_twist = Twist()
+                        self._pub_cmd_safe.publish(zero_twist)
+                        self._publish_fault_state()
+                    except Exception:
+                        pass
 
         def destroy_node(self) -> bool:
             """Releases HSR receiver, flight logger, and state sockets, cleaning up resources."""
