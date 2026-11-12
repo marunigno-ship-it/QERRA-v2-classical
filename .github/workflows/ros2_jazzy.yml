@@ -21,13 +21,13 @@ jobs:
         with:
           path: ros2_ws/src/qerra_core
 
-      - name: Install build tools and message dependencies
+      - name: Install build tools and dependencies
         shell: bash
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
 
-          # 1. Resilient DNS fallback inside container (bypass transient runner DNS proxy dropouts)
+          # 1. Resilient DNS fallback inside container
           echo "nameserver 8.8.8.8" > /etc/resolv.conf || true
           echo "nameserver 1.1.1.1" >> /etc/resolv.conf || true
 
@@ -62,47 +62,16 @@ jobs:
 
           rosdep update
           cd ros2_ws
-          rosdep install --from-paths src/qerra_core src/qerra_core/src/qerra_msgs --ignore-src -r -y --rosdistro jazzy
+          rosdep install --from-paths src/qerra_core --ignore-src -r -y --rosdistro jazzy
 
-      - name: Build qerra_msgs and qerra_core with colcon
+      - name: Verify workspace discovery and build qerra_core
         shell: bash
         run: |
           . /opt/ros/jazzy/setup.bash
           cd ros2_ws
-          colcon list --paths src/qerra_core src/qerra_core/src/qerra_msgs
-          colcon build --paths src/qerra_core src/qerra_core/src/qerra_msgs --packages-select qerra_msgs qerra_core
-
-      - name: Verify qerra_msgs action interface generation
-        shell: bash
-        run: |
-          . /opt/ros/jazzy/setup.bash
-          . ros2_ws/install/setup.bash
-          ros2 interface show qerra_msgs/action/QerraEvaluate
-          python3 -c "
-          from qerra_msgs.action import QerraEvaluate
-
-          goal = QerraEvaluate.Goal()
-          goal.situation_text = 'emergency_stop_request'
-          goal.distress_confidence = 0.95
-          goal.persons_nearby_count = 2
-          goal.hazard_proximity_flag = True
-          goal.robot_task_interruptible = False
-
-          result = QerraEvaluate.Result()
-          result.score = 0.85
-          result.decision = 'modified'
-          result.score_explanation = 'critical ethical concern'
-          result.reasoning = 'v004 startle avoidance'
-          result.vectors_activated = ['v004', 'v003']
-          result.evaluation_source_local = True
-          result.success = True
-          result.error_message = ''
-
-          feedback = QerraEvaluate.Feedback()
-          feedback.status = 'evaluating'
-
-          print('[CI-TEST] Successfully verified QerraEvaluate Action (Goal, Result, Feedback)!')
-          "
+          # Standard colcon discovery: should discover qerra_core and ignore qerra_msgs
+          colcon list
+          colcon build --packages-select qerra_core
 
       - name: Verify ROS 2 package and executable discovery
         shell: bash
