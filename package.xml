@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>qerra_core</name>
-  <version>2.4.0</version>
+  <version>2.4.1</version>
   <description>QERRA-v2 Classical: Three-Layer Autonomous Execution Firewall and Supervisory Gate</description>
   <maintainer email="marunigno@gmail.com">Marussa Metocharaki</maintainer>
   <license>Apache-2.0</license>
@@ -13,8 +13,6 @@
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
-  <exec_depend>qerra_msgs</exec_depend>
-  <exec_depend>python3-requests</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
