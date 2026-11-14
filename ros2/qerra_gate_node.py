@@ -334,7 +334,8 @@ if ROS2_AVAILABLE:
 
             rate_hz = float(self.get_parameter("rate_hz").value)
             timer_period_s = 1.0 / rate_hz if rate_hz > 0.0 else 0.032
-            dt_us = int(round(timer_period_s * 1_000_000))
+            self._dt_us = int(round(timer_period_s * 1_000_000))
+            dt_us = self._dt_us
 
             self._track_width_m = float(self.get_parameter("track_width_m").value)
             self._wheel_radius_m = float(self.get_parameter("wheel_radius_m").value)
@@ -387,6 +388,7 @@ if ROS2_AVAILABLE:
             self._state = initial_state()
             self._params = get_live_gate_params(
                 lidar_n_expected=self._lidar_n_expected,
+                dt_us=self._dt_us,
                 wheel_radius_mm=int(round(self._wheel_radius_m * 1000)),
                 hsr_required=self._hsr_required,
                 t_react_us=self._t_react_us,
