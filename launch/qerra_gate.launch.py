@@ -47,6 +47,31 @@ def generate_launch_description() -> LaunchDescription:
         default_value="31.25",
         description="Nominal control loop tick frequency in Hz (default: 31.25 Hz / 32 ms dt)",
     )
+    track_width_m_arg = DeclareLaunchArgument(
+        "track_width_m",
+        default_value="0.4044",
+        description="Wheel track separation width in meters (default: 0.4044m for TIAGo base)",
+    )
+    wheel_radius_m_arg = DeclareLaunchArgument(
+        "wheel_radius_m",
+        default_value="0.098",
+        description="Drive wheel radius in meters (default: 0.098m for TIAGo base)",
+    )
+    robot_half_width_m_arg = DeclareLaunchArgument(
+        "robot_half_width_m",
+        default_value="0.32",
+        description="Corridor filter half-width in meters (robot base half-width + margin)",
+    )
+    lidar_n_expected_arg = DeclareLaunchArgument(
+        "lidar_n_expected",
+        default_value="682",
+        description="Required beam count per scan (e.g. 667 for Webots TIAGo, 682 for Hokuyo URG-04LX)",
+    )
+    lidar_fov_rad_arg = DeclareLaunchArgument(
+        "lidar_fov_rad",
+        default_value="4.1887902",
+        description="Total LiDAR field-of-view in radians (default: 240 deg = 4.1887902 rad)",
+    )
     t_react_ms_arg = DeclareLaunchArgument(
         "t_react_ms",
         default_value="96.0",
@@ -62,11 +87,6 @@ def generate_launch_description() -> LaunchDescription:
         default_value="96.0",
         description="Maximum accepted LiDAR scan age before fail-closed trip (>= 2*period + dt)",
     )
-    lidar_n_expected_arg = DeclareLaunchArgument(
-        "lidar_n_expected",
-        default_value="682",
-        description="Required beam count per scan (e.g. 667 for Webots TIAGo, 682 for Hokuyo URG-04LX)",
-    )
     hsr_source_arg = DeclareLaunchArgument(
         "hsr_source",
         default_value="udp",
@@ -81,6 +101,11 @@ def generate_launch_description() -> LaunchDescription:
         "hsr_required",
         default_value="true",
         description="Fail-closed trip if Layer 1B reflex telemetry is missing or stale ('true'/'false')",
+    )
+    state_port_arg = DeclareLaunchArgument(
+        "state_port",
+        default_value="5007",
+        description="Localhost UDP port for simulation clock echo datagrams",
     )
     flight_log_path_arg = DeclareLaunchArgument(
         "flight_log_path",
@@ -100,13 +125,18 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[
             {
                 "rate_hz": ParameterValue(LaunchConfiguration("rate_hz"), value_type=float),
+                "track_width_m": ParameterValue(LaunchConfiguration("track_width_m"), value_type=float),
+                "wheel_radius_m": ParameterValue(LaunchConfiguration("wheel_radius_m"), value_type=float),
+                "robot_half_width_m": ParameterValue(LaunchConfiguration("robot_half_width_m"), value_type=float),
+                "lidar_n_expected": ParameterValue(LaunchConfiguration("lidar_n_expected"), value_type=int),
+                "lidar_fov_rad": ParameterValue(LaunchConfiguration("lidar_fov_rad"), value_type=float),
                 "t_react_ms": ParameterValue(LaunchConfiguration("t_react_ms"), value_type=float),
                 "lidar_period_ms": ParameterValue(LaunchConfiguration("lidar_period_ms"), value_type=float),
                 "lidar_stale_ms": ParameterValue(LaunchConfiguration("lidar_stale_ms"), value_type=float),
-                "lidar_n_expected": ParameterValue(LaunchConfiguration("lidar_n_expected"), value_type=int),
                 "hsr_source": ParameterValue(LaunchConfiguration("hsr_source"), value_type=str),
                 "hsr_port": ParameterValue(LaunchConfiguration("hsr_port"), value_type=int),
                 "hsr_required": ParameterValue(LaunchConfiguration("hsr_required"), value_type=bool),
+                "state_port": ParameterValue(LaunchConfiguration("state_port"), value_type=int),
                 "flight_log_path": ParameterValue(LaunchConfiguration("flight_log_path"), value_type=str),
             }
         ],
@@ -127,13 +157,18 @@ def generate_launch_description() -> LaunchDescription:
             reset_topic_arg,
             state_topic_arg,
             rate_hz_arg,
+            track_width_m_arg,
+            wheel_radius_m_arg,
+            robot_half_width_m_arg,
+            lidar_n_expected_arg,
+            lidar_fov_rad_arg,
             t_react_ms_arg,
             lidar_period_ms_arg,
             lidar_stale_ms_arg,
-            lidar_n_expected_arg,
             hsr_source_arg,
             hsr_port_arg,
             hsr_required_arg,
+            state_port_arg,
             flight_log_path_arg,
             qerra_gate_node,
         ]
