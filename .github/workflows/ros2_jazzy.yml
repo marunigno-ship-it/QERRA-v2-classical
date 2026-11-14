@@ -95,6 +95,8 @@ jobs:
 
       - name: Verify live launch execution, remapping, and graceful termination
         shell: bash
+        env:
+          ROS_DOMAIN_ID: "11"
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
@@ -172,6 +174,8 @@ jobs:
 
       - name: Verify installed executable starts, ticks without exception, and publishes gate state
         shell: bash
+        env:
+          ROS_DOMAIN_ID: "12"
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
@@ -235,6 +239,8 @@ jobs:
 
       - name: Verify real rclpy node initialization and lifecycle
         shell: bash
+        env:
+          ROS_DOMAIN_ID: "13"
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
@@ -257,6 +263,8 @@ jobs:
 
       - name: Run ROS 2 gate node unit and wiring tests in Jazzy
         shell: bash
+        env:
+          ROS_DOMAIN_ID: "14"
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
@@ -266,14 +274,26 @@ jobs:
 
       - name: Run live ROS 2 topic traffic integration tests in Jazzy (Priority P9)
         shell: bash
+        env:
+          ROS_DOMAIN_ID: "15"
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
           cd ros2_ws/src/qerra_core
           python3 -m unittest -v tests/test_gate_ros2_live_traffic.py
 
+      - name: Diagnose leftover ROS processes before P10 (temporary)
+        shell: bash
+        run: |
+          echo "=== [CI-DIAG] leftover gate/launch processes (expect none) ==="
+          ps -eo pid,ppid,etime,args | grep -E "qerra_gate_node|ros2 launch|launch_ros" | grep -v grep || echo "none"
+          echo "=== [CI-DIAG] all python3 processes ==="
+          ps -eo pid,ppid,etime,args | grep -E "python3" | grep -v grep || echo "none"
+
       - name: Run live dual-protocol integration tests in Jazzy (Priority P10)
         shell: bash
+        env:
+          ROS_DOMAIN_ID: "16"
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
@@ -282,6 +302,8 @@ jobs:
 
       - name: Run live ROS 2 topic remapping integration test in Jazzy (Pattern B)
         shell: bash
+        env:
+          ROS_DOMAIN_ID: "17"
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
@@ -290,6 +312,8 @@ jobs:
 
       - name: Run live Nav2 exterior integration tests in Jazzy (Pattern B / Nav2)
         shell: bash
+        env:
+          ROS_DOMAIN_ID: "18"
         run: |
           . /opt/ros/jazzy/setup.bash
           . ros2_ws/install/setup.bash
