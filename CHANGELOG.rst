@@ -2,7 +2,7 @@
 Changelog for package qerra_core
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-2.4.1 (2026-11-12)
+2.4.1 (2026-11-15)
 ------------------
 * Standalone ROS 2 Gate Node: packaging, native Jazzy CI, persistent NodeFaultLatch, and single ROS clock domain.
 * Nav2 exterior command-interface integration suite (Priority P12) executing under native rclpy in official ros:jazzy container.
@@ -13,6 +13,10 @@ Changelog for package qerra_core
 * Interoperable LiDAR subscription using qos_profile_sensor_data (Best Effort + Volatile) with dynamic beam mismatch guarding.
 * Live dual-protocol integration suite (Priority P10) and live pub/sub topic traffic watchdog suite (Priority P9).
 * Complete isolation of qerra_core: decoupled from unreleased message packages, external REST dependencies, and higher-order deliberative layers.
+* Propagated rate_hz-derived dt_us into get_live_gate_params() in ros2/qerra_gate_node.py so max_tick_gap_us scales cleanly at lower control rates (e.g., 10 Hz).
+* Preserved verified HsrReceiver state across Reason.RESET_ACCEPTED in QerraGateNode._tick_callback() to prevent post-reset TRIP_HSR_INVALID races on UDP streams slower than 31.25 Hz.
+* Exposed all 14 typed node parameters in launch/qerra_gate.launch.py (adding track_width_m, wheel_radius_m, robot_half_width_m, lidar_fov_rad, and state_port).
+* Added 10 Hz dt_us scaling and 40 ms / 50 ms post-reset HSR continuity regression tests, isolated ros2_jazzy.yml CI steps via ROS_DOMAIN_ID and child process reaping, configured SO_RCVBUF in tests/test_adversarial_hsr.py, and updated LIMITATIONS.md and TECHNICAL_BRIEF_ROS2_GATE.md (v1.4.0).
 * Contributors: Marussa Metocharaki
 
 2.3.1 (2026-10-31)
