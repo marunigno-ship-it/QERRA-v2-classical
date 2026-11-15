@@ -172,6 +172,9 @@ jobs:
             exit 1
           fi
 
+          # Ensure any orphaned child node processes from the launch tree are reaped
+          pkill -9 -f "[q]erra_gate_node" 2>/dev/null || true
+
       - name: Verify installed executable starts, ticks without exception, and publishes gate state
         shell: bash
         env:
@@ -237,6 +240,9 @@ jobs:
             exit 1
           fi
 
+          # Ensure standalone node process is fully reaped
+          pkill -9 -f "[q]erra_gate_node" 2>/dev/null || true
+
       - name: Verify real rclpy node initialization and lifecycle
         shell: bash
         env:
@@ -282,7 +288,7 @@ jobs:
           cd ros2_ws/src/qerra_core
           python3 -m unittest -v tests/test_gate_ros2_live_traffic.py
 
-      - name: Diagnose leftover ROS processes before P10 (temporary)
+      - name: Check leftover ROS processes before P10
         shell: bash
         run: |
           echo "=== [CI-DIAG] leftover gate/launch processes (expect none) ==="
