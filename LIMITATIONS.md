@@ -78,6 +78,15 @@ configured, corrupt or frozen reflex telemetry emits `(None, None)`, which is
 silently ignored by the Gate Core, allowing the robot to continue operating
 solely on lidar.
 
+**Minimum HSR producer rate (`t_hsr_stale_us`).**
+With `hsr_required=True`, `gate_core.py` enforces a default HSR freshness limit
+of `t_hsr_stale_us = 96_000` µs ($96\text{ ms}$). A $10\text{ Hz}$ producer
+($100\text{ ms}$ period) exceeds this $96\text{ ms}$ window on nominal intervals
+and triggers `TRIP_HSR_STALE`. Reliable operation under default thresholds
+requires an HSR UDP producer running faster than $10.4\text{ Hz}$ (practically
+$\ge 20\text{ Hz}$ / $\le 50\text{ ms}$ period to preserve margin for
+scheduling and transport jitter).
+
 **Chassis-local fail-closed contract vs. HTTP API.**
 On the ROS 2 Action Server bridge (`ros2_bridge.py`), missing, `None`, or empty
 telemetry enforces strict chassis-local fail-closed halts (<1ms compute budget)
@@ -100,6 +109,7 @@ The dynamic stopping distance $d_{\text{stop}}(v) = \lceil v^2 / (2 \cdot a_{\te
 
 **Rotational sweep is unmodeled & AR-2 symmetrical reverse clamping.**
 The corridor filter (`gate_lidar.CorridorFilter`) projects laser returns across a straight forward translation corridor matching base half-width ($0.32\text{ m}$). Previously, clamping only a reverse wheel produced an unmonitored **arc about the stationary wheel** $(+w, 0)$ rather than a center pivot in place. Under the current AR-2 Option A policy (`w_min = 0`), because the robot lacks rearward sensor coverage, any proposal commanding reverse rotation on either wheel causes **both wheel outputs to clamp symmetrically to zero** `(0, 0)`. Consequently, differential center pivots $(+w, -w)$ and reverse maneuvers are completely halted fail-closed rather than executed. For permitted forward-only turning maneuvers where both wheels rotate forward ($w_L > 0, w_R > 0, w_L \ne w_R$), the robot moves along a curved arc ($R = v/\omega$). The straight forward corridor filter does not compute swept circular polygonal volumes along these curved turning trajectories; lateral obstacles adjacent to the swinging chassis flank outside the straight forward corridor evaluate as clear (`PASS`).
+
 **Single-sample latching & availability cost.**
 Under QERRA's strict fail-closed contract, any **single invalid lidar sample** (NaN, out-of-range, non-positive distance, wrong length, or stalled timestamp) immediately trips the gate to `Mode.TRIPPED` (`TRIP_SENSOR_INVALID`). The gate deliberately does not implement an automatic debounce filter in core. Once tripped, returning to `RUN` mode requires a continuous $1.0\text{ s}$ clear dwell period (`t_dwell_us = 1_000_000`) and an explicit manual **operator reset** (`RESET_SOURCE_OPERATOR`). Applications deployed on lossy transports or in environments with transient optical reflections must implement pre-gate sensor debounce filters in the shell or accept that any single-sample sensor glitch demands human operator intervention.
 
@@ -170,6 +180,9 @@ Localhost UDP ports (5005, 5006, 5007, 5008) and ROS 2 topics are unauthenticate
 
 **Twist interface lacks planner generation timestamp.**
 `QerraGateNode` subscribes to standard `geometry_msgs/msg/Twist` on `/cmd_vel`. Because `Twist` carries no header stamp, the node assigns `sim_stamp_us = now_us` upon message receipt. Consequently, the proposal watchdog ($150\text{ ms}$) measures transport and subscription callback delay at the Gate, but cannot detect compute lag or stalled cycles inside the upstream planner before publication.
+
+**Non-finite (`NaN`/`Inf`) `Twist` commands coast until watchdog timeout.**
+In `_cmd_vel_callback()`, non-finite `Twist` values (`NaN` or `Inf`) raise `ValueError` in `twist_to_wheel_speeds()`, log a warning, and set `_latest_proposal = None`. Because `gate_core.step()` treats `proposal=None` as "no new candidate received," the node retains `state.held` (the previous accepted velocity proposal) without refreshing its timestamp until `t_watch_us` ($150\text{ ms}$) expires (`TRIP_PROPOSER_STALE`). Consequently, a corrupted non-finite `Twist` is rejected rather than accepted, but does not command an instantaneous zero-tick stop while a prior valid proposal remains within its $150\text{ ms}$ window.
 
 **No zero command on node termination.**
 In `QerraGateNode.destroy_node()`, network sockets and flight logger file descriptors are cleanly closed, but no final zero-velocity command is published to `/cmd_vel_safe`. Actuator safety upon node death depends entirely on downstream base controller command watchdogs.
