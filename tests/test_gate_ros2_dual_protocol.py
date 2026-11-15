@@ -5,17 +5,21 @@ Live dual-protocol integration tests for QERRA supervisory gate node.
 
 Executes concurrent ROS 2 DDS topic traffic and Layer 1B UDP reflex telemetry
 inside the official ROS 2 Jazzy container.
-Skips cleanly without error on hosts lacking rclpy (e.g. Windows development host).
+Skips cleanly without error on hosts lacking rclpy (e.g. Windows development host),
+unless QERRA_REQUIRE_ROS2=1 is enforced in CI.
 """
 from __future__ import annotations
 
 import json
 import math
+import os
 import socket
 import threading
 import time
 import unittest
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from gate.gate_core import GateState, Mode, Proposal
 
 try:
     import rclpy
@@ -29,7 +33,11 @@ try:
     from ros2.qerra_gate_node import QerraGateNode
 
     ROS2_AVAILABLE = True
-except ImportError:
+except ImportError as exc:
+    if os.environ.get("QERRA_REQUIRE_ROS2") == "1":
+        raise RuntimeError(
+            "QERRA_REQUIRE_ROS2=1 is set, but ROS 2 (rclpy) dependencies could not be imported."
+        ) from exc
     rclpy = None
     SingleThreadedExecutor = None
     Node = Any
@@ -312,6 +320,137 @@ class TestGateRos2DualProtocol(unittest.TestCase):
             )
 
         self._wait_until(_is_hsr_stale, 3.0, "TRIP_HSR_STALE watchdog clamp on UDP telemetry loss")
+
+
+@unittest.skipUnless(ROS2_AVAILABLE, "Requires native ROS 2 (rclpy) installation")
+class TestQerraGateNodeRegressions(unittest.TestCase):
+    """Node-level rclpy regression checks for dt_us scaling and post-reset HSR continuity."""
+
+    def tearDown(self) -> None:
+        if rclpy is not None and rclpy.ok():
+            rclpy.shutdown()
+
+    def test_node_10hz_dt_us_parameter_propagation(self) -> None:
+        """
+        Verifies QerraGateNode propagates rate_hz=10.0 into _dt_us=100_000,
+        _params.dt_us=100_000, and _params.max_tick_gap_us=200_000.
+        """
+        rclpy.init(args=[
+            "--ros-args",
+            "-p", "rate_hz:=10.0",
+            "-p", "lidar_period_ms:=100.0",
+            "-p", "lidar_stale_ms:=300.0",
+            "-p", "t_react_ms:=160.0",
+            "-p", "hsr_source:=none",
+            "-p", "hsr_required:=false",
+            "-p", "flight_log_path:=none",
+        ])
+        node = None
+        try:
+            node = QerraGateNode()
+            self.assertEqual(node._dt_us, 100_000)
+            self.assertEqual(node._params.dt_us, 100_000)
+            self.assertEqual(node._params.max_tick_gap_us, 200_000)
+            self.assertEqual(node._params.lidar_period_us, 100_000)
+            self.assertEqual(node._params.t_stale_us, 300_000)
+            self.assertEqual(node._params.t_react_us, 160_000)
+        finally:
+            if node is not None:
+                node.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
+
+    def test_node_accepted_reset_preserves_hsr_receiver_state(self) -> None:
+        """
+        Regression test: QerraGateNode._tick_callback must not reset HsrReceiver on
+        Reason.RESET_ACCEPTED, so an idle control tick immediately after reset remains
+        in Mode.RUN rather than falsely tripping TRIP_HSR_INVALID.
+        """
+        rclpy.init(args=[
+            "--ros-args",
+            "-p", "hsr_required:=true",
+            "-p", "hsr_source:=udp",
+            "-p", "hsr_port:=0",
+            "-p", "flight_log_path:=none",
+        ])
+        node = None
+        sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            node = QerraGateNode()
+            self.assertTrue(node._hsr_receiver._ensure_socket())
+            port = node._hsr_receiver._sock.getsockname()[1]
+
+            now_us = node._get_ros_time_us()
+            pkt = json.dumps({
+                "obs_id": 1,
+                "t_obs_us": now_us - 5_000,
+                "t_emit_us": now_us - 4_000,
+                "distress_permille": 0,
+                "state": "CLEAR",
+            }).encode("utf-8")
+            sender.sendto(pkt, ("127.0.0.1", port))
+
+            held_prop = Proposal(
+                seq=0,
+                sim_stamp_us=now_us - 10_000,
+                left_urad_s=2_000_000,
+                right_urad_s=2_000_000,
+                session_id=1,
+            )
+            next_prop = Proposal(
+                seq=1,
+                sim_stamp_us=now_us,
+                left_urad_s=2_000_000,
+                right_urad_s=2_000_000,
+                session_id=1,
+            )
+            node._latest_proposal = next_prop
+            node._latest_ranges = [3.0] * 682
+            node._lidar_stamp_us = now_us
+            node._raw_valid_points = 682
+            node._reset_requested = True
+            node._state = GateState(
+                mode=Mode.AWAITING_RESET,
+                last_tick_us=now_us - 10_000,
+                clear_since_us=now_us - 1_100_000,
+                held=held_prop,
+                last_seq=0,
+                last_cmd=(0, 0),
+                last_session_id=1,
+                hsr_clear_since_us=now_us - 1_100_000,
+            )
+
+            # Tick 1: accepts operator reset and transitions to Mode.RUN
+            node._tick_callback()
+            self.assertFalse(node._fault_latch.is_latched, node._fault_latch.fault_reason)
+            self.assertEqual(node._state.mode, Mode.RUN)
+            self.assertEqual(node._hsr_receiver.last_status, "CLEAR")
+            self.assertEqual(node._hsr_receiver.last_obs_id, 1)
+            self.assertIsNotNone(node._hsr_receiver.last_stamp_us)
+
+            # Tick 2: no new UDP packet sent; node must remain in Mode.RUN
+            time.sleep(0.002)
+            t2_us = node._get_ros_time_us()
+            node._latest_proposal = Proposal(
+                seq=2,
+                sim_stamp_us=t2_us,
+                left_urad_s=2_000_000,
+                right_urad_s=2_000_000,
+                session_id=1,
+            )
+            node._lidar_stamp_us = t2_us
+            node._tick_callback()
+
+            self.assertFalse(node._fault_latch.is_latched, node._fault_latch.fault_reason)
+            self.assertEqual(node._state.mode, Mode.RUN)
+            self.assertEqual(node._state.last_cmd, (2_000_000, 2_000_000))
+            self.assertEqual(node._hsr_receiver.last_status, "CLEAR")
+        finally:
+            sender.close()
+            if node is not None:
+                node.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
 
 
 if __name__ == "__main__":
