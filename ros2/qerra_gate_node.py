@@ -594,10 +594,6 @@ if ROS2_AVAILABLE:
                 result = step(self._state, self._params, inputs)
                 self._state = result.state
 
-                # Reset HSR receiver monitor if operator reset was accepted
-                if result.reason == Reason.RESET_ACCEPTED:
-                    self._hsr_receiver.reset()
-
                 # Append to SHA-256 hash-chained flight log (R-09, R-10)
                 if self._flight_logger is not None:
                     try:
