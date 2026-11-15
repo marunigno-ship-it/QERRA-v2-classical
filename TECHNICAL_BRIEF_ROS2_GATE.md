@@ -7,10 +7,10 @@
 
 **Author:** Marussa Metocharaki, Independent Researcher and Developer  
 **Target audience:** Autonomous Mobile Robot (AMR) Systems Engineers, Functional Safety Researchers, and Verification Specialists  
-**Date:** 11 November 2026  
-**Document version:** 1.3.0  
-**Software baseline:** Release v2.4.0+ on `main`; `qerra_core` (`ament_python`, `package.xml` format 3); ROS 2 node `qerra_gate_node` v0.3.1; pure-function Gate Core v0.4; HSR telemetry contract `gate/hsr_telemetry.py` v0.3.1; `qerra_msgs` v2.2.1; installed launch entry point `launch/qerra_gate.launch.py`; flight-log schema v1 (`gate/gate_log.py`); Nav2-compatible Pattern B exterior topic-remapping integration.  
-**Safety concept baseline:** `SAFETY_CONCEPT.md` v0.10. Where this brief and the safety concept differ, this brief describes Release v2.4.0.  
+**Date:** 15 November 2026  
+**Document version:** 1.4.0  
+**Software baseline:** Release v2.4.1 on `main` (commit `be45e4c`); standalone `qerra_core` (`ament_python`, `package.xml` format 3, Apache-2.0); ROS 2 node `qerra_gate_node` v0.3.1; pure-function Gate Core v0.4; HSR telemetry contract `gate/hsr_telemetry.py` v0.3.1; `src/qerra_msgs` masked by `src/qerra_msgs/COLCON_IGNORE` and excluded from package discovery, build and `package.xml` dependencies; installed launch entry point `launch/qerra_gate.launch.py`; flight-log schema v1 (`gate/gate_log.py`); Nav2-compatible Pattern B exterior topic-remapping integration. Package metadata is version 2.4.1; the repository Git tag list is currently empty, so v2.4.1 has not yet been tagged.  
+**Safety concept baseline:** `SAFETY_CONCEPT.md` v0.10. Where this brief and the safety concept differ, this brief describes Release v2.4.1.  
 **ROS distribution:** ROS 2 Jazzy Jalisco on Ubuntu 24.04 Noble  
 **Simulation baseline:** Webots R2025a, PAL Robotics TIAGo model  
 **Repository:** <https://github.com/marunigno-ship-it/QERRA-v2-classical>  
@@ -30,9 +30,11 @@ The implementation consists of three distinct elements:
 
 The gate uses a dynamic stopping envelope based on commanded wheel speed, a configured deceleration, a reaction-time allowance, and a fixed margin. It also checks lidar scan integrity and freshness, proposer freshness, clock progression, and HSR status. A detected trip holds the software wheel command at zero. Recovery requires a continuous clear interval, a valid operator reset, and a quiescent reset tick before motion can resume.
 
-The ROS 2 node has a nominal 32 ms control period (31.25 Hz). Its reaction-time and lidar-freshness parameters are exposed as two profiles, one for simulation and one for a 10 Hz scanner, and none of the values in either profile has been measured. The standard launch entry point `launch/qerra_gate.launch.py` exposes five configurable topic remappings and explicitly typed node parameters. The CI workflow builds and starts the package under ROS 2 Jazzy, builds the `qerra_msgs` interface package and instantiates its generated message types, checks launch-file discovery and arguments, exercises a live launch with custom topic remappings, checks that `/gate/state` publishes, checks for tick exceptions, and checks SIGINT-first launch termination with timeout escalation. Separate tests exercise the gate translators, the HSR receiver and stream monitor, the fault latch, node wiring, forged-input and fault-injection scenarios, and two executable exploit scenarios. In the Jazzy container, further tests drive the running node through live DDS topic traffic, through live DDS traffic combined with UDP reflex telemetry, through explicit topic remapping, and through a Nav2-compatible exterior command interface, for the defined scenarios in section 5.6.
+The ROS 2 node defaults to a 32 ms control period (31.25 Hz), but the period is derived from `rate_hz` and propagated as `dt_us` into `get_live_gate_params()`. The factory derives `max_tick_gap_us = 2 * dt_us`, preserving dwell continuity when the configured control rate changes. The startup lidar invariant is evaluated using the actual control period. The standard launch entry point `launch/qerra_gate.launch.py` exposes all 14 node parameters as explicitly typed `ParameterValue` values, in addition to five configurable topic remappings.
 
-At Release v2.4.0+ the author reports 222 host unit tests (211 passed, 11 cleanly skipped without `rclpy`, 0 failures) and 36 ROS 2 Jazzy container integration tests, including live DDS topic traffic, dual-protocol reflex co-execution, topic remapping and Nav2-compatible exterior command-interface tests (section 5.2).
+The ROS 2 CI workflow builds and starts the standalone `qerra_core` package under ROS 2 Jazzy; `src/qerra_msgs` is masked from `colcon` discovery by `COLCON_IGNORE` and is not built or declared as a package dependency. The workflow verifies package and launch discovery, parameter arguments, live launch and executable startup, `/gate/state` publication, tick-exception absence, SIGINT shutdown and process cleanup. Separate regression tests cover 10 Hz `dt_us` propagation and dwell continuity, plus HSR receiver continuity across an accepted reset at 40 ms and 50 ms UDP periods. DDS and UDP integration tests cover live topic traffic, dual-protocol reflex execution, remapping and the Nav2-compatible exterior command interface. CI steps use isolated `ROS_DOMAIN_ID` values and explicitly guarded ROS-dependent test modules (section 5.3).
+
+At the v2.4.1 baseline on 15 November 2026, the author reports 230 host tests collected (217 passed, 13 cleanly skipped on hosts without `rclpy`, 0 failures), 40 passing tests in the native `ros:jazzy` container, and 20 separately passing QERRA-HSR tests under `hsr/` (section 5.2).
 
 **Scope and safety status:** QERRA is an open-source simulation research prototype. The gate has been exercised in Webots R2025a, and the ROS 2 package has been built, started and exercised under live topic and UDP traffic in GitHub Actions Linux containers. The ROS 2 node has not been tested on a physical robot. No functional-safety certification, Performance Level, Safety Integrity Level, or standards conformity is claimed. A `0.0 m/s` output is a software velocity setpoint; it is not an emergency stop, a mechanical brake command, or a hardware Safe Torque Off (STO) function. References to ISO 13849-1, ISO 13482, ISO 3691-4 and EN 50159 are informative design references only. Localhost is treated as an assumed trusted process boundary (section 1.5); the gate does not defend against a hostile local process.
 
@@ -156,16 +158,18 @@ The gate parameters are:
 | `a_design_mmps2` | 500 mm/s^2 | Design deceleration, equivalent to 0.5 m/s^2 |
 | `t_react_us` | 32,000 us (Webots controller); 96,000 us (ROS 2 node default, parameter `t_react_ms`) | Reaction-time allowance; see section 4.2 |
 | `margin_mm` | 300 mm | Fixed standstill clearance margin |
-| `dt_us` | 32,000 us | Nominal control period |
+| `dt_us` | 32,000 us at 31.25 Hz; 100,000 us at 10 Hz | Control period derived from `rate_hz` by `QerraGateNode` |
 | `t_watch_us` | 150,000 us | Proposer freshness limit |
 | `t_stale_us` | 96,000 us (Webots and the ROS 2 simulation profile); 300,000 us (ROS 2 hardware profile) | Lidar freshness limit; node parameter `lidar_stale_ms` |
 | `t_hsr_stale_us` | 96,000 us | HSR telemetry freshness limit |
 | `t_dwell_us` | 1,000,000 us | Continuous-clear dwell before reset can be accepted |
-| `max_tick_gap_us` | 64,000 us | Maximum inter-tick gap accepted during a continuous dwell |
+| `max_tick_gap_us` | `2 * dt_us`: 64,000 us at 31.25 Hz; 200,000 us at 10 Hz | Maximum inter-tick gap accepted during a continuous dwell |
 
-The Webots controller passes a 32,000 us reaction allowance explicitly. The ROS 2 node passes the value of its `t_react_ms` parameter, converted to microseconds, to `get_live_gate_params()`. The generic `GateParams` data class retains a zero reaction-time default for backward compatibility.
+The Webots controller passes a 32,000 us reaction allowance explicitly. In the ROS 2 node, `QerraGateNode` computes `self._dt_us` from `rate_hz` as the nominal timer period in microseconds, then passes `dt_us=self._dt_us` to `get_live_gate_params()`. The factory sets `max_tick_gap_us = 2 * dt_us`. Thus the default `rate_hz=31.25` gives `dt_us=32,000` and `max_tick_gap_us=64,000`; a configured `rate_hz=10.0` gives `dt_us=100,000` and `max_tick_gap_us=200,000`. This scaling is required for continuous-clear dwell tracking to remain valid when the configured control period changes. The generic `GateParams` data class retains a zero reaction-time default for backward compatibility.
 
-The reference speed is derived from the larger positive wheel speed among the previous commanded wheel output and the newly clamped proposal. The core converts this wheel angular speed to a linear wheel speed using the configured wheel radius. Reverse commands are clamped because the current sensor arrangement does not provide a rearward stopping corridor.
+The reference speed is derived from the larger positive wheel speed among the previous commanded wheel output and the newly clamped proposal. The core converts this wheel angular speed to a linear wheel speed using the configured wheel radius.
+
+**AR-2 Option A — symmetrical reverse rejection:** with `w_min_urad_s = 0`, if either held wheel proposal is below the minimum (requests reverse rotation), the core sets both wheel commands to `(0, 0)`. This prevents a one-wheel reverse request from becoming an unmonitored pivot or arc when rearward sensor coverage is absent. A proposal that is clamped this way can still produce `Reason.PASS`: `PASS` means that no trip condition fired on that tick; it does not mean that the proposal passed through unchanged. The actual clamped values are exposed as `cmd_left_urad_s` and `cmd_right_urad_s` in `/gate/state` diagnostics.
 
 ### 2.2 Nominal cruise calculation
 
@@ -295,6 +299,8 @@ The QERRA-HSR companion evaluates three normalized context vectors:
 
 The ROS 2 node receives HSR status telemetry through a non-blocking UDP receiver on port 5008, bound to the local host. The receiver drains queued datagrams, passes the raw arrival-ordered batch through the stream monitor (section 3.5), and then applies worst-severity reduction (`CRITICAL` over `MONITOR` over `CLEAR`) to the batch. When HSR is required, a valid and fresh HSR status is part of the gate's input contract. `CRITICAL` causes a gate trip. Missing, stale, future-dated, or invalid required telemetry also causes a fail-closed trip.
 
+The default HSR freshness ceiling is `t_hsr_stale_us = 96,000 us` (96 ms). A nominal 10 Hz producer (100 ms between frames) exceeds this ceiling on ordinary inter-packet intervals and causes `TRIP_HSR_STALE` before the next frame can refresh the status. For practical operating margin under the default threshold, the nominal HSR producer rate should be at least 20 Hz (period no greater than 50 ms). This is a practical nominal minimum intended to leave room for scheduling and transport jitter; it is not a guarantee of sensor-to-gate latency or a physical timing bound.
+
 HSR does not replace lidar obstacle geometry. The lidar path evaluates physical range in the forward corridor; HSR evaluates the supplied human-distress and contextual reflex status. The simulation demonstrations use synthetic or injected HSR inputs. They do not demonstrate validated perception of distress in a physical environment.
 
 The ROS 2 node defaults to `hsr_source="udp"` and `hsr_required=true`. Explicit obstacle-only operation requires `hsr_source="none"` with `hsr_required=false`; the node rejects the contradictory configuration in which HSR is required but its source is disabled. The stream monitor's trips act through the gate's required-HSR path, so with `hsr_required=false` they do not stop the robot.
@@ -306,13 +312,15 @@ A trip does not clear automatically when the immediate hazard disappears. Recove
 1. The active trip conditions to clear.
 2. An unbroken gate-level calm dwell of 1,000,000 us.
 3. Continuous valid HSR `CLEAR` status for the required HSR clear-dwell interval when HSR is enabled.
-4. Tick continuity: a gap greater than 64,000 us invalidates continuity for the gate dwell.
+4. Tick continuity: a gap greater than `max_tick_gap_us = 2 * dt_us` invalidates continuity for the gate dwell. This is 64,000 us at the default 31.25 Hz (`dt_us=32,000`) and 200,000 us when `rate_hz=10.0` (`dt_us=100,000`).
 5. An explicit reset request whose source string is `operator`.
 6. No active obstacle or HSR hazard at the time reset is evaluated.
 
 A reset from any other source is rejected with `RESET_REJECTED_CHANNEL`. A reset while the gate is not ready is rejected with `RESET_REJECTED_NOT_READY`. A reset while an obstacle or non-clear HSR condition persists is rejected with `RESET_REJECTED_HAZARD`. The node-level ROS callback accepts the case-insensitive, whitespace-trimmed string `operator` on `/gate/reset`; this is a command convention, not proof of the sender's identity.
 
 On the exact tick when reset is accepted, the core remains quiescent and returns zero wheel commands with reason `RESET_ACCEPTED`. The held proposal is not applied on that tick. Motion can resume on the subsequent nominal `RUN` cycle if the current inputs remain valid and no trip condition is present.
+
+After `RESET_ACCEPTED`, `QerraGateNode` preserves the existing `HsrReceiver` state; it does not call `HsrReceiver.reset()` from `_tick_callback()`. The core has already required `hsr_dwell_ok`, which represents 1.0 s of unbroken, fresh `CLEAR` HSR frames. Resetting the receiver at this point would erase its last valid status and stream state, creating a phase-dependent `TRIP_HSR_INVALID` on the first post-reset `RUN` tick when UDP frames arrive more slowly than the 31.25 Hz gate tick. Preserving the receiver state allows the next poll to continue the existing stream; the normal 96,000 us HSR freshness check remains active. The 40 ms and 50 ms period cases are covered by regression tests (section 5.2).
 
 The HSR implementation also has its own stabilization logic. Where that upstream stabilization and the gate's independent clear dwell are both active, recovery is intentionally staged rather than immediate.
 
@@ -356,44 +364,47 @@ The ROS 2 package is `qerra_core`, built with `ament_python` and described by a 
 
 Because the `/scan` subscription is Best Effort, scan messages can be dropped in transit. A dropped scan is not interpolated; the scan-freshness limit (section 3.2) is what turns a sustained loss into `TRIP_SENSOR_INVALID`.
 
-`/gate/state` carries the node and gate versions, the mode (`RUN`, `TRIPPED`, `AWAITING_RESET`, or `FAULT`), the reason, the list of secondary `events` (for example `RESET_REJECTED_HAZARD`, which exposes rejected reset requests), `d_stop_mm`, `lidar_min_mm`, the HSR status and configuration (`hsr_source`, `hsr_required`, `hsr_drained_total`, `hsr_socket_error`), `fault_latched` and `fault_reason`, proposal sequence and age, the wheel commands in urad/s, and the active timing parameters `t_react_us`, `lidar_stale_us` and `lidar_period_us`.
+`/gate/state` carries the node and gate versions, the mode (`RUN`, `TRIPPED`, `AWAITING_RESET`, or `FAULT`), the reason, the list of secondary `events` (for example `RESET_REJECTED_HAZARD`, which exposes rejected reset requests), `d_stop_mm`, `lidar_min_mm`, the HSR status and configuration (`hsr_source`, `hsr_required`, `hsr_drained_total`, `hsr_socket_error`), `fault_latched` and `fault_reason`, proposal sequence and age, the wheel commands `cmd_left_urad_s` and `cmd_right_urad_s`, and the active timing parameters `t_react_us`, `lidar_stale_us` and `lidar_period_us`. The wheel-command fields report the final values after AR-2 and envelope clamping, not necessarily the raw proposal.
 
-The node parameters are:
+The node exposes 14 parameters:
 
 | Parameter | Default | Meaning |
 |---|---|---|
 | `rate_hz` | 31.25 | Nominal tick rate (32 ms period) |
-| `hsr_source` | `udp` | `udp`, or `none` for explicit obstacle-only mode |
-| `hsr_required` | true | Trip if HSR telemetry is missing or stale |
-| `hsr_port` | 5008 | UDP port for HSR datagrams |
-| `state_port` | 5007 | UDP port for the clock echo |
+| `track_width_m` | 0.4044 | TIAGo wheel-track separation in metres |
+| `wheel_radius_m` | 0.098 | TIAGo drive-wheel radius in metres |
+| `robot_half_width_m` | 0.32 | Corridor half-width in metres |
 | `lidar_n_expected` | 682 | Required beam count per scan |
 | `lidar_fov_rad` | 4.1887902 | Scan field of view (240 degrees) |
-| `robot_half_width_m` | 0.32 | Corridor half-width |
-| `track_width_m`, `wheel_radius_m` | 0.4044, 0.098 | TIAGo base kinematics |
 | `t_react_ms` | 96.0 | Reaction-time allowance (finite and non-negative) |
 | `lidar_period_ms` | 32.0 | Assumed scan period |
 | `lidar_stale_ms` | 96.0 | Scan freshness limit |
+| `hsr_source` | `udp` | `udp`, or `none` for explicit obstacle-only mode |
+| `hsr_port` | 5008 | UDP port for HSR datagrams |
+| `hsr_required` | true | Trip if HSR telemetry is missing or stale |
+| `state_port` | 5007 | UDP port for the clock echo |
 | `flight_log_path` | empty (disabled) | Path of the hash-chained flight log |
 
-The default node timer period is 1/31.25 s, or 32 ms. This is a configured nominal period, not a measured worst-case dispatch interval.
+The control period is derived from `rate_hz`: at the default 31.25 Hz, `dt_us = 32,000` and `max_tick_gap_us = 64,000`; at 10.0 Hz, `dt_us = 100,000` and `max_tick_gap_us = 200,000`. `QerraGateNode` stores the computed value in `self._dt_us` and passes it into `get_live_gate_params()`, which sets the maximum inter-tick dwell gap to twice the period. The default node timer period is 1/31.25 s, or 32 ms. This is a configured nominal period, not a measured worst-case dispatch interval.
 
 ### 4.2 Timing profiles and startup invariant
 
-Three timing parameters (`t_react_ms`, `lidar_period_ms`, `lidar_stale_ms`) replace the single 32 ms Webots assumption. The node enforces at startup, and fails closed (refuses to start) if it is violated, the invariant
+Three timing parameters (`t_react_ms`, `lidar_period_ms`, `lidar_stale_ms`) replace the single 32 ms Webots assumption. The node derives `dt_ms` from `rate_hz` and enforces at startup, refusing to start if it is violated, the invariant:
 
 ```text
 lidar_stale_ms >= 2 * lidar_period_ms + dt_ms
 ```
 
-The two documented profiles are:
+The two documented lidar timing profiles are:
 
-| Profile | `lidar_period_ms` | `lidar_stale_ms` | `t_react_ms` | `d_stop` at 196 mm/s |
-|---|---:|---:|---:|---:|
-| Simulation (default) | 32.0 | 96.0 | 96.0 | 358 mm |
-| Physical hardware, 10 Hz Hokuyo URG-04LX | 100.0 | 300.0 | 160.0 | 371 mm |
+| Profile | `lidar_period_ms` | `lidar_stale_ms` | `t_react_ms` | Assumed node period | `d_stop` at 196 mm/s |
+|---|---:|---:|---:|---:|---:|
+| Simulation (default) | 32.0 | 96.0 | 96.0 | 32 ms (`rate_hz=31.25`) | 358 mm |
+| 10 Hz Hokuyo URG-04LX scanner profile | 100.0 | 300.0 | 160.0 | 32 ms (`rate_hz=31.25`) | 371 mm |
 
-Both satisfy the invariant: 96 >= 2 x 32 + 32, and 300 >= 2 x 100 + 32.
+At the default node rate `rate_hz=31.25`, `dt_ms=32`. Both scanner profiles satisfy the startup invariant: `96 >= 2 * 32 + 32`, and `300 >= 2 * 100 + 32`. The 10 Hz scanner profile does not by itself mean that the gate control timer runs at 10 Hz; it assumes the default 31.25 Hz node rate unless `rate_hz` is changed.
+
+When the node itself is configured at `rate_hz=10.0`, `dt_ms=100`. With the 10 Hz scanner values (`lidar_period_ms=100.0`, `lidar_stale_ms=300.0`), the invariant becomes `300 >= 2 * 100 + 100`, and the configured `max_tick_gap_us` is 200,000 us. The 10 Hz node regression test uses this parameter combination. It verifies parameter propagation and dwell-gap arithmetic; it is not a measurement of executor timing or a real-time performance guarantee. A 10 Hz HSR producer is still too slow for the fixed 96 ms HSR freshness ceiling (section 3.3); the lidar-rate profile and the HSR producer-rate requirement are separate contracts.
 
 The reaction-time values come from an engineering estimate of the signal chain, not from measurement:
 
@@ -401,12 +412,12 @@ The reaction-time values come from an engineering estimate of the signal chain, 
 |---|---|---|---|
 | Scan period | 32 ms | 100 ms | Sensor update period |
 | Transport | 2 to 4 ms | 2 to 4 ms | Estimate |
-| Gate evaluation | 32 ms | 32 ms | One control period |
+| Gate evaluation | 32 ms | 32 ms | One control period at `rate_hz=31.25` |
 | Scheduling jitter | 10 to 15 ms | 10 to 15 ms | Estimate |
 | Actuator response | 10 to 15 ms | 10 to 15 ms | Estimate |
 | **Total** | **86 to 98 ms** | **154 to 166 ms** | |
 
-The profile values (96 ms and 160 ms) lie inside these ranges. They are mid-range values, not upper bounds. Section 6.2 describes what this does and does not establish.
+The profile values (96 ms and 160 ms) lie inside these ranges. They are mid-range values, not upper bounds. The estimate for the 10 Hz scanner profile assumes the gate itself continues to tick at 31.25 Hz. If `rate_hz` is changed to 10.0, the gate-evaluation component becomes a nominal 100 ms period rather than 32 ms; the 154 to 166 ms estimate and its 160 ms setting must not be carried over as a validated reaction-time budget. The complete reaction-time estimate and `t_react_ms` must be re-derived for that control rate. Section 6.2 describes what the present estimates do and do not establish.
 
 ### 4.3 NodeFaultLatch
 
@@ -440,15 +451,11 @@ When enabled:
 
 Log timestamps are ROS-clock microseconds. The log records gate commands, not wheel ground truth. A hash chain is tamper-evident only against a head hash stored somewhere else, and the node does not anchor its logs.
 
-### 4.6 Interface package `qerra_msgs`
+### 4.6 Package discovery and `qerra_msgs` isolation boundary
 
-`src/qerra_msgs` (v2.2.1) defines the action `QerraEvaluate.action` for the SEMEV-12 moral-deliberation bridge, using primitive fields for goal, result and feedback. The CI workflow builds it together with `qerra_core` using:
+The ROS 2 release package is the standalone `qerra_core` package. The repository retains `src/qerra_msgs` as source content, but `src/qerra_msgs/COLCON_IGNORE` masks that directory from standard `colcon` package discovery. `qerra_msgs` is not a build target in the current ROS 2 Jazzy workflow and is not declared as a dependency in `package.xml`.
 
-```text
-colcon build --paths src/qerra_core src/qerra_core/src/qerra_msgs --packages-select qerra_msgs qerra_core
-```
-
-The `--paths` option is needed because `qerra_msgs` is nested inside the repository root, which is itself the `qerra_core` package. A separate CI step, `Verify qerra_msgs action interface generation`, compiles the IDL and instantiates the generated Goal, Result and Feedback types in Python under ROS 2 Jazzy. This validates interface generation. The action server in `ros2_bridge.py` is not run in CI. The bridge is advisory and is not part of the safety function described in this brief.
+The Jazzy workflow uses normal workspace discovery (`colcon list`) and builds only `qerra_core` with `colcon build --packages-select qerra_core`. It does not use the former nested `--paths` build invocation, compile the `QerraEvaluate` action IDL, or instantiate generated Goal, Result, or Feedback types. Accordingly, this brief makes no claim that `qerra_msgs` is built, installed, or interface-generated as part of the v2.4.1 `qerra_core` package baseline. The masked directory is outside the current package build and runtime dependency boundary.
 
 ### 4.7 Standard launch entry point and Pattern B topic configuration
 
@@ -470,9 +477,9 @@ ros2 launch qerra_core qerra_gate.launch.py \
   cmd_vel_out:=/base/cmd_vel
 ```
 
-The launch file also exposes the node's runtime parameters, including `rate_hz`, `t_react_ms`, `lidar_period_ms`, `lidar_stale_ms`, `lidar_n_expected`, `hsr_source`, `hsr_port`, `hsr_required`, and `flight_log_path`. Values are passed through `launch_ros.parameter_descriptions.ParameterValue` with explicit `float`, `int`, `bool`, or `str` types rather than relying on implicit YAML type inference.
+The launch file exposes all 14 node runtime parameters listed in section 4.1: `rate_hz`, `track_width_m`, `wheel_radius_m`, `robot_half_width_m`, `lidar_n_expected`, `lidar_fov_rad`, `t_react_ms`, `lidar_period_ms`, `lidar_stale_ms`, `hsr_source`, `hsr_port`, `hsr_required`, `state_port`, and `flight_log_path`. Each is passed through `launch_ros.parameter_descriptions.ParameterValue` with an explicit `float`, `int`, `bool`, or `str` type rather than relying on implicit YAML type inference. Together with the five topic-remapping arguments above, the launch entry point exposes 19 configurable launch arguments.
 
-The package manifest uses format 3. The launch entry point requires direct runtime declarations for the ROS 2 launch packages it imports, including `launch` and `launch_ros`; the installed manifest in the release commit must contain those dependencies. The launch file is installed under `share/qerra_core/launch` through the package's `setup.py` `data_files` configuration.
+The package manifest uses format 3 and declares direct runtime dependencies on both `launch` and `launch_ros` through `<exec_depend>` entries. The launch file is installed under `share/qerra_core/launch` through the package's `setup.py` `data_files` configuration.
 
 The launch entry point configures topic connections; it does not authenticate publishers, prevent direct publication to the base-controller topic, or create an independent hardware stop path. The launch and remapping tests verify the tested ROS graph configuration in the Jazzy container. They do not establish actuator authority outside that graph or on a physical robot.
 
@@ -521,45 +528,47 @@ The `SAFETY_CONCEPT.md` baseline records that the Demo 9 log replays bit-for-bit
 
 ### 5.2 Unit-test baseline
 
-The counts below are the author's reported results for the v2.4.0+ baseline on 11 November 2026. The host suite was run on the Windows 11 development host and in Ubuntu CI (Python 3.12 and 3.14 on the Windows host); the ROS 2 integration suite was run inside the official `ros:jazzy` container. The workflow logs and local test-run output are the authoritative records.
+The counts below are the verified v2.4.1 results for the `main` baseline at commit `be45e4c`, dated 15 November 2026. The host suite was collected on the Windows 11 development host and in the host CI environment without ROS 2 `rclpy`; the native ROS 2 integration suite was run inside the official `ros:jazzy` container. The workflow logs and local test-run output are the authoritative records.
 
 | Test group | Count | Evidence scope |
 |---|---:|---|
-| Host unit tests under `tests/` | 222 tests: 211 passed, 11 cleanly skipped without `rclpy`, 0 failures | Author-reported Windows 11 / Ubuntu CI baseline, 11 November 2026 |
-| ROS 2 integration tests in the Jazzy container | 36 passing (author-reported) | 17 in `tests/test_gate_ros2_node.py`, 8 in `tests/test_gate_ros2_node_wiring.py`, 4 in `tests/test_gate_ros2_live_traffic.py`, 2 in `tests/test_gate_ros2_dual_protocol.py`, 1 in `tests/test_gate_ros2_remapping.py`, and 4 in `tests/test_gate_ros2_nav2_exterior.py` |
-| QERRA-HSR suite under `hsr/` | 20 passing | Last separately counted 1 November 2026; not part of the 222 |
+| Host unit tests under `tests/` | 230 collected: 217 passed, 13 cleanly skipped without `rclpy`, 0 failures | v2.4.1 host baseline, 15 November 2026 |
+| Native ROS 2 Jazzy container tests | 40 passing | 19 in `tests/test_gate_ros2_node.py`, 8 in `tests/test_gate_ros2_node_wiring.py`, 4 in `tests/test_gate_ros2_live_traffic.py`, 4 in `tests/test_gate_ros2_dual_protocol.py`, 1 in `tests/test_gate_ros2_remapping.py`, and 4 in `tests/test_gate_ros2_nav2_exterior.py` |
+| QERRA-HSR suite under `hsr/` | 20 passing | Run separately by `tests.yml` Run #834; not included in the 230 tests under `tests/` |
 
-The 11 skipped host tests are the ROS-dependent integration cases that cannot run on a host without `rclpy`: 4 live topic traffic tests, 2 live dual-protocol tests, 1 live topic-remapping test, and 4 live Nav2-compatible exterior tests. The six fault-latch tests are in a separate file, `tests/test_gate_ros2_node_latch.py` (6 tests, last separately counted 1 November 2026). They are part of the host suite and are not among the 36 container integration tests. The host count also includes the stream-monitor edge-case matrix tests (6) and the adversarial exploit tests (2, section 5.5). Counts from overlapping local and CI test groups must not be added together as if they were independent tests. Test counts change as tests are added and should be updated from the test-run output.
+The 13 skipped host tests are ROS-dependent cases that cannot run on a host without `rclpy`: 4 live topic-traffic tests, 4 tests in `test_gate_ros2_dual_protocol.py` (2 live dual-protocol tests and 2 node-level `rclpy` regression tests), 1 live topic-remapping test, and 4 live Nav2-compatible exterior tests. The two new pure-Python regressions in `tests/test_gate_ros2_node.py` run without `rclpy`: one checks 10 Hz `dt_us`/dwell-gap scaling, and the other sweeps HSR receiver continuity across 40 ms and 50 ms UDP periods. The six fault-latch tests remain in the separate file `tests/test_gate_ros2_node_latch.py` and are included in the host suite; they are not a separate group in the 40 Jazzy test count. The host count also includes the stream-monitor edge-case matrix and the adversarial exploit tests (section 5.5). Counts from overlapping local and CI test groups must not be added together as if they were independent tests.
+
+The 40 native Jazzy tests comprise `19 + 8 + 4 + 4 + 1 + 4 = 40`. The two `TestQerraGateNodeRegressions` tests in `test_gate_ros2_dual_protocol.py` instantiate the actual node under `rclpy`; they are distinct from the pure-Python helper regressions in `test_gate_ros2_node.py`.
 
 ### 5.3 Continuous integration
 
-Both workflows are reported passing at the v2.4.0+ baseline. The run identifiers in the table below are historical identifiers from the earlier baseline at commit `a511d1e`; they are not identifiers for the 36-test baseline reported on 11 November 2026:
+Both GitHub Actions workflows passed on commit `be45e4c` on 15 November 2026:
 
-| Workflow | Historical run | Result |
-|---|---|---|
-| `QERRA-v2 Classical Test Suite` (`ubuntu-latest`, Python 3.10) | #766 | Passed in 1 min 11 s |
-| `ROS 2 Jazzy Validation` (`ros:jazzy` container, Ubuntu 24.04) | #31 | Passed in 1 min 0 s |
+| Workflow | Run | Result |
+|---|---:|---|
+| `QERRA-v2 Classical Test Suite` (`tests.yml`, `ubuntu-latest`) | #834 | Passed in 1 min 6 s |
+| `ROS 2 Jazzy Validation` (`ros2_jazzy.yml`, official `ros:jazzy` container) | #99 | Passed in 1 min 4 s |
 
-The test-suite workflow runs the supervisory-gate suite (standard library only), the QERRA-HSR suite, a license and version boundary guard, and the SEMEV-12 regression.
+The `tests.yml` workflow runs the host supervisory-gate suite, the separate QERRA-HSR suite under `hsr/`, the license and version boundary guard, and the SEMEV-12 regression. Its current descriptive step name still says `Run Full Host Test Suite (211 tests)`; that label is stale. The executed discovery result for the stated v2.4.1 baseline is 230 collected tests, as reported above.
 
 The workflow `.github/workflows/ros2_jazzy.yml` runs in the official `ros:jazzy` container. Its checks include:
 
-- Install dependencies and build `qerra_core` and `qerra_msgs` with `colcon` (section 4.6).
+- Install build tools and dependencies, run standard workspace discovery with `colcon list`, and build only the standalone `qerra_core` package with `colcon build --packages-select qerra_core`. The masked `src/qerra_msgs` directory is ignored by `colcon` (section 4.6).
 - Confirm that `qerra_gate_node` is discoverable as a package executable.
-- Compile the `QerraEvaluate` action IDL and instantiate the generated Goal, Result and Feedback types.
-- Confirm that the installed launch file exists and inspect its declared arguments with `ros2 launch ... --show-args`.
+- Confirm that the installed launch file exists and inspect all declared arguments with `ros2 launch ... --show-args`.
 - Start the node through `ros2 launch` with custom Pattern B remappings, capture a `/gate/state` message, and check the launch log for tick exceptions.
-- Send SIGINT to the launch parent first; if it does not exit within the configured wait, escalate to SIGTERM and then SIGKILL. The workflow accepts launch exit codes 0, 130, or 143. This is a bounded shutdown check; an exit caused by SIGTERM is not itself evidence of graceful shutdown, and the step does not independently prove that every descendant process has terminated.
+- Send SIGINT to the launch parent first; if it does not exit within the configured wait, escalate to SIGTERM and then SIGKILL. The workflow accepts launch exit codes 0, 130, or 143. This is a bounded shutdown check; an exit caused by SIGTERM is not itself evidence of graceful shutdown.
 - Start the installed executable from a neutral working directory, capture one `/gate/state` message, check for tick exceptions, and send SIGINT.
-- Instantiate the node under `rclpy` and check the expected HSR and lidar parameters.
-- Run the ROS 2 node translator and wiring test files inside the Jazzy container.
-- Run the live pub/sub topic traffic tests (`tests/test_gate_ros2_live_traffic.py`, 4 tests), the live dual-protocol tests (`tests/test_gate_ros2_dual_protocol.py`, 2 tests), the live topic-remapping test (`tests/test_gate_ros2_remapping.py`, 1 test), and the Nav2-compatible exterior tests (`tests/test_gate_ros2_nav2_exterior.py`, 4 tests) against the ROS 2 node (section 5.6).
+- Instantiate `QerraGateNode` under `rclpy` and check its HSR and lidar configuration.
+- Run the node translator/regression and wiring tests in the Jazzy container, followed by the live DDS topic-traffic tests (4), dual-protocol tests and node-level regressions (4), live topic-remapping test (1), and Nav2-compatible exterior tests (4) described in section 5.6.
 
-The Jazzy job sets `QERRA_REQUIRE_ROS2="1"` at job scope. The Nav2 exterior test module checks this setting and raises a `RuntimeError` if its ROS 2 imports fail, preventing that module from silently converting an import failure into skipped tests. The same guard must be applied to every ROS-dependent integration test module before this can be described as a repository-wide guarantee against silent skips; the existing live-traffic, dual-protocol and remapping modules should be checked for equivalent enforcement. A job-level environment variable alone does not force a module to fail unless that module reads and enforces it.
+The ROS 2 workflow assigns distinct `ROS_DOMAIN_ID` values 11 through 18 to its ROS launch, executable, initialization and test steps. This isolates DDS traffic between sequential test steps. It runs `pkill -9 -f "[q]erra_gate_node" 2>/dev/null || true` after the launch and standalone-executable steps to terminate any remaining gate-node child processes, then inspects the process list before the dual-protocol step for live leftover gate/launch processes. The observed PID 516 remained only as an inert `<defunct>` process after termination; it was no longer a running gate node. This cleanup and verification prevent a live child from contaminating a later DDS test step; they are CI isolation measures, not a runtime safety mechanism.
 
-The workflow exercises the node under live `/cmd_vel`, `/scan` and `/gate/reset` traffic over DDS, concurrent UDP Layer 1B reflex traffic, remapped Pattern B topics, and a Nav2-compatible exterior command-interface harness. The scenarios include Best Effort lidar streaming, clear dwell and operator reset, cruise passthrough, obstacle clamping, loss of the scan stream, loss of the proposal stream, refusal of a reset during a hazard, acute-distress injection during live cruise, loss of the UDP heartbeat, custom topic remapping, an active default-topic isolation canary, coordinated linear/angular Twist passthrough, obstacle interception, and proposal-stream interruption. These are evidence for the behaviours and observation windows stated in section 5.6, not a general proof of correctness.
+The Jazzy job sets `QERRA_REQUIRE_ROS2="1"` at job scope. Both `tests/test_gate_ros2_dual_protocol.py` and `tests/test_gate_ros2_nav2_exterior.py` explicitly enforce this setting and raise a `RuntimeError` if ROS 2 imports fail, preventing those modules from silently converting a missing `rclpy` dependency into skipped tests. This is a module-level guard for those two test modules, not a claim that every ROS-dependent test module independently enforces the setting.
 
-The workflow does **not** measure end-to-end latency or timing under representative load; does not test a physical motor controller; does not run the `qerra_msgs` action server; and does not exercise the node flight log under ROS. The tests run on a shared CI runner in real time, so a pass is not a timing guarantee. The workflow is evidence of package construction, node initialization, launch-file discovery and execution, interface generation, the listed live scenarios, selected tests, and bounded process shutdown checks, not evidence of hardware functional safety.
+The workflow exercises the node under live `/cmd_vel`, `/scan` and `/gate/reset` traffic over DDS, concurrent UDP Layer 1B reflex traffic, remapped Pattern B topics, and a Nav2-compatible exterior command-interface harness. The scenarios include Best Effort lidar streaming, clear dwell and operator reset, cruise passthrough, obstacle clamping, loss of the scan stream, loss of the proposal stream, refusal of a reset during a hazard, acute-distress injection during live cruise, loss of the UDP heartbeat, custom topic remapping, an active default-topic isolation canary, coordinated linear/angular Twist passthrough, obstacle interception, proposal-stream interruption, 10 Hz node-parameter propagation, and post-reset HSR receiver continuity. These are evidence for the behaviours and observation windows stated in section 5.6, not a general proof of correctness.
+
+The workflow does **not** measure end-to-end latency or timing under representative load; does not test a physical motor controller; does not build, generate, or run the `qerra_msgs` action interface; and does not exercise the node flight log under ROS. The tests run on a shared CI runner in real time, so a pass is not a timing guarantee. The workflow is evidence of standalone package construction, node initialization, launch-file discovery and execution, the listed live scenarios, selected tests, and bounded process shutdown checks, not evidence of hardware functional safety.
 
 ### 5.4 Hash-chain verification
 
@@ -592,11 +601,20 @@ Seven scenarios are listed and five tests were added, so some tests cover more t
 - **Masked-distress re-arm.** If an attacker silences the genuine producer, it can forge a counter regression, the 160 ms rebase, the 1.0 s clear dwell and an operator reset, and force the gate to `RUN` while the real distress condition persists.
 - **Ingestion crowding.** A burst of more than 256 datagrams per tick crowds out and delays a trailing `CRITICAL` packet across ticks.
 
+For the flood test, `tests/test_adversarial_hsr.py` requests `SO_RCVBUF = 1_048_576` on the receiving socket, guarded by `try/except OSError`, before `bind()`. This increases the test socket's receive-buffer capacity so that Linux's default `rmem_default` does not drop datagrams from the 261-packet burst before `HsrReceiver` can drain them. It makes the test exercise the application-level bounded-drain behaviour rather than prematurely measuring kernel receive-buffer drops; it is a test-harness setting, not a production receiver mitigation.
+
 These are demonstrations of residual risk, not evidence of protection (section 6.6).
 
 ### 5.6 Live topic traffic, dual-protocol, remapping and Nav2-compatible exterior tests
 
-These tests run in the `ros:jazzy` container and skip cleanly on hosts without `rclpy`. A harness drives the node through real DDS topics (`/cmd_vel`, `/scan` with Best Effort sensor-data QoS, `/gate/reset`) and observes `/cmd_vel_safe` and `/gate/state`.
+The native ROS 2 integration tests run in the `ros:jazzy` container. The DDS integration harness drives the node through real topics (`/cmd_vel`, `/scan` with Best Effort sensor-data QoS, `/gate/reset`) and observes `/cmd_vel_safe` and `/gate/state`. ROS-dependent modules skip on hosts without `rclpy`; the dual-protocol and Nav2 exterior modules additionally fail loudly in CI when `QERRA_REQUIRE_ROS2="1"` is set but ROS 2 imports fail.
+
+**`tests/test_gate_ros2_node.py` (19 tests), translator, helper and pure-Python regression coverage:**
+
+The module contains 17 original translator/kinematics, lidar, receiver and node-helper tests plus two pure-Python regressions that run without `rclpy`:
+
+1. `test_10hz_dt_us_scales_max_tick_gap_and_allows_dwell_recovery` verifies that `get_live_gate_params(dt_us=100_000)` derives `max_tick_gap_us=200_000` and allows the 1.0 s continuous-clear dwell to complete across 100 ms ticks with a consistent 10 Hz lidar/staleness profile.
+2. `test_hsr_receiver_post_reset_continuity_across_40ms_and_50ms_phases` uses `HsrReceiver` and `step()` to sweep every 1 ms phase offset of 40 ms (25 Hz) and 50 ms (20 Hz) UDP streams relative to the 32 ms gate tick, verifying that the preserved receiver state does not produce a spurious `TRIP_HSR_INVALID` after `RESET_ACCEPTED`.
 
 **`tests/test_gate_ros2_live_traffic.py` (4 tests), HSR disabled so that Layer 1A is isolated:**
 
@@ -605,10 +623,14 @@ These tests run in the `ros:jazzy` container and skip cleanly on hosts without `
 3. An operator reset while an obstacle is present is refused (`RESET_REJECTED_HAZARD`, reported in the `events` list).
 4. Silencing `/cmd_vel` produces `TRIP_PROPOSER_STALE` once the 150 ms proposal limit is exceeded.
 
-**`tests/test_gate_ros2_dual_protocol.py` (2 tests), `hsr_required=true` and `hsr_source=udp` on port 5008 alongside live DDS traffic:**
+**`tests/test_gate_ros2_dual_protocol.py` (4 tests total), `hsr_required=true` and `hsr_source=udp` on port 5008 alongside live DDS traffic:**
+
+The module contains two live dual-protocol tests and a `TestQerraGateNodeRegressions` class with two additional node-level tests that instantiate `QerraGateNode` under `rclpy`:
 
 1. The dual-dwell clear recovery completes; then a `CRITICAL` UDP packet injected during live DDS cruise trips `TRIP_HSR_CRITICAL` and clamps `/cmd_vel_safe` to zero.
 2. Cutting the UDP stream while the DDS topics stay active trips `TRIP_HSR_STALE` and clamps `/cmd_vel_safe` to zero.
+3. `test_node_10hz_dt_us_parameter_propagation` launches the node with `rate_hz=10.0`, `lidar_period_ms=100.0`, `lidar_stale_ms=300.0`, and `t_react_ms=160.0`, then verifies `_dt_us=100_000`, `_params.dt_us=100_000`, and `_params.max_tick_gap_us=200_000`.
+4. `test_node_accepted_reset_preserves_hsr_receiver_state` exercises the actual node tick path and verifies that an accepted reset does not wipe the receiver state, preventing a false `TRIP_HSR_INVALID` on the following `RUN` tick.
 
 What these tests show: that, for these scenarios, the Layer 1A inputs (DDS) and the Layer 1B input (UDP) combine as designed in a real ROS 2 Jazzy environment, and that the scan subscription interoperates with a Best Effort publisher. What they do not show: timing bounds (the harness runs in real time on a shared runner), behaviour under representative CPU or I/O load, behaviour with a physical lidar driver, or any hostile-publisher scenario beyond section 5.5.
 
@@ -669,7 +691,7 @@ A measured-motion input and a validated deceleration model are necessary before 
 
 ### 6.4 Geometric and sensor coverage limits
 
-The corridor filter approximates a straight forward swept corridor. It does not model the robot's full rotating footprint, the swept path of a pivot or curved turn, or rearward motion. The current reverse clamp is a consequence of the absence of a rear sensor path, not proof that the robot is safe during every differential-drive maneuver.
+The corridor filter approximates a straight forward swept corridor. It does not model the robot's full rotating footprint, the swept path of a pivot or curved turn, or rearward motion. Under AR-2 Option A, with `w_min_urad_s=0`, if either wheel proposal requests reverse rotation, both wheel outputs clamp symmetrically to `(0, 0)`. Differential center pivots and reverse maneuvers are therefore halted rather than executed without rearward coverage. This clamp is not proof that the robot is safe during every permitted forward differential-drive maneuver; curved forward arcs still require swept-volume coverage.
 
 The ROS 2 adapter checks scan length but does not verify all `LaserScan` angular metadata or the sensor-to-base transform. The raw minimum-return check can be satisfied by lateral returns even when the forward sector is occluded. These limits require sensor-specific validation and improved geometric coverage checks.
 
@@ -677,7 +699,9 @@ The ROS 2 adapter checks scan length but does not verify all `LaserScan` angular
 
 The pure core can validate an explicit proposal timestamp. In the ROS 2 wrapper, however, the adapter assigns the current node time when a `Twist` callback receives a message. Since `geometry_msgs/msg/Twist` has no source timestamp or publisher identity, the 150 ms watchdog does not prove the age of the planner's original command. DDS queueing can also delay callback processing.
 
-A deployment should use a stamped proposal interface, define a clock-domain policy, validate source identity and sequence progression, and test queue behavior under congestion and replay.
+**Non-finite Twist proposals (NaN/Inf):** `twist_to_wheel_speeds()` rejects non-finite linear or angular values by raising `ValueError`. `_cmd_vel_callback()` catches that exception, logs a warning, and sets `_latest_proposal = None`. The next gate input therefore contains no new proposal; in `gate_core.py`, `inp.proposal is None` leaves the prior `state.held` proposal in place. The previous valid command can consequently remain the held command until its age reaches `t_watch_us = 150,000 us`, at which point the proposer watchdog trips `TRIP_PROPOSER_STALE` on a subsequent gate tick. A non-finite Twist is rejected, but this path does **not** cause an immediate zero-tick stop. This is a documented limitation of the current node/core interaction, not an immediate fail-closed response.
+
+A deployment should use a stamped proposal interface, define a clock-domain policy, validate source identity and sequence progression, and test queue behavior under congestion and replay. A future policy for malformed proposals would need to define an explicit immediate-stop or fault-latch transition and its recovery semantics; merely supplying an invalid `Proposal` would not clear the previously held proposal.
 
 ### 6.6 Authentication, trust boundary and forged-input sequences
 
@@ -713,7 +737,7 @@ The project has deterministic core logic and automated tests. The current eviden
 
 ### 6.9 Perception stream monitor limits
 
-The stream monitor (section 3.5) detects counter faults. It does not detect a frozen sensor behind a live producer: a producer that republishes the same camera frame with a fresh counter and fresh timestamps passes every check. Stamps are supplied by the producer, and the synthetic producer stamps from the clock echo, not from sensor capture, so the freshness checks measure the producer loop, not the sensor. The monitor protects only when `hsr_required` is true.
+The stream monitor (section 3.5) detects counter faults. It does not detect a frozen sensor behind a live producer: a producer that republishes the same camera frame with a fresh counter and fresh timestamps passes every check. Stamps are supplied by the producer, and the synthetic producer stamps from the clock echo, not from sensor capture, so the freshness checks measure the producer loop, not the sensor. The monitor protects only when `hsr_required` is true. The separate HSR freshness contract remains `t_hsr_stale_us = 96,000 us` (96 ms): a nominal 10 Hz producer with a 100 ms period exceeds that ceiling and triggers `TRIP_HSR_STALE`. A nominal producer rate of at least 20 Hz (period no greater than 50 ms) is the practical minimum recommended to leave jitter margin under the default threshold. This is not a guarantee of end-to-end sensor freshness or physical latency; actual capture-to-gate age must be measured.
 
 ### 6.10 Standards boundary
 
@@ -777,38 +801,43 @@ The following are defined engineering work packages. Each requires evidence beyo
 
 ## 8. Conclusion
 
-QERRA-v2 Classical provides an inspectable deterministic gate core, a ROS 2 Jazzy node wrapper, a forward lidar corridor filter, an HSR telemetry input with a sequence-checking stream monitor, a latched recovery contract, node-level fault handling, parameterised timing profiles, and an optional hash-chained flight log. The core's separation from ROS 2, explicit state inputs, integer decision units, and reproducible simulation logs provide a concrete basis for further systems-engineering evaluation.
+QERRA-v2 Classical provides an inspectable deterministic gate core, a ROS 2 Jazzy node wrapper, a forward lidar corridor filter, an HSR telemetry input with a sequence-checking stream monitor, a latched recovery contract, node-level fault handling, rate-parameterized timing profiles, and an optional hash-chained flight log. The core's separation from ROS 2, explicit state inputs, integer decision units, and reproducible simulation logs provide a concrete basis for further systems-engineering evaluation.
 
 The present evidence supports the following statements:
 
 - The Gate Core v0.4 is implemented as a deterministic pure-function component and is covered by unit tests.
 - The supervisory gate and HSR reflex behavior have been demonstrated in the specified Webots scenarios.
-- The standalone `qerra_core` ROS 2 package builds and starts under ROS 2 Jazzy in GitHub Actions, and the `qerra_msgs` action interface generates and instantiates there.
-- The reported CI baseline is 36 ROS 2 Jazzy container integration tests: 17 translator/kinematics tests, 8 wiring/parameter/fault-injection tests, 4 live DDS topic-traffic tests, 2 live dual-protocol tests, 1 topic-remapping test, and 4 Nav2-compatible exterior command-interface tests. The live tests cover the scenarios in section 5.6 in a real ROS 2 Jazzy container.
-- The standard launch file `launch/qerra_gate.launch.py` exposes five configurable topic remapping arguments and explicitly typed node parameters; the package installs the launch file under `share/qerra_core/launch`.
+- The standalone `qerra_core` ROS 2 package builds and starts under ROS 2 Jazzy in GitHub Actions. The `src/qerra_msgs` directory is masked by `COLCON_IGNORE`, excluded from `colcon` discovery/build, and absent from `package.xml` runtime dependencies; no `qerra_msgs` action interface generation is part of this baseline.
+- The verified host test baseline is 230 collected tests under `tests/`: 217 passed, 13 cleanly skipped on hosts without `rclpy`, and 0 failures. The QERRA-HSR suite under `hsr/` contributes 20 separately passing tests.
+- The verified native Jazzy baseline is 40 passing tests: 19 translator/helper and pure-Python regression tests, 8 wiring/parameter/fault-injection tests, 4 live DDS topic-traffic tests, 4 dual-protocol and node-level regression tests, 1 topic-remapping test, and 4 Nav2-compatible exterior command-interface tests.
+- The 10 Hz regression coverage verifies that `rate_hz=10.0` propagates `dt_us=100,000` into `get_live_gate_params()` and sets `max_tick_gap_us=200,000`; separate tests cover HSR receiver continuity after `RESET_ACCEPTED` across 40 ms and 50 ms UDP producer periods, including all 1 ms phase offsets, and the actual `QerraGateNode` reset path.
+- The standard launch file `launch/qerra_gate.launch.py` exposes 14 explicitly typed node parameters and five configurable topic-remapping arguments; `package.xml` declares direct runtime dependencies on `launch` and `launch_ros`.
+- The ROS 2 Jazzy workflow uses distinct `ROS_DOMAIN_ID` values 11 through 18 for ROS steps, performs gate-process cleanup after launch/executable checks, and inspects for leftover processes before the dual-protocol stage. The dual-protocol and Nav2 exterior test modules enforce `QERRA_REQUIRE_ROS2="1"` so missing ROS 2 imports fail rather than silently skip those modules.
 - The Pattern B tests exercise a Nav2-compatible external command interface using `/cmd_vel_nav` and `/base/cmd_vel`, including an active default-topic isolation canary. They do not instantiate an actual Nav2 stack or establish exclusive actuator authority.
-- The node publishes diagnostic state, including secondary gate events, handles the tested SIGINT lifecycle and bounded launch-shutdown procedure, and includes a process-lifetime tick fault latch.
-- The core refuses the specific forged and malformed inputs listed in section 5.5, and two executable exploit tests demonstrate what it does not prevent.
+- The node publishes diagnostic state, including secondary gate events and the final clamped wheel commands, handles the tested SIGINT lifecycle and bounded launch-shutdown procedure, and includes a process-lifetime tick fault latch.
+- The core refuses the specific forged and malformed inputs listed in section 5.5, and two executable exploit tests demonstrate what it does not prevent. The flood test configures a larger receive buffer so the intended application-level bounded-drain scenario is not pre-empted by the host's default UDP receive-buffer limit.
 
-The present evidence does **not** establish exclusive ROS 2 actuator authority, protection against a hostile local process, a measured or bounded reaction time, timing behaviour under representative load, a physical stopping-distance guarantee, hard real-time response, actual Nav2 controller-server interoperability, physical base-controller integration, measured wheel response, hardware STO behavior, validated human-distress perception, a formal safety proof, or conformity with a functional-safety standard.
+The present evidence does **not** establish exclusive ROS 2 actuator authority, protection against a hostile local process, a measured or bounded reaction time, timing behaviour under representative load, a physical stopping-distance guarantee, hard real-time response, actual Nav2 controller-server interoperability, physical base-controller integration, measured wheel response, hardware STO behavior, validated human-distress perception, a formal safety proof, or conformity with a functional-safety standard. The non-finite Twist callback rejects NaN/Inf values but can leave the previously held proposal active until the 150 ms proposer watchdog trips; it is not an immediate zero-output path.
 
-The next engineering step is not to enlarge the claim. It is to close the measurable gaps: measure the reaction chain and relate the scan-freshness limit to it, enforce the ROS authority boundary and decide which local threats are in scope, correct the proposal timestamp and provenance contract, validate complete scan geometry, measure deceleration, and formally analyze recovery invariants.
+The next engineering step is not to enlarge the claim. It is to close the measurable gaps: measure the reaction chain and relate the scan-freshness limit to it, enforce the ROS authority boundary and decide which local threats are in scope, correct the proposal timestamp and provenance contract, define the desired malformed-Twist fault response, validate complete scan geometry, measure deceleration, and formally analyze recovery invariants.
 
 ---
 
 ## References and Implementation Records
 
-1. QERRA Supervisory Gate implementation: [`gate/gate_core.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/gate/gate_core.py), [`gate/gate_config.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/gate/gate_config.py), [`gate/gate_lidar.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/gate/gate_lidar.py), [`gate/hsr_telemetry.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/gate/hsr_telemetry.py) and [`gate/gate_log.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/gate/gate_log.py).
-2. ROS 2 Jazzy node and HSR receiver: [`ros2/qerra_gate_node.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/ros2/qerra_gate_node.py) and [`ros2/hsr_receiver.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/ros2/hsr_receiver.py).
-3. Interface package: [`src/qerra_msgs`](https://github.com/marunigno-ship-it/QERRA-v2-classical/tree/main/src/qerra_msgs).
-4. Safety concept and evidence anchors: [`SAFETY_CONCEPT.md`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/SAFETY_CONCEPT.md).
-5. ROS 2 Jazzy CI workflow: [`.github/workflows/ros2_jazzy.yml`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/.github/workflows/ros2_jazzy.yml).
-6. Python and HSR CI workflow: [`.github/workflows/tests.yml`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/.github/workflows/tests.yml).
-7. Offline log verifier: [`verify_log.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/verify_log.py).
-8. ROS 2 launch entry point: [`launch/qerra_gate.launch.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/launch/qerra_gate.launch.py).
-9. Live traffic, dual-protocol, remapping and Nav2-compatible exterior tests: [`tests/test_gate_ros2_live_traffic.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/tests/test_gate_ros2_live_traffic.py), [`tests/test_gate_ros2_dual_protocol.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/tests/test_gate_ros2_dual_protocol.py), [`tests/test_gate_ros2_remapping.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/tests/test_gate_ros2_remapping.py), and [`tests/test_gate_ros2_nav2_exterior.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/tests/test_gate_ros2_nav2_exterior.py).
-10. Adversarial exploit tests: [`tests/test_adversarial_hsr.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/tests/test_adversarial_hsr.py).
-11. Repository limitations: [`LIMITATIONS.md`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/main/LIMITATIONS.md).
-12. ROS 2 Jazzy release process (Bloom): [First-time release guide](https://docs.ros.org/en/jazzy/How-To-Guides/Releasing/First-Time-Release.html) and [subsequent-release guide](https://docs.ros.org/en/jazzy/How-To-Guides/Releasing/Subsequent-Releases.html).
+1. QERRA Supervisory Gate implementation: [`gate/gate_core.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/gate/gate_core.py), [`gate/gate_config.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/gate/gate_config.py), [`gate/gate_lidar.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/gate/gate_lidar.py), [`gate/hsr_telemetry.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/gate/hsr_telemetry.py) and [`gate/gate_log.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/gate/gate_log.py).
+2. ROS 2 Jazzy node and HSR receiver: [`ros2/qerra_gate_node.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/ros2/qerra_gate_node.py) and [`ros2/hsr_receiver.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/ros2/hsr_receiver.py).
+3. Package-discovery isolation boundary: [`src/qerra_msgs/COLCON_IGNORE`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/src/qerra_msgs/COLCON_IGNORE) masks the retained `src/qerra_msgs` source from `colcon` discovery. The standalone package manifest is [`package.xml`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/package.xml); the Jazzy build selects only `qerra_core` in [`.github/workflows/ros2_jazzy.yml`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/.github/workflows/ros2_jazzy.yml).
+4. Safety concept and evidence anchors: [`SAFETY_CONCEPT.md`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/SAFETY_CONCEPT.md).
+5. ROS 2 Jazzy CI workflow: [`.github/workflows/ros2_jazzy.yml`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/.github/workflows/ros2_jazzy.yml).
+6. Python and HSR CI workflow: [`.github/workflows/tests.yml`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/.github/workflows/tests.yml).
+7. Offline log verifier: [`verify_log.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/verify_log.py).
+8. ROS 2 launch entry point: [`launch/qerra_gate.launch.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/launch/qerra_gate.launch.py).
+9. Host and ROS 2 node regression tests: [`tests/test_gate_ros2_node.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/tests/test_gate_ros2_node.py), [`tests/test_gate_ros2_node_wiring.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/tests/test_gate_ros2_node_wiring.py), and [`tests/test_gate_ros2_dual_protocol.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/tests/test_gate_ros2_dual_protocol.py).
+10. Live topic traffic, remapping and Nav2-compatible exterior tests: [`tests/test_gate_ros2_live_traffic.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/tests/test_gate_ros2_live_traffic.py), [`tests/test_gate_ros2_remapping.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/tests/test_gate_ros2_remapping.py), and [`tests/test_gate_ros2_nav2_exterior.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/tests/test_gate_ros2_nav2_exterior.py).
+11. Adversarial exploit and UDP flood tests: [`tests/test_adversarial_hsr.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/tests/test_adversarial_hsr.py).
+12. Repository limitations: [`LIMITATIONS.md`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/LIMITATIONS.md).
+13. Package metadata and changelog: [`package.xml`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/package.xml), [`setup.py`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/setup.py), and [`CHANGELOG.rst`](https://github.com/marunigno-ship-it/QERRA-v2-classical/blob/be45e4c/CHANGELOG.rst).
+14. ROS 2 Jazzy release process (Bloom): [First-time release guide](https://docs.ros.org/en/jazzy/How-To-Guides/Releasing/First-Time-Release.html) and [subsequent-release guide](https://docs.ros.org/en/jazzy/How-To-Guides/Releasing/Subsequent-Releases.html).
 
 **Standards named as informative design references only:** ISO 13849-1, ISO 13482, ISO 3691-4, and EN 50159.
