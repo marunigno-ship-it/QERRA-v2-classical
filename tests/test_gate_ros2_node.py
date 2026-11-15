@@ -184,6 +184,65 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(DEFAULT_LIDAR_PERIOD_MS, 32.0)
         self.assertEqual(DEFAULT_LIDAR_STALE_MS, 96.0)
 
+    def test_10hz_dt_us_scales_max_tick_gap_and_allows_dwell_recovery(self) -> None:
+        """
+        Regression test: passing dt_us=100_000 (10 Hz) scales max_tick_gap_us to
+        200_000 so 1.0 s clear dwell completes across 100 ms ticks instead of locking.
+        """
+        dt_10hz = 100_000
+        params = get_live_gate_params(
+            lidar_n_expected=5,
+            dt_us=dt_10hz,
+            lidar_period_us=100_000,
+            t_stale_us=300_000,
+            t_react_us=160_000,
+            hsr_required=False,
+        )
+        self.assertEqual(params.dt_us, 100_000)
+        self.assertEqual(params.max_tick_gap_us, 200_000)
+
+        state = initial_state()
+        ranges = [2.0] * 5
+        sim_t = 100_000
+
+        # 11 ticks at 100 ms spacing: tick 0 sets clear_since=100_000;
+        # tick 10 reaches 1_100_000 (elapsed 1_000_000 us == t_dwell_us).
+        for seq in range(1, 12):
+            prop = twist_to_proposal(seq, sim_t, 0.20, 0.0)
+            res = step(state, params, GateInputs(
+                sim_time_us=sim_t,
+                proposal=prop,
+                ranges_m=ranges,
+                lidar_stamp_us=sim_t,
+            ))
+            state = res.state
+            sim_t += dt_10hz
+
+        self.assertEqual(state.mode, Mode.AWAITING_RESET)
+
+        # Operator reset at next 100 ms tick transitions to RUN
+        res_reset = step(state, params, GateInputs(
+            sim_time_us=sim_t,
+            proposal=twist_to_proposal(12, sim_t, 0.20, 0.0),
+            ranges_m=ranges,
+            lidar_stamp_us=sim_t,
+            reset_source=RESET_SOURCE_OPERATOR,
+        ))
+        self.assertEqual(res_reset.reason, Reason.RESET_ACCEPTED)
+        self.assertEqual(res_reset.state.mode, Mode.RUN)
+
+        # Next 100 ms tick passes motion normally
+        sim_t += dt_10hz
+        res_run = step(res_reset.state, params, GateInputs(
+            sim_time_us=sim_t,
+            proposal=twist_to_proposal(13, sim_t, 0.20, 0.0),
+            ranges_m=ranges,
+            lidar_stamp_us=sim_t,
+        ))
+        self.assertEqual(res_run.state.mode, Mode.RUN)
+        self.assertEqual(res_run.reason, Reason.PASS)
+        self.assertGreater(res_run.cmd_left_urad_s, 0)
+
     def test_flight_logger_cryptographic_verification_and_replay(self) -> None:
         """Verifies that GateLogger produces a valid SHA-256 hash chain that passes verify_log and bit-for-bit replay."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -382,6 +441,98 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertEqual(crit_res.reason, Reason.TRIP_HSR_CRITICAL)
         self.assertEqual(crit_res.cmd_left_urad_s, 0)
         self.assertEqual(crit_res.cmd_right_urad_s, 0)
+
+    def test_hsr_receiver_post_reset_continuity_across_40ms_and_50ms_phases(self) -> None:
+        """
+        Regression test: without wiping HsrReceiver on RESET_ACCEPTED, 25 Hz (40 ms) and
+        20 Hz (50 ms) UDP streams preserve CLEAR continuity across all 1 ms phase offsets
+        relative to the 32 ms gate tick without causing TRIP_HSR_INVALID after reset.
+        """
+        dt_us = 32_000
+        ranges = [2.0] * 5
+        params = get_live_gate_params(lidar_n_expected=5, hsr_required=True)
+
+        for period_ms in (40, 50):
+            period_us = period_ms * 1_000
+            for phase_ms in range(period_ms):
+                phase_us = phase_ms * 1_000
+                test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                rx = None
+                try:
+                    test_sock.setblocking(False)
+                    test_sock.bind(("127.0.0.1", 0))
+                    port = test_sock.getsockname()[1]
+                    rx = HsrReceiver(port=port, enabled=True, sock=test_sock)
+
+                    sim_t = 1_000_000
+                    next_emit_us = sim_t + phase_us
+                    obs_id = 0
+                    seq = 0
+                    state = initial_state()
+
+                    def _step_tick(reset_src=None):
+                        nonlocal sim_t, next_emit_us, obs_id, seq, state
+                        while next_emit_us <= sim_t:
+                            obs_id += 1
+                            pkt = json.dumps({
+                                "obs_id": obs_id,
+                                "t_obs_us": next_emit_us,
+                                "t_emit_us": next_emit_us + 1_000,
+                                "distress_permille": 0,
+                                "state": "CLEAR",
+                            }).encode("utf-8")
+                            sender.sendto(pkt, ("127.0.0.1", port))
+                            next_emit_us += period_us
+
+                        status, stamp = rx.poll(now_us=sim_t)
+                        seq += 1
+                        prop = twist_to_proposal(seq, sim_t, 0.20, 0.0)
+                        res = step(state, params, GateInputs(
+                            sim_time_us=sim_t,
+                            proposal=prop,
+                            ranges_m=ranges,
+                            lidar_stamp_us=sim_t,
+                            reset_source=reset_src,
+                            hsr_status=status,
+                            hsr_stamp_us=stamp,
+                        ))
+                        state = res.state
+                        sim_t += dt_us
+                        return res
+
+                    # 1. Drive through 1.0 s dwell to AWAITING_RESET
+                    for _ in range(50):
+                        _step_tick()
+                        if state.mode == Mode.AWAITING_RESET:
+                            break
+                    self.assertEqual(
+                        state.mode,
+                        Mode.AWAITING_RESET,
+                        f"Failed to reach AWAITING_RESET at period={period_ms}ms phase={phase_ms}ms",
+                    )
+
+                    # 2. Trigger operator reset; do NOT call rx.reset()
+                    res_reset = _step_tick(reset_src=RESET_SOURCE_OPERATOR)
+                    self.assertEqual(res_reset.reason, Reason.RESET_ACCEPTED)
+                    self.assertEqual(res_reset.state.mode, Mode.RUN)
+
+                    # 3. Verify 20 post-reset ticks remain in RUN without TRIP_HSR_INVALID
+                    for post_tick in range(20):
+                        res_post = _step_tick()
+                        self.assertEqual(
+                            res_post.state.mode,
+                            Mode.RUN,
+                            f"Post-reset trip ({res_post.reason}) at period={period_ms}ms "
+                            f"phase={phase_ms}ms tick={post_tick}",
+                        )
+                        self.assertEqual(res_post.reason, Reason.PASS)
+                        self.assertGreater(res_post.cmd_left_urad_s, 0)
+                finally:
+                    if rx is not None:
+                        rx.close()
+                    test_sock.close()
+                    sender.close()
 
     def test_hsr_required_fails_closed_when_stale_or_missing(self) -> None:
         """When hsr_required=True, missing or stale (>96ms) HSR heartbeats trip the gate."""
