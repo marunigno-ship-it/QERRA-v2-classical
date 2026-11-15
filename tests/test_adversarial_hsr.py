@@ -175,6 +175,11 @@ class TestAdversarialHsr(unittest.TestCase):
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setblocking(False)
+        # Allocate sufficient OS receive buffer to prevent kernel drops during 261-packet burst
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1_048_576)
+        except OSError:
+            pass
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
         sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
