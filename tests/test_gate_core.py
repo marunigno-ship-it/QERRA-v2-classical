@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
 """
 Unit tests for gate/gate_core.py (SAFETY_CONCEPT.md v0.2).
@@ -23,7 +23,7 @@ import unittest
 
 import gate.gate_core as gate_core_mod
 from gate.gate_core import (
-    Event, GateInputs, GateParams, Mode, Proposal, Reason,
+    Event, GateInputs, GateParams, GateState, Mode, Proposal, Reason,
     RESET_SOURCE_OPERATOR, RESET_SOURCE_PROPOSER,
     clamp_to_envelope, d_stop_mm, initial_state, step, wheel_to_mmps,
 )
@@ -802,6 +802,147 @@ class TestEarlyCoreParts(unittest.TestCase):
             shell_text,
             "F8 defect: tiago_supervisory_gate must synchronize tick counter with robot.getTime() clock"
         )
+
+
+# ----------------------------------------------------------------------------
+# Phase 1: Non-finite Twist & Proposal Inhibition Tests (v2.4.2 / Core v0.5)
+# ----------------------------------------------------------------------------
+class TestProposalInhibition(unittest.TestCase):
+    """Verifies immediate command inhibition and recovery upon malformed proposal inputs."""
+
+    def setUp(self):
+        self.params = GateParams(
+            lidar_n_expected=5,
+            dt_us=32_000,
+            t_watch_us=150_000,
+            t_dwell_us=1_000_000,
+            max_tick_gap_us=64_000,
+            hsr_required=False,
+        )
+
+    def _make_valid_scan(self, stamp_us):
+        # 5 beams clear at 5.0m
+        return [5.0, 5.0, 5.0, 5.0, 5.0], stamp_us, 5
+
+    def test_proposal_invalid_immediately_inhibits_command(self):
+        """A single invalid proposal forces output to (0, 0) while remaining in RUN."""
+        # 1. Establish valid cruise at 2.0 rad/s (last tick was at 68 ms, current tick at 100 ms)
+        s0 = GateState(mode=Mode.RUN, last_tick_us=100_000 - self.params.dt_us)
+        p1 = Proposal(seq=1, sim_stamp_us=100_000, left_urad_s=2_000_000, right_urad_s=2_000_000)
+        ranges, scan_stamp, pts = self._make_valid_scan(100_000)
+
+        inp1 = GateInputs(
+            sim_time_us=100_000,
+            proposal=p1,
+            ranges_m=ranges,
+            lidar_stamp_us=scan_stamp,
+            raw_valid_points=pts,
+        )
+        res1 = step(s0, self.params, inp1)
+        self.assertEqual(res1.state.mode, Mode.RUN)
+        self.assertEqual(res1.cmd_left_urad_s, 2_000_000)
+        self.assertEqual(res1.cmd_right_urad_s, 2_000_000)
+
+        # 2. Next tick at 132 ms: an invalid proposal arrives
+        ranges, scan_stamp, pts = self._make_valid_scan(132_000)
+        inp2 = GateInputs(
+            sim_time_us=132_000,
+            proposal=None,
+            proposal_invalid=True,  # <-- Malformed Twist flagged
+            ranges_m=ranges,
+            lidar_stamp_us=scan_stamp,
+            raw_valid_points=pts,
+        )
+        res2 = step(res1.state, self.params, inp2)
+
+        # Must immediately clamp to (0, 0) on this exact tick
+        self.assertEqual(res2.cmd_left_urad_s, 0)
+        self.assertEqual(res2.cmd_right_urad_s, 0)
+        # Must remain in RUN mode (no nuisance latch)
+        self.assertEqual(res2.state.mode, Mode.RUN)
+        self.assertEqual(res2.reason, Reason.PASS)
+        # Must record rejection event
+        self.assertIn(Event.MSG_REJECTED_INVALID, res2.events)
+        self.assertTrue(res2.state.proposal_inhibited)
+
+    def test_proposal_inhibition_persists_during_inter_tick_silence(self):
+        """Inhibition must hold at (0, 0) even if subsequent ticks receive no messages."""
+        # Setup: already inhibited from previous tick
+        s1 = GateState(
+            mode=Mode.RUN,
+            last_tick_us=132_000,
+            held=Proposal(seq=1, sim_stamp_us=100_000, left_urad_s=2_000_000, right_urad_s=2_000_000),
+            proposal_inhibited=True,
+        )
+        # Tick at 164 ms: no new proposal at all (proposal=None, proposal_invalid=False)
+        ranges, scan_stamp, pts = self._make_valid_scan(164_000)
+        inp = GateInputs(
+            sim_time_us=164_000,
+            proposal=None,
+            proposal_invalid=False,
+            ranges_m=ranges,
+            lidar_stamp_us=scan_stamp,
+            raw_valid_points=pts,
+        )
+        res = step(s1, self.params, inp)
+        # Must STILL be clamped to (0, 0), not spring back to 2.0 rad/s
+        self.assertEqual(res.cmd_left_urad_s, 0)
+        self.assertEqual(res.cmd_right_urad_s, 0)
+        self.assertEqual(res.state.mode, Mode.RUN)
+        self.assertTrue(res.state.proposal_inhibited)
+
+    def test_proposal_inhibition_recovers_automatically_on_valid_twist(self):
+        """When a valid proposal arrives, inhibition is lifted and motion resumes smoothly."""
+        s1 = GateState(
+            mode=Mode.RUN,
+            last_tick_us=132_000,
+            held=Proposal(seq=1, sim_stamp_us=100_000, left_urad_s=2_000_000, right_urad_s=2_000_000),
+            last_seq=1,
+            proposal_inhibited=True,
+        )
+        # Tick at 164 ms: clean proposal arrives (seq=2)
+        p2 = Proposal(seq=2, sim_stamp_us=164_000, left_urad_s=1_500_000, right_urad_s=1_500_000)
+        ranges, scan_stamp, pts = self._make_valid_scan(164_000)
+        inp = GateInputs(
+            sim_time_us=164_000,
+            proposal=p2,
+            proposal_invalid=False,
+            ranges_m=ranges,
+            lidar_stamp_us=scan_stamp,
+            raw_valid_points=pts,
+        )
+        res = step(s1, self.params, inp)
+        # Inhibition lifted, motion resumes
+        self.assertFalse(res.state.proposal_inhibited)
+        self.assertEqual(res.state.mode, Mode.RUN)
+        self.assertEqual(res.cmd_left_urad_s, 1_500_000)
+        self.assertEqual(res.cmd_right_urad_s, 1_500_000)
+
+    def test_proposal_inhibition_escalates_to_watchdog_after_150ms(self):
+        """If valid proposals do not return, the 150 ms watchdog trips fail-closed."""
+        # Initial proposal was stamped at t=100_000 us (100 ms)
+        s1 = GateState(
+            mode=Mode.RUN,
+            last_tick_us=240_000,
+            held=Proposal(seq=1, sim_stamp_us=100_000, left_urad_s=2_000_000, right_urad_s=2_000_000),
+            proposal_inhibited=True,
+        )
+        # Tick at 251 ms: age is 251_000 - 100_000 = 151_000 us >= 150_000 us watchdog
+        ranges, scan_stamp, pts = self._make_valid_scan(251_000)
+        inp = GateInputs(
+            sim_time_us=251_000,
+            proposal=None,
+            proposal_invalid=True,  # Still sending bad data
+            ranges_m=ranges,
+            lidar_stamp_us=scan_stamp,
+            raw_valid_points=pts,
+        )
+        res = step(s1, self.params, inp)
+        # Must escalate to TRIPPED
+        self.assertEqual(res.state.mode, Mode.TRIPPED)
+        self.assertEqual(res.reason, Reason.TRIP_PROPOSER_STALE)
+        self.assertEqual(res.cmd_left_urad_s, 0)
+        self.assertEqual(res.cmd_right_urad_s, 0)
 
 
 if __name__ == "__main__":
