@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
 """
 Unit tests for gate/gate_log.py and verify_log.py (SAFETY_CONCEPT.md v0.1).
@@ -383,6 +383,117 @@ class TestF5RecorderDefects(unittest.TestCase):
         ok, count, err = replay_log_file(self.log_path, params)
         self.assertFalse(ok)
         self.assertIn("mismatch", err.lower())
+
+    def test_proposal_invalid_logged_and_replayed_bit_for_bit(self):
+        """
+        Phase 1: Verifies that proposal_invalid=True inhibition, inter-tick silence,
+        and automatic recovery are logged accurately and reproduced bit-for-bit by replay_log_file().
+        """
+        params = GateParams(
+            lidar_n_expected=5,
+            dt_us=32_000,
+            t_watch_us=150_000,
+            proposer_period_us=33_000,
+            lidar_period_us=32_000,
+            t_stale_us=96_000,
+            t_dwell_us=1_000_000,
+            max_tick_gap_us=64_000,
+            wheel_radius_mm=98,
+            w_min_urad_s=0,
+            w_max_urad_s=3_000_000,
+            a_design_mmps2=500,
+            margin_mm=300,
+            min_raw_lidar_returns=5,
+            t_react_us=32_000,
+        )
+
+        state = initial_state()
+        t0 = 1_000_000
+        ranges = [5.0] * 5
+        seq = 0
+
+        with GateLogger(self.log_path, run_id="RUN_REPLAY_INHIBITION") as logger:
+            # 1. Satisfy 1.0 s dwell (ticks 0..32 -> 1,024,000 us >= 1,000,000 us)
+            for tick in range(33):
+                now = t0 + tick * params.dt_us
+                prop = Proposal(seq=seq, sim_stamp_us=now, left_urad_s=2_000_000, right_urad_s=2_000_000)
+                inp = GateInputs(
+                    sim_time_us=now,
+                    proposal=prop,
+                    ranges_m=ranges,
+                    lidar_stamp_us=now,
+                    raw_valid_points=5,
+                )
+                res = step(state, params, inp)
+                state = res.state
+                logger.append(res.record, wall_ns=100_000 + tick * 1_000)
+                seq += 1
+
+            self.assertEqual(state.mode, Mode.AWAITING_RESET)
+
+            # 2. Operator reset at tick 33 -> enters RUN
+            now = t0 + 33 * params.dt_us
+            prop = Proposal(seq=seq, sim_stamp_us=now, left_urad_s=2_000_000, right_urad_s=2_000_000)
+            res_rst = step(state, params, GateInputs(
+                sim_time_us=now, proposal=prop, ranges_m=ranges, lidar_stamp_us=now,
+                reset_source=RESET_SOURCE_OPERATOR, raw_valid_points=5,
+            ))
+            state = res_rst.state
+            logger.append(res_rst.record, wall_ns=100_000 + 33 * 1_000)
+            seq += 1
+            self.assertEqual(state.mode, Mode.RUN)
+
+            # 3. Cruise tick 34 -> moves at 2_000_000 urad/s
+            now = t0 + 34 * params.dt_us
+            prop = Proposal(seq=seq, sim_stamp_us=now, left_urad_s=2_000_000, right_urad_s=2_000_000)
+            res_cruise = step(state, params, GateInputs(
+                sim_time_us=now, proposal=prop, ranges_m=ranges, lidar_stamp_us=now, raw_valid_points=5,
+            ))
+            state = res_cruise.state
+            logger.append(res_cruise.record, wall_ns=100_000 + 34 * 1_000)
+            seq += 1
+            self.assertEqual((res_cruise.cmd_left_urad_s, res_cruise.cmd_right_urad_s), (2_000_000, 2_000_000))
+
+            # 4. Tick 35: proposal_invalid=True -> immediately inhibited to (0, 0), mode stays RUN
+            now = t0 + 35 * params.dt_us
+            res_inh = step(state, params, GateInputs(
+                sim_time_us=now, proposal=None, ranges_m=ranges, lidar_stamp_us=now,
+                raw_valid_points=5, proposal_invalid=True,
+            ))
+            state = res_inh.state
+            logger.append(res_inh.record, wall_ns=100_000 + 35 * 1_000)
+            self.assertEqual(state.mode, Mode.RUN)
+            self.assertEqual((res_inh.cmd_left_urad_s, res_inh.cmd_right_urad_s), (0, 0))
+            self.assertIn("MSG_REJECTED_INVALID", res_inh.events)
+
+            # 5. Tick 36: inter-tick silence -> stays inhibited at (0, 0)
+            now = t0 + 36 * params.dt_us
+            res_sil = step(state, params, GateInputs(
+                sim_time_us=now, proposal=None, ranges_m=ranges, lidar_stamp_us=now,
+                raw_valid_points=5, proposal_invalid=False,
+            ))
+            state = res_sil.state
+            logger.append(res_sil.record, wall_ns=100_000 + 36 * 1_000)
+            self.assertEqual((res_sil.cmd_left_urad_s, res_sil.cmd_right_urad_s), (0, 0))
+
+            # 6. Tick 37: valid proposal returns -> automatic recovery to (2_000_000, 2_000_000)
+            now = t0 + 37 * params.dt_us
+            prop = Proposal(seq=seq, sim_stamp_us=now, left_urad_s=2_000_000, right_urad_s=2_000_000)
+            res_rec = step(state, params, GateInputs(
+                sim_time_us=now, proposal=prop, ranges_m=ranges, lidar_stamp_us=now, raw_valid_points=5,
+            ))
+            state = res_rec.state
+            logger.append(res_rec.record, wall_ns=100_000 + 37 * 1_000)
+            self.assertEqual(state.mode, Mode.RUN)
+            self.assertEqual((res_rec.cmd_left_urad_s, res_rec.cmd_right_urad_s), (2_000_000, 2_000_000))
+
+        # Verify cryptographic chain and bit-for-bit offline replay
+        v = verify_log_file(self.log_path)
+        self.assertTrue(v.is_valid, v.error_message)
+
+        ok, count, err = replay_log_file(self.log_path, params)
+        self.assertTrue(ok, f"Deterministic replay failed: {err}")
+        self.assertEqual(count, 38)
 
     def test_harness_manifest_capture_and_persistence(self):
         """V8: Injected conditions must be captured in manifest.json and sealed in record 0."""
