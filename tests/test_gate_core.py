@@ -944,6 +944,105 @@ class TestProposalInhibition(unittest.TestCase):
         self.assertEqual(res.cmd_left_urad_s, 0)
         self.assertEqual(res.cmd_right_urad_s, 0)
 
+    def test_proposal_invalid_hazard_takes_precedence_over_run_inhibition(self):
+        """Obstacle breach takes priority over temporary RUN inhibition and latches TRIPPED."""
+        s0 = GateState(
+            mode=Mode.RUN,
+            last_tick_us=100_000 - self.params.dt_us,
+            held=Proposal(seq=1, sim_stamp_us=90_000, left_urad_s=2_000_000, right_urad_s=2_000_000),
+            last_seq=1,
+        )
+        # Obstacle at 0.15 m breaches stopping envelope while proposal_invalid=True
+        inp = GateInputs(
+            sim_time_us=100_000,
+            proposal=None,
+            proposal_invalid=True,
+            ranges_m=[0.15] * 5,
+            lidar_stamp_us=100_000,
+            raw_valid_points=5,
+        )
+        res = step(s0, self.params, inp)
+        self.assertEqual(res.state.mode, Mode.TRIPPED)
+        self.assertEqual(res.reason, Reason.TRIP_OBSTACLE)
+        self.assertEqual((res.cmd_left_urad_s, res.cmd_right_urad_s), (0, 0))
+        self.assertIn(Event.MSG_REJECTED_INVALID, res.events)
+
+    def test_proposal_invalid_during_tripped_and_awaiting_reset_preserves_latch(self):
+        """Malformed proposals during TRIPPED or AWAITING_RESET cannot bypass the recovery latch."""
+        for latched_mode in (Mode.TRIPPED, Mode.AWAITING_RESET):
+            with self.subTest(mode=latched_mode):
+                s_latched = GateState(
+                    mode=latched_mode,
+                    last_tick_us=100_000 - self.params.dt_us,
+                    clear_since_us=10_000 if latched_mode == Mode.TRIPPED else None,
+                    held=Proposal(seq=1, sim_stamp_us=90_000, left_urad_s=2_000_000, right_urad_s=2_000_000),
+                    last_seq=1,
+                )
+                ranges, scan_stamp, pts = self._make_valid_scan(100_000)
+                inp = GateInputs(
+                    sim_time_us=100_000,
+                    proposal=None,
+                    proposal_invalid=True,
+                    ranges_m=ranges,
+                    lidar_stamp_us=scan_stamp,
+                    raw_valid_points=pts,
+                )
+                res = step(s_latched, self.params, inp)
+                self.assertEqual(res.state.mode, latched_mode)
+                self.assertEqual((res.cmd_left_urad_s, res.cmd_right_urad_s), (0, 0))
+                self.assertIn(Event.MSG_REJECTED_INVALID, res.events)
+
+    def test_alternating_valid_and_invalid_proposals_behave_deterministically(self):
+        """Verifies deterministic output across alternating valid -> invalid -> valid -> invalid inputs."""
+        state = GateState(mode=Mode.RUN, last_tick_us=100_000 - self.params.dt_us)
+        now = 100_000
+        seq = 1
+
+        # Tick 1: Valid
+        ranges, scan_stamp, pts = self._make_valid_scan(now)
+        r1 = step(state, self.params, GateInputs(
+            sim_time_us=now,
+            proposal=Proposal(seq=seq, sim_stamp_us=now, left_urad_s=2_000_000, right_urad_s=2_000_000),
+            ranges_m=ranges, lidar_stamp_us=scan_stamp, raw_valid_points=pts,
+        ))
+        self.assertEqual((r1.cmd_left_urad_s, r1.cmd_right_urad_s), (2_000_000, 2_000_000))
+        self.assertFalse(r1.state.proposal_inhibited)
+
+        # Tick 2: Invalid
+        now += self.params.dt_us
+        ranges, scan_stamp, pts = self._make_valid_scan(now)
+        r2 = step(r1.state, self.params, GateInputs(
+            sim_time_us=now, proposal=None, proposal_invalid=True,
+            ranges_m=ranges, lidar_stamp_us=scan_stamp, raw_valid_points=pts,
+        ))
+        self.assertEqual((r2.cmd_left_urad_s, r2.cmd_right_urad_s), (0, 0))
+        self.assertTrue(r2.state.proposal_inhibited)
+        self.assertIn(Event.MSG_REJECTED_INVALID, r2.events)
+
+        # Tick 3: Valid resumes
+        now += self.params.dt_us
+        seq += 1
+        ranges, scan_stamp, pts = self._make_valid_scan(now)
+        r3 = step(r2.state, self.params, GateInputs(
+            sim_time_us=now,
+            proposal=Proposal(seq=seq, sim_stamp_us=now, left_urad_s=2_000_000, right_urad_s=2_000_000),
+            ranges_m=ranges, lidar_stamp_us=scan_stamp, raw_valid_points=pts,
+        ))
+        self.assertEqual((r3.cmd_left_urad_s, r3.cmd_right_urad_s), (2_000_000, 2_000_000))
+        self.assertFalse(r3.state.proposal_inhibited)
+        self.assertNotIn(Event.MSG_REJECTED_INVALID, r3.events)
+
+        # Tick 4: Invalid inhibits again
+        now += self.params.dt_us
+        ranges, scan_stamp, pts = self._make_valid_scan(now)
+        r4 = step(r3.state, self.params, GateInputs(
+            sim_time_us=now, proposal=None, proposal_invalid=True,
+            ranges_m=ranges, lidar_stamp_us=scan_stamp, raw_valid_points=pts,
+        ))
+        self.assertEqual((r4.cmd_left_urad_s, r4.cmd_right_urad_s), (0, 0))
+        self.assertTrue(r4.state.proposal_inhibited)
+        self.assertEqual(r4.state.mode, Mode.RUN)
+
 
 if __name__ == "__main__":
     unittest.main()
