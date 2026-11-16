@@ -145,6 +145,7 @@ class GateInputs:
     raw_valid_points: Optional[int] = None         # count of valid finite returns across raw scan
     hsr_status: Optional[str] = None               # "CLEAR", "MONITOR", "CRITICAL", or None
     hsr_stamp_us: Optional[int] = None             # sim time at which HSR status was evaluated
+    proposal_invalid: bool = False                 # True if an invalid/non-finite Twist was received
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,7 @@ class GateState:
     # Start of the current unbroken run of fresh, valid HSR "CLEAR" readings (C-7).
     # MONITOR, CRITICAL, invalid, stale or future-stamped HSR resets it to None.
     hsr_clear_since_us: Optional[int] = None
+    proposal_inhibited: bool = False               # True if output is inhibited due to invalid proposal
 
 
 @dataclass(frozen=True)
@@ -291,6 +293,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
             held=None, last_seq=state.last_seq, last_cmd=(0, 0),
             last_session_id=state.last_session_id,
             hsr_clear_since_us=None,
+            proposal_inhibited=False,
         )
         record = _record(now, new_state.mode, Reason.TRIP_CLOCK_ANOMALY, (), None, None,
                          False, None, None, False, (0, 0), inp=inp)
@@ -300,7 +303,13 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
 
     # 1. proposal acceptance (R-06 semantic checks, F3 session restart handling)
     held, last_seq, last_session_id = state.held, state.last_seq, state.last_session_id
+    proposal_inhibited = state.proposal_inhibited
     cand = inp.proposal
+
+    if inp.proposal_invalid:
+        events.append(Event.MSG_REJECTED_INVALID)
+        proposal_inhibited = True
+
     if cand is not None:
         # F2: the (session_id, seq) ratchet binds only while a LIVE proposal is held. If nothing
         # fresh is held, a poisoned ratchet (one huge session_id/seq from a faulty sender) would
@@ -310,24 +319,31 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         held_is_live = held is not None and (now - held.sim_stamp_us) < params.t_watch_us
         if not _validate_proposal(cand):
             events.append(Event.MSG_REJECTED_INVALID)
+            proposal_inhibited = True
         elif cand.sim_stamp_us > now:
             events.append(Event.MSG_REJECTED_FUTURE)
         elif not held_is_live and (now - cand.sim_stamp_us) < params.t_watch_us:
             # (here cand.sim_stamp_us <= now, so the age is non-negative)
             held, last_seq, last_session_id = cand, cand.seq, cand.session_id
+            proposal_inhibited = False
         elif cand.session_id < last_session_id:
             events.append(Event.MSG_REJECTED_SEQ)
         elif cand.session_id == last_session_id and cand.seq <= last_seq:
             events.append(Event.MSG_REJECTED_SEQ)
         else:
             held, last_seq, last_session_id = cand, cand.seq, cand.session_id
+            proposal_inhibited = False
 
     # 2. clamp the newest accepted proposal into the envelope (AR-2, R-05)
     # Symmetrical Fail-Closed (Option A): If either wheel requires negative
     # rotation (reverse) without rearward sensor coverage, both wheels clamp
     # to (0, 0) fail-closed to preserve body linear velocity bounds and prevent
     # unmonitored blind rotation.
-    if held is not None and (held.left_urad_s < params.w_min_urad_s or held.right_urad_s < params.w_min_urad_s):
+    # Command Inhibition (Phase 1): If an invalid proposal was flagged or is
+    # currently inhibited, clamp immediately to (0, 0) without clearing historical state.
+    if proposal_inhibited:
+        clamped = (0, 0)
+    elif held is not None and (held.left_urad_s < params.w_min_urad_s or held.right_urad_s < params.w_min_urad_s):
         clamped = (0, 0)
     else:
         clamped = clamp_to_envelope(params, held.left_urad_s, held.right_urad_s) if held else (0, 0)
@@ -445,6 +461,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         held=held, last_seq=last_seq, last_cmd=cmd,
         last_session_id=last_session_id,
         hsr_clear_since_us=hsr_clear_since,
+        proposal_inhibited=proposal_inhibited,
     )
     record = _record(now, mode, reason, tuple(events), held, age_us, lidar_ok, min_mm,
                      stop_mm, hazard, cmd, inp=inp, hsr_age_us=hsr_age_us)
@@ -503,4 +520,6 @@ def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, 
             ),
             "hsr_stamp_us": inp.hsr_stamp_us,
         }
+        if inp.proposal_invalid:
+            rec["inputs"]["proposal_invalid"] = True
     return rec
