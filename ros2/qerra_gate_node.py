@@ -427,6 +427,7 @@ if ROS2_AVAILABLE:
             self._state_sock = create_state_sender()
 
             self._latest_proposal: Optional[Proposal] = None
+            self._proposal_invalid: bool = False
             self._proposal_seq = 0
             self._latest_ranges: Optional[List[float]] = None
             self._lidar_stamp_us: Optional[int] = None
@@ -485,9 +486,11 @@ if ROS2_AVAILABLE:
                     track_width_m=self._track_width_m,
                     wheel_radius_m=self._wheel_radius_m,
                 )
+                self._proposal_invalid = False
             except ValueError as exc:
                 self.get_logger().warn(f"Rejected invalid Twist proposal: {exc}")
                 self._latest_proposal = None
+                self._proposal_invalid = True
 
         def _scan_callback(self, msg: LaserScan) -> None:
             """Ingests laser scan using fixed parameter geometry (Fail-Closed on Mismatch)."""
@@ -573,6 +576,10 @@ if ROS2_AVAILABLE:
                 reset_source = RESET_SOURCE_OPERATOR if self._reset_requested else None
                 self._reset_requested = False
 
+                # Consume invalid proposal flag for this control tick
+                proposal_invalid = self._proposal_invalid
+                self._proposal_invalid = False
+
                 # Echo clock to synthetic producer on port 5007
                 send_state(self._state_sock, now_us, port=self._state_port)
 
@@ -582,6 +589,7 @@ if ROS2_AVAILABLE:
                 inputs = GateInputs(
                     sim_time_us=now_us,
                     proposal=self._latest_proposal,
+                    proposal_invalid=proposal_invalid,
                     ranges_m=self._latest_ranges,
                     lidar_stamp_us=self._lidar_stamp_us,
                     reset_source=reset_source,
