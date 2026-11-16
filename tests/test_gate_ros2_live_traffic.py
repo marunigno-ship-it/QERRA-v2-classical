@@ -13,7 +13,7 @@ import math
 import threading
 import time
 import unittest
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 try:
     import rclpy
@@ -64,6 +64,7 @@ if ROS2_AVAILABLE:
             self.latest_safe_twist: Optional[Twist] = None
             self.latest_state_raw: Optional[str] = None
             self.latest_state_json: Optional[Dict[str, Any]] = None
+            self.seen_events: Set[str] = set()
             self.safe_twist_count = 0
             self.state_count = 0
 
@@ -77,9 +78,20 @@ if ROS2_AVAILABLE:
                 self.latest_state_raw = msg.data
                 self.state_count += 1
                 try:
-                    self.latest_state_json = json.loads(msg.data)
+                    parsed = json.loads(msg.data)
+                    self.latest_state_json = parsed
+                    for ev in parsed.get("events", []):
+                        self.seen_events.add(ev)
                 except Exception:
                     self.latest_state_json = None
+
+        def clear_seen_events(self) -> None:
+            with self._lock:
+                self.seen_events.clear()
+
+        def has_seen_event(self, event_name: str) -> bool:
+            with self._lock:
+                return event_name in self.seen_events
 
         def get_telemetry_snapshot(self) -> Tuple[Optional[Twist], Optional[Dict[str, Any]]]:
             with self._lock:
@@ -121,6 +133,7 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
     2. Negative Path A: Sensor loss watchdog (96 ms staleness ceiling).
     3. Negative Path C: Active hazard reset refusal (RESET_REJECTED_HAZARD event).
     4. Negative Path B: Proposer timeout watchdog (150 ms freshness ceiling).
+    5. Phase 1: Non-finite Twist command inhibition, recovery, and watchdog escalation.
     """
 
     def setUp(self) -> None:
@@ -341,6 +354,82 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
             _is_proposer_stale,
             3.0,
             "TRIP_PROPOSER_STALE watchdog clamp on /cmd_vel silence",
+        )
+
+    def test_live_topic_traffic_non_finite_twist_inhibition_and_recovery(self) -> None:
+        """
+        Phase 1: Verifies live DDS handling of non-finite Twist proposals:
+        1. Valid cruise is established in Mode.RUN.
+        2. A single NaN Twist immediately inhibits /cmd_vel_safe to (0.0, 0.0) while
+           preserving Mode.RUN and emitting MSG_REJECTED_INVALID on /gate/state.
+        3. Subsequent valid Twist automatically restores cruise without operator reset.
+        4. Continuous Inf Twist messages do not refresh the watchdog, escalating to
+           TRIP_PROPOSER_STALE after 150 ms.
+        """
+        clear_ranges = [3.0] * 682
+
+        # 1. Bring gate to Mode.RUN and confirm active forward cruise
+        self._drive_to_run(clear_ranges)
+
+        def _is_cruising(twist: Optional[Twist], _state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            return twist is not None and twist.linear.x > 0.15
+
+        self._wait_until(_is_cruising, 2.0, "active cruise before NaN injection")
+
+        # Refresh valid timestamp right before injecting NaN so watchdog budget has full headroom
+        self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+        self.harness_node.publish_scan(clear_ranges)
+        time.sleep(0.035)
+
+        # 2. Inject a single NaN Twist and verify immediate zero output + RUN mode + event
+        self.harness_node.clear_seen_events()
+        self.harness_node.publish_proposal(linear_x=float("nan"), angular_z=0.0)
+
+        def _is_inhibited(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_scan(clear_ranges)
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "RUN"
+                and self.harness_node.has_seen_event("MSG_REJECTED_INVALID")
+                and math.isclose(twist.linear.x, 0.0, abs_tol=1e-6)
+                and math.isclose(twist.angular.z, 0.0, abs_tol=1e-6)
+            )
+
+        self._wait_until(_is_inhibited, 1.0, "immediate command inhibition on NaN Twist")
+
+        # 3. Restore valid Twist proposals and verify automatic recovery without operator reset
+        def _is_recovered(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "RUN"
+                and twist.linear.x > 0.15
+            )
+
+        self._wait_until(_is_recovered, 2.0, "automatic cruise recovery after NaN clears")
+
+        # 4. Stream continuous +/-Inf Twists and verify watchdog escalates to TRIP_PROPOSER_STALE
+        def _is_escalated_stale(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=float("-inf"), angular_z=float("inf"))
+            self.harness_node.publish_scan(clear_ranges)
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "TRIPPED"
+                and state.get("reason") == "TRIP_PROPOSER_STALE"
+                and math.isclose(twist.linear.x, 0.0, abs_tol=1e-6)
+                and math.isclose(twist.angular.z, 0.0, abs_tol=1e-6)
+            )
+
+        self._wait_until(
+            _is_escalated_stale,
+            3.0,
+            "TRIP_PROPOSER_STALE watchdog escalation under continuous Inf Twist stream",
         )
 
 
