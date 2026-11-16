@@ -14,6 +14,7 @@ from dataclasses import asdict
 from gate.gate_config import get_live_gate_params
 from gate.gate_core import (
     GateInputs,
+    GateState,
     Mode,
     Reason,
     RESET_SOURCE_OPERATOR,
@@ -86,6 +87,62 @@ class TestGateRos2Translators(unittest.TestCase):
             twist_to_wheel_speeds(float("nan"), 0.0)
         with self.assertRaises(ValueError):
             twist_to_wheel_speeds(0.20, float("inf"))
+
+    def test_non_finite_twist_rejection_all_variants(self) -> None:
+        """Verifies that NaN, +Inf, and -Inf in linear or angular velocities fail closed with ValueError."""
+        non_finites = [float("nan"), float("inf"), float("-inf")]
+        for val in non_finites:
+            with self.subTest(linear_val=val):
+                with self.assertRaises(ValueError):
+                    twist_to_proposal(seq=1, sim_stamp_us=100_000, linear_x_mps=val, angular_z_radps=0.0)
+            with self.subTest(angular_val=val):
+                with self.assertRaises(ValueError):
+                    twist_to_proposal(seq=1, sim_stamp_us=100_000, linear_x_mps=0.20, angular_z_radps=val)
+
+    def test_proposal_invalid_inhibition_and_telemetry(self) -> None:
+        """
+        Phase 1: Verifies that proposal_invalid=True forces wheel speeds to zero,
+        translates to (0.0, 0.0) Twist, and emits Event.MSG_REJECTED_INVALID in /gate/state JSON.
+        """
+        params = get_live_gate_params(lidar_n_expected=5, hsr_required=False)
+        # Initialize in RUN mode with last tick at 68 ms
+        state = GateState(mode=Mode.RUN, last_tick_us=100_000 - 32_000)
+
+        # Step 1: establish cruise
+        prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
+        res_cruise = step(state, params, GateInputs(
+            sim_time_us=100_000,
+            proposal=prop,
+            ranges_m=[2.0] * 5,
+            lidar_stamp_us=100_000,
+        ))
+        self.assertEqual(res_cruise.state.mode, Mode.RUN)
+
+        # Step 2: next tick receives proposal_invalid=True (e.g. from rejected NaN Twist)
+        res_inhibited = step(res_cruise.state, params, GateInputs(
+            sim_time_us=132_000,
+            proposal=None,
+            proposal_invalid=True,
+            ranges_m=[2.0] * 5,
+            lidar_stamp_us=132_000,
+        ))
+        self.assertEqual(res_inhibited.cmd_left_urad_s, 0)
+        self.assertEqual(res_inhibited.cmd_right_urad_s, 0)
+        self.assertEqual(res_inhibited.state.mode, Mode.RUN)
+
+        # Output translation back to ROS Twist must be exactly 0.0
+        lin_x, ang_z = wheel_speeds_to_twist(
+            res_inhibited.cmd_left_urad_s, res_inhibited.cmd_right_urad_s
+        )
+        self.assertEqual(lin_x, 0.0)
+        self.assertEqual(ang_z, 0.0)
+
+        # Telemetry JSON must reflect MSG_REJECTED_INVALID and zero commands
+        telemetry = json.loads(format_gate_state_json(res_inhibited.state, res_inhibited.record))
+        self.assertEqual(telemetry["mode"], "RUN")
+        self.assertIn("MSG_REJECTED_INVALID", telemetry["events"])
+        self.assertEqual(telemetry["cmd_left_urad_s"], 0)
+        self.assertEqual(telemetry["cmd_right_urad_s"], 0)
 
     def test_lidar_corridor_filter_and_timestamp(self) -> None:
         """Preserves corridor returns, masks outer returns to +inf, and converts timestamps."""
