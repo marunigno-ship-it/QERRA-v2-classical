@@ -1,7 +1,7 @@
 # LIMITATIONS of QERRA-v2 Classical
 
-**Last updated:** November 2026  
-**Engine version:** Gate Core v0.4 + QERRA-HSR v0.3.1 + ROS 2 Node v0.3.1 (Package metadata v2.4.1)
+**Last updated:** 17 November 2026  
+**Engine version:** Gate Core v0.4 + QERRA-HSR v0.1 + HSR Telemetry Contract v0.4.0 + ROS 2 Node v0.3.1 (Package metadata v2.4.1)
 
 This document is maintained with full transparency as part of QERRA's
 commitment to explainability. The same honesty that applies to the system's
@@ -48,18 +48,47 @@ datasets.
 ## 2. QERRA-HSR Physical Safety Layer Limitations
 
 **Sensor dependency.**
-QERRA-HSR v0.3.1 processes normalized signals from the robot's perception
-stack. It does not perform physical sensing itself. Output quality is entirely
-bounded by the quality and freshness of the robot platform's perception stack.
-A platform with poor fall detection or delayed lidar streams will produce poor
-QERRA-HSR outcomes regardless of the layer's internal logic.
+QERRA-HSR (`hsr/qerra_hsr.py` v0.1, wire telemetry contract `gate/hsr_telemetry.py` v0.4.0)
+processes normalized signals from the robot's perception stack. It does not
+perform physical sensing itself. Output quality is entirely bounded by the
+quality and freshness of the robot platform's perception stack. A platform
+with poor fall detection or delayed lidar streams will produce poor QERRA-HSR
+outcomes regardless of the layer's internal logic.
 
-**Activation thresholds are design estimates.**
-The three thresholds (`distress_permille` ≥ 750 for CRITICAL,
-≥ 450 for MONITOR, `persons_nearby_count` ≤ 1 for isolation) are
-integer permille design estimates, not empirically validated values. They must be
-calibrated against real physical sensor streams and target platform dynamics
-before any deployment claim is made.
+**Activation thresholds are ODD placeholders, not validated biometrics.**
+Thresholds (`0.45` / `0.75` normalized score, mapped to `450` / `750` integer
+permille, and `ISOLATION_COUNT_THRESHOLD = 1`) are author-chosen engineering
+placeholders. They have not been validated against any human population,
+posture, gait, or sensor data. Operational Design Domain (ODD) profiles are
+configuration slots; only the default profile is exercised in simulation and
+CI. No claim is made about real-distress detection, false-alarm rate, or miss
+rate. Furthermore, the HSR telemetry packet carries **no metric distance** to
+the human subject.
+
+**`MONITOR` state imposes no velocity cap in `Mode.RUN`.**
+In `gate_core.py` v0.4 and `QerraGateNode`, `hsr_status == "MONITOR"` acts
+fail-closed only when latched (`Mode.TRIPPED` or `Mode.AWAITING_RESET`),
+resetting dwell timers and rejecting operator resets (`RESET_REJECTED_HAZARD`).
+During active `Mode.RUN`, `MONITOR` imposes no velocity cap inside the Gate
+core (`w_max = 3.0 rad/s` at 98 mm wheel radius already bounds linear speed at
+$0.294\text{ m/s}$, and Speed and Separation Monitoring cannot be justified
+without person-distance telemetry). Velocity modulation during `MONITOR` is
+delegated entirely to upstream planning layers.
+
+**Mandatory wire contract (`v0.4.0`), black-channel packet drops, and contradictory-frame scope.**
+`gate/hsr_telemetry.py` v0.4.0 strictly mandates all six core wire fields
+(`obs_id`, `t_obs_us`, `t_emit_us`, `distress_permille`, `hazard_proximity`,
+`persons_nearby_count`) to prevent fail-open defaults; `robot_task_interruptible`
+and natural-language `recovery_directive` strings remain outside the Layer 1B
+wire contract (since the Gate unconditionally requires an operator reset). Under
+EN 50159 black-channel principles, unparseable, oversized, or contradictory
+datagrams (including `state` mismatches or causal timestamp inversions) are
+dropped, counted in monotonic lifetime diagnostics (`hsr_rejected_total`), and
+mapped to sanitized 64-character categories (`hsr_last_rejection_reason`).
+Because rejected datagrams are dropped rather than immediately latching
+`TRIP_HSR_INVALID`, a live producer interleaving valid `CLEAR` packets with
+contradictory packets continues holding `CLEAR`; isolation of persistent
+contract failures relies on the 96 ms staleness watchdog if valid frames cease.
 
 **Perception stream monitor sequence-only scope (Gap 4.4).**
 The Layer 1B perception stream monitor (`step_hsr_stream`) validates frame
@@ -94,7 +123,7 @@ by design, preventing unmonitored physical actuation. On the live reference HTTP
 API (`/analyze`), omitting `hsr_signals` evaluates prospective text deliberation
 only, allowing standalone ethical analysis.
 
-**Interpersonal threat detection is out of scope for v0.3.**
+**Interpersonal threat detection is out of scope.**
 Detecting that an interpersonal situation is escalating toward violence
 requires complex social inference with a high false-positive rate in real
 environments. This vector (`escalating_threat`) was deliberately excluded
@@ -159,7 +188,7 @@ in a Linux ROS 2 Jazzy container. It has not been validated on physical
 humanoid or mobile manipulator hardware in an unstructured physical environment.
 
 **Free-tier reference hosting constraints.**
-The public reference API runs on Hugging Face Spaces free-tier infrastructure.
+The public reference API runs on the Hugging Face Spaces free-tier infrastructure.
 The container hibernates when inactive, and the first request after hibernation
 triggers a cold start (model reload) that can take 30–60 seconds. This is an
 infrastructure resource constraint, not an engine algorithmic delay.
@@ -177,6 +206,14 @@ Localhost UDP ports (5005, 5006, 5007, 5008) and ROS 2 topics are unauthenticate
 ---
 
 ## 6. ROS 2 Node Architecture Limitations
+
+**Single-threaded executor assumption.**
+`QerraGateNode` relies on ROS 2's default `SingleThreadedExecutor` (`rclpy.spin(node)`)
+to serialize subscription callbacks (`_cmd_vel_callback`, `_scan_callback`,
+`_reset_callback`) and `_tick_callback` without mutex locks. Running the node
+inside a `MultiThreadedExecutor` without placing callbacks in an explicit
+`MutuallyExclusiveCallbackGroup` creates concurrent read/write races on
+`_latest_proposal`, `_latest_ranges`, and `_reset_requested`.
 
 **Twist interface lacks planner generation timestamp.**
 `QerraGateNode` subscribes to standard `geometry_msgs/msg/Twist` on `/cmd_vel`. Because `Twist` carries no header stamp, the node assigns `sim_stamp_us = now_us` upon message receipt. Consequently, the proposal watchdog ($150\text{ ms}$) measures transport and subscription callback delay at the Gate, but cannot detect compute lag or stalled cycles inside the upstream planner before publication.
