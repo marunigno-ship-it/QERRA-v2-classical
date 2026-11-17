@@ -241,6 +241,8 @@ class TestGateIPC(unittest.TestCase):
             "t_obs_us": 1_000_000,
             "t_emit_us": 1_001_000,
             "distress_permille": 0,
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }
         self._send(json.dumps(msg).encode("utf-8"))
 
@@ -257,6 +259,8 @@ class TestGateIPC(unittest.TestCase):
             "t_obs_us": 1_000_000,
             "t_emit_us": 1_001_000,
             "distress_permille": 0,
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }
         # Datagram 2: CRITICAL (acute distress event)
         msg_crit = {
@@ -264,6 +268,8 @@ class TestGateIPC(unittest.TestCase):
             "t_obs_us": 1_010_000,
             "t_emit_us": 1_011_000,
             "distress_permille": 850,
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }
         # Datagram 3: CLEAR (calmed reading arriving later in same 32 ms tick)
         msg_clear_2 = {
@@ -271,6 +277,8 @@ class TestGateIPC(unittest.TestCase):
             "t_obs_us": 1_020_000,
             "t_emit_us": 1_021_000,
             "distress_permille": 100,
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }
 
         self._send(json.dumps(msg_clear_1).encode("utf-8"))
@@ -286,12 +294,14 @@ class TestGateIPC(unittest.TestCase):
 
     def test_hsr_oversized_and_corrupted_dropped(self):
         oversized = b"X" * 3000
-        corrupted = b'{"obs_id": 1, "distress_permille": "invalid"}'
+        corrupted = b'{"obs_id": 1, "distress_permille": "invalid", "hazard_proximity": false, "persons_nearby_count": 2}'
         valid = json.dumps({
             "obs_id": 2,
             "t_obs_us": 1_000_000,
             "t_emit_us": 1_001_000,
             "distress_permille": 0,
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }).encode("utf-8")
 
         self._send(oversized)
