@@ -30,14 +30,23 @@ from gate.gate_ipc import MAX_DRAIN_PER_CALL
 from ros2.hsr_receiver import HsrReceiver
 
 
-def _json_pkt(obs_id: int, t_obs_us: int, state: str = "CLEAR", distress: int = 0) -> bytes:
-    """Helper formatting wire JSON payloads."""
+def _json_pkt(
+    obs_id: int,
+    t_obs_us: int,
+    state: str = "CLEAR",
+    distress: int = 0,
+    hazard_proximity: bool = False,
+    persons_nearby_count: int = 2,
+) -> bytes:
+    """Helper formatting wire JSON payloads conforming to v0.4.0 mandatory fields."""
     return json.dumps({
         "obs_id": obs_id,
         "t_obs_us": t_obs_us,
         "t_emit_us": t_obs_us + 1_000,
         "distress_permille": distress,
         "state": state,
+        "hazard_proximity": hazard_proximity,
+        "persons_nearby_count": persons_nearby_count,
     }).encode("utf-8")
 
 
