@@ -7,10 +7,15 @@ Decoupled from ROS 2 and rclpy so it executes and tests identically on Windows
 development hosts and Linux CI environments.
 
 Encapsulates non-blocking UDP socket reception, per-packet monotonicity validation,
-sticky frozen-frame detection, and controlled producer-restart dwell.
+sticky frozen-frame detection, controlled producer-restart dwell, and bounded
+rejection diagnostics.
+
+Diagnostic rejection reasons are fixed categories. Untrusted payload contents and
+raw parser exception messages are never copied into last_rejection_reason.
 """
 from __future__ import annotations
 
+import json
 import socket
 from typing import List, Optional, Tuple
 
@@ -30,12 +35,17 @@ from gate.hsr_telemetry import (
     HSR_CRITICAL,
 )
 
+# Keep published diagnostic text short and independent of untrusted wire data.
+MAX_REJECTION_REASON_CHARS = 64
+
 
 class HsrReceiver:
-    """
-    Non-blocking HSR reflex telemetry receiver with stream freshness monitoring.
+    """Non-blocking HSR reflex telemetry receiver with stream freshness monitoring.
+
     Holds the latest valid HSR status and observation timestamp across ticks,
-    latching fail-closed on frozen frames or counter regressions.
+    latching fail-closed on frozen frames or counter regressions. Datagram counters
+    and the most recent rejection category are process-lifetime diagnostics and
+    are intentionally preserved by reset().
     """
 
     def __init__(
@@ -57,7 +67,11 @@ class HsrReceiver:
         self._stream_state = HSRStreamState()
         self._last_status: Optional[str] = None
         self._last_stamp_us: Optional[int] = None
+
+        # Lifetime diagnostics: reset() must never decrease these counters.
         self._packets_drained_total: int = 0
+        self._packets_rejected_total: int = 0
+        self._last_rejection_reason: Optional[str] = None
         self._socket_error: Optional[str] = None
 
     @property
@@ -94,7 +108,18 @@ class HsrReceiver:
 
     @property
     def packets_drained_total(self) -> int:
+        """Total datagrams removed from the socket during this process lifetime."""
         return self._packets_drained_total
+
+    @property
+    def packets_rejected_total(self) -> int:
+        """Total rejected datagrams during this process lifetime."""
+        return self._packets_rejected_total
+
+    @property
+    def last_rejection_reason(self) -> Optional[str]:
+        """Fixed, bounded category for the most recent rejected datagram."""
+        return self._last_rejection_reason
 
     @property
     def socket_error(self) -> Optional[str]:
@@ -114,11 +139,34 @@ class HsrReceiver:
             self._socket_error = str(exc)
             return False
 
+    @staticmethod
+    def _rejection_category(exc: BaseException) -> str:
+        """Map parser failures to fixed categories without exposing untrusted wire text."""
+        if isinstance(exc, UnicodeDecodeError):
+            return "invalid_utf8"
+        if isinstance(exc, json.JSONDecodeError):
+            return "invalid_json"
+
+        message = str(exc)
+        if message.startswith("Missing required HSR telemetry field:"):
+            return "missing_required_field"
+        if message.startswith("Causal inversion:"):
+            return "timestamp_causality_error"
+        if message.startswith("Clock inversion / future frame:"):
+            return "future_observation_timestamp"
+        if message.startswith("State mismatch:"):
+            return "state_mismatch"
+        if message.startswith("Invalid declared state:"):
+            return "invalid_declared_state"
+        return "invalid_telemetry"
+
+    def _record_rejection(self, reason: str) -> None:
+        """Increment the lifetime rejection total and store bounded safe text."""
+        self._packets_rejected_total += 1
+        self._last_rejection_reason = str(reason)[:MAX_REJECTION_REASON_CHARS]
+
     def _drain_packets(self, t_rx_us: int) -> Tuple[List[HSRTelemetryPacket], int]:
-        """
-        Drains all pending datagrams in arrival order without pre-mature reduction.
-        Enforces MAX_DRAIN_PER_CALL limit per tick.
-        """
+        """Drain pending datagrams in arrival order, bounded per control tick."""
         valid_packets: List[HSRTelemetryPacket] = []
         count = 0
         if self._sock is None:
@@ -129,48 +177,61 @@ class HsrReceiver:
                 data, _ = self._sock.recvfrom(MAX_DATAGRAM_BYTES + 1)
             except (BlockingIOError, InterruptedError):
                 break
-            except OSError as e:
-                err = getattr(e, "winerror", getattr(e, "errno", None))
-                if err in (10054, 10040):  # Client reset or truncated message on Windows
-                    count += 1
+            except OSError as exc:
+                winerror = getattr(exc, "winerror", None)
+                error_number = winerror if winerror is not None else exc.errno
+
+                if error_number == 10054:
+                    # WSAECONNRESET: ICMP port-unreachable indication; not a datagram.
                     continue
-                self._socket_error = str(e)
+                if error_number == 10040:
+                    # WSAEMSGSIZE: Windows reports oversized datagram as socket error.
+                    count += 1
+                    self._record_rejection("oversized_datagram")
+                    continue
+
+                self._socket_error = str(exc)
                 break
 
             count += 1
             if len(data) > MAX_DATAGRAM_BYTES:
+                self._record_rejection("oversized_datagram")
                 continue
 
             try:
-                pkt = parse_hsr_telemetry(data, t_rx_us=t_rx_us)
-                valid_packets.append(pkt)
-            except (ValueError, KeyError, TypeError):
+                packet = parse_hsr_telemetry(data, t_rx_us=t_rx_us)
+                valid_packets.append(packet)
+            except (ValueError, KeyError, TypeError, RecursionError) as exc:
+                self._record_rejection(self._rejection_category(exc))
                 continue
 
         return valid_packets, count
 
     def flush(self) -> int:
-        """Flushes and purges all pending datagrams from the OS socket buffer."""
+        """Flush and purge pending datagrams from the OS socket buffer."""
         if self._sock is None:
             return 0
+
         flushed = 0
         for _ in range(MAX_DRAIN_PER_CALL):
             try:
-                data, _ = self._sock.recvfrom(MAX_DATAGRAM_BYTES + 1)
+                self._sock.recvfrom(MAX_DATAGRAM_BYTES + 1)
                 flushed += 1
-            except (BlockingIOError, InterruptedError, OSError):
+            except (BlockingIOError, InterruptedError):
+                break
+            except OSError as exc:
+                winerror = getattr(exc, "winerror", None)
+                error_number = winerror if winerror is not None else exc.errno
+                if error_number == 10040:
+                    flushed += 1
+                    continue
+                if error_number == 10054:
+                    continue
                 break
         return flushed
 
     def poll(self, now_us: int) -> Tuple[Optional[str], Optional[int]]:
-        """
-        Polls and drains pending HSR telemetry datagrams for this control tick.
-
-        Evaluates per-packet freshness and sequence continuity before reduction.
-        Returns (hsr_status, hsr_stamp_us):
-          - (None, None) if disabled, in fault (frozen/rebase), or never initialized.
-          - The held state and observation timestamp from nominal operation.
-        """
+        """Poll HSR telemetry and return (status, observation_timestamp)."""
         if not self._enabled:
             return None, None
 
@@ -180,7 +241,7 @@ class HsrReceiver:
         packets, drained_count = self._drain_packets(t_rx_us=now_us)
         self._packets_drained_total += drained_count
 
-        # Step the pure stream monitor state machine
+        # Step the pure stream monitor state machine.
         self._stream_state, status, stamp = step_hsr_stream(
             self._stream_state,
             packets,
@@ -191,18 +252,22 @@ class HsrReceiver:
 
         self._last_status = status
         self._last_stamp_us = stamp
-
         return self._last_status, self._last_stamp_us
 
     def reset(self) -> None:
-        """Clears held telemetry state, flushes socket buffer, and resets stream monitor."""
+        """Reset stream state without erasing process-lifetime diagnostics.
+
+        Clears held HSR status, sequence/freeze/rebase state and queued datagrams.
+        Cumulative drained/rejected counters and the latest rejection category are
+        deliberately preserved so a reset cannot erase diagnostic history.
+        """
         self.flush()
         self._stream_state = HSRStreamState()
         self._last_status = None
         self._last_stamp_us = None
 
     def close(self) -> None:
-        """Releases the UDP socket if owned by this receiver."""
+        """Release the UDP socket if it is owned by this receiver."""
         if self._owns_sock and self._sock is not None:
             try:
                 self._sock.close()
@@ -217,94 +282,140 @@ class HsrReceiver:
 def _self_test() -> None:
     import json
 
-    print("[HSR RECEIVER SELF-TEST] Running standalone checks...")
+    print("[HSR RECEIVER DIAGNOSTICS SELF-TEST] Running standalone checks...")
 
-    # 1. Disabled receiver returns (None, None)
+    # 1. Disabled receiver returns (None, None).
     rx_disabled = HsrReceiver(enabled=False)
     status, stamp = rx_disabled.poll(100_000)
     assert status is None and stamp is None, "Disabled receiver must return (None, None)"
     rx_disabled.close()
 
-    # 2. Ephemeral loopback receiver setup
+    # 2. Ephemeral loopback receiver setup.
     test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     test_sock.setblocking(False)
     test_sock.bind(("127.0.0.1", 0))
     ephemeral_port = test_sock.getsockname()[1]
 
     rx = HsrReceiver(port=ephemeral_port, enabled=True, sock=test_sock)
-    assert rx.poll(now_us=100_000) == (None, None), "Initial poll with empty buffer must be (None, None)"
+    assert rx.poll(now_us=100_000) == (None, None), "Empty buffer must return (None, None)"
 
     sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    dest = ("127.0.0.1", ephemeral_port)
+    destination = ("127.0.0.1", ephemeral_port)
 
-    # 3. Transmit a valid CLEAR packet
+    # 3. Transmit a valid CLEAR packet.
     payload_clear = json.dumps({
         "obs_id": 1,
         "t_obs_us": 100_000,
         "t_emit_us": 101_000,
         "distress_permille": 0,
         "state": "CLEAR",
+        "hazard_proximity": False,
+        "persons_nearby_count": 2,
     }).encode("utf-8")
-    sender.sendto(payload_clear, dest)
+    sender.sendto(payload_clear, destination)
 
     status, stamp = rx.poll(now_us=102_000)
-    assert status == "CLEAR", f"Expected CLEAR, got {status}"
+    assert status == HSR_CLEAR, f"Expected CLEAR, got {status}"
     assert stamp == 100_000, f"Expected stamp 100000, got {stamp}"
     assert rx.last_obs_id == 1
+    assert rx.packets_drained_total == 1
+    assert rx.packets_rejected_total == 0
 
-    # 4. Transmit an advancing CRITICAL distress spike
-    payload_crit = json.dumps({
+    # 4. Missing required hazard_proximity field is rejected and categorized.
+    payload_missing = json.dumps({
         "obs_id": 2,
+        "t_obs_us": 105_000,
+        "t_emit_us": 106_000,
+        "distress_permille": 0,
+        "persons_nearby_count": 2,
+    }).encode("utf-8")
+    sender.sendto(payload_missing, destination)
+
+    status, stamp = rx.poll(now_us=107_000)
+    assert status == HSR_CLEAR, "A rejected packet must not replace the held valid status"
+    assert rx.packets_rejected_total == 1
+    assert rx.last_rejection_reason == "missing_required_field"
+
+    # 5. Transmit an advancing CRITICAL distress packet.
+    payload_critical = json.dumps({
+        "obs_id": 3,
         "t_obs_us": 132_000,
         "t_emit_us": 133_000,
         "distress_permille": 850,
         "state": "CRITICAL",
+        "hazard_proximity": False,
+        "persons_nearby_count": 2,
     }).encode("utf-8")
-    sender.sendto(payload_crit, dest)
+    sender.sendto(payload_critical, destination)
 
     status, stamp = rx.poll(now_us=134_000)
-    assert status == "CRITICAL", f"Expected CRITICAL, got {status}"
+    assert status == HSR_CRITICAL, f"Expected CRITICAL, got {status}"
     assert stamp == 132_000, f"Expected stamp 132000, got {stamp}"
-    assert rx.last_obs_id == 2
+    assert rx.last_obs_id == 3
 
-    # 5. Empty subsequent tick holds previous values in nominal state
+    # 6. Empty subsequent tick holds previous values in nominal state.
     status, stamp = rx.poll(now_us=164_000)
-    assert status == "CRITICAL", "Held status must persist on nominal idle tick"
+    assert status == HSR_CRITICAL, "Held status must persist on nominal idle tick"
     assert stamp == 132_000, "Held timestamp must persist on nominal idle tick"
 
-    # 6. Frozen frame detection: Repeated obs_id=2 at fresh time
+    # 7. Repeated obs_id detects a frozen frame and clears the held status.
     payload_frozen = json.dumps({
-        "obs_id": 2,
+        "obs_id": 3,
         "t_obs_us": 165_000,
         "t_emit_us": 166_000,
         "distress_permille": 0,
         "state": "CLEAR",
+        "hazard_proximity": False,
+        "persons_nearby_count": 2,
     }).encode("utf-8")
-    sender.sendto(payload_frozen, dest)
+    sender.sendto(payload_frozen, destination)
 
     status, stamp = rx.poll(now_us=167_000)
-    assert status is None and stamp is None, "Frozen frame must clear status to trip gate"
-    assert rx.frozen_latched is True, "Frozen latch must be set"
+    assert status is None and stamp is None, "Frozen frame must clear status to trip the Gate"
+    assert rx.frozen_latched is True
 
-    # 7. Idle tick during freeze remains sticky fail-closed
+    # 8. Idle tick during freeze remains sticky fail-closed.
     status, stamp = rx.poll(now_us=199_000)
     assert status is None and stamp is None, "Frozen latch must remain sticky on idle ticks"
 
-    # 8. Reset clears latch and returns to clean state
+    # 9. Reset clears stream state but preserves lifetime diagnostic history.
+    drained_before_reset = rx.packets_drained_total
+    rejected_before_reset = rx.packets_rejected_total
+    reason_before_reset = rx.last_rejection_reason
     rx.reset()
     assert rx.frozen_latched is False
     assert rx.last_obs_id is None
+    assert rx.last_status is None and rx.last_stamp_us is None
+    assert rx.packets_drained_total == drained_before_reset
+    assert rx.packets_rejected_total == rejected_before_reset
+    assert rx.last_rejection_reason == reason_before_reset
 
-    # 9. Producer restart & 5-tick dwell verification
+    # 10. Producer restart & 5-tick dwell verification across counter regression.
     # Bring up to obs_id = 500
-    p_up = json.dumps({"obs_id": 500, "t_obs_us": 200_000, "t_emit_us": 201_000, "distress_permille": 0, "state": "CLEAR"}).encode("utf-8")
-    sender.sendto(p_up, dest)
+    p_up = json.dumps({
+        "obs_id": 500,
+        "t_obs_us": 200_000,
+        "t_emit_us": 201_000,
+        "distress_permille": 0,
+        "state": "CLEAR",
+        "hazard_proximity": False,
+        "persons_nearby_count": 2,
+    }).encode("utf-8")
+    sender.sendto(p_up, destination)
     status, _ = rx.poll(now_us=202_000)
     assert status == "CLEAR" and rx.last_obs_id == 500
 
     # Producer restarts: obs_id drops to 0 (counter regression)
-    p_rst = json.dumps({"obs_id": 0, "t_obs_us": 232_000, "t_emit_us": 233_000, "distress_permille": 0, "state": "CLEAR"}).encode("utf-8")
-    sender.sendto(p_rst, dest)
+    p_rst = json.dumps({
+        "obs_id": 0,
+        "t_obs_us": 232_000,
+        "t_emit_us": 233_000,
+        "distress_permille": 0,
+        "state": "CLEAR",
+        "hazard_proximity": False,
+        "persons_nearby_count": 2,
+    }).encode("utf-8")
+    sender.sendto(p_rst, destination)
     status, stamp = rx.poll(now_us=234_000)
     assert rx.rebase_in_progress is True
     assert rx.rebase_streak == 0
@@ -312,31 +423,56 @@ def _self_test() -> None:
 
     # Burst of 3 packets in 1 tick only credits 1 streak
     for i in (1, 2, 3):
-        p_b = json.dumps({"obs_id": i, "t_obs_us": 264_000, "t_emit_us": 265_000, "distress_permille": 0, "state": "CLEAR"}).encode("utf-8")
-        sender.sendto(p_b, dest)
+        p_b = json.dumps({
+            "obs_id": i,
+            "t_obs_us": 264_000,
+            "t_emit_us": 265_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
+        }).encode("utf-8")
+        sender.sendto(p_b, destination)
     status, _ = rx.poll(now_us=266_000)
     assert rx.rebase_streak == 1, "Burst in single tick must credit at most 1 streak"
     assert status is None
 
     # Ticks 2, 3, 4 with advancing CLEAR packets
     for i in range(2, 5):
-        pkt = json.dumps({"obs_id": 3 + i, "t_obs_us": 264_000 + i * 32_000, "t_emit_us": 265_000 + i * 32_000, "distress_permille": 0, "state": "CLEAR"}).encode("utf-8")
-        sender.sendto(pkt, dest)
+        pkt = json.dumps({
+            "obs_id": 3 + i,
+            "t_obs_us": 264_000 + i * 32_000,
+            "t_emit_us": 265_000 + i * 32_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
+        }).encode("utf-8")
+        sender.sendto(pkt, destination)
         status, _ = rx.poll(now_us=266_000 + i * 32_000)
         assert rx.rebase_streak == i
         assert status is None
 
     # Tick 5 completes dwell
-    pkt_fin = json.dumps({"obs_id": 8, "t_obs_us": 424_000, "t_emit_us": 425_000, "distress_permille": 0, "state": "CLEAR"}).encode("utf-8")
-    sender.sendto(pkt_fin, dest)
+    pkt_fin = json.dumps({
+        "obs_id": 8,
+        "t_obs_us": 424_000,
+        "t_emit_us": 425_000,
+        "distress_permille": 0,
+        "state": "CLEAR",
+        "hazard_proximity": False,
+        "persons_nearby_count": 2,
+    }).encode("utf-8")
+    sender.sendto(pkt_fin, destination)
     status, stamp = rx.poll(now_us=426_000)
     assert rx.rebase_in_progress is False
     assert rx.rebase_streak == 0
     assert status == "CLEAR" and stamp == 424_000, "5th clean tick must complete rebase and restore CLEAR"
 
     rx.close()
+    test_sock.close()
     sender.close()
-    print("[HSR RECEIVER SELF-TEST] 9/9 assertions PASSED cleanly.")
+    print("[HSR RECEIVER DIAGNOSTICS SELF-TEST] All 10 assertion suites PASSED cleanly.")
 
 
 if __name__ == "__main__":
