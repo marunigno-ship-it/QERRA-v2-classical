@@ -14,10 +14,17 @@ import json
 import math
 import os
 import socket
+import sys
 import threading
 import time
 import unittest
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+# Ensure repository root is on sys.path when test is run directly
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from gate.gate_core import GateState, Mode, Proposal
 
@@ -128,6 +135,8 @@ if ROS2_AVAILABLE:
             obs_id: int,
             state: str = "CLEAR",
             distress_permille: int = 0,
+            hazard_proximity: bool = False,
+            persons_nearby_count: int = 2,
         ) -> None:
             """Transmits a causal HSR reflex datagram stamped to current ROS clock."""
             now_us = self.get_clock().now().nanoseconds // 1_000
@@ -137,6 +146,8 @@ if ROS2_AVAILABLE:
                 "t_emit_us": now_us + 1_000,
                 "distress_permille": int(distress_permille),
                 "state": str(state),
+                "hazard_proximity": bool(hazard_proximity),
+                "persons_nearby_count": int(persons_nearby_count),
             }).encode("utf-8")
             self._udp_sock.sendto(payload, ("127.0.0.1", self._udp_port))
 
@@ -387,6 +398,8 @@ class TestQerraGateNodeRegressions(unittest.TestCase):
                 "t_emit_us": now_us - 4_000,
                 "distress_permille": 0,
                 "state": "CLEAR",
+                "hazard_proximity": False,
+                "persons_nearby_count": 2,
             }).encode("utf-8")
             sender.sendto(pkt, ("127.0.0.1", port))
 
