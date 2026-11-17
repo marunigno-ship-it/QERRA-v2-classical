@@ -232,6 +232,8 @@ def format_gate_state_json(
     hsr_source: str = "none",
     hsr_required: bool = False,
     hsr_drained: int = 0,
+    hsr_rejected: int = 0,
+    hsr_last_rejection_reason: Optional[str] = None,
     hsr_error: Optional[str] = None,
     hsr_frozen: bool = False,
     hsr_rebase: bool = False,
@@ -239,7 +241,7 @@ def format_gate_state_json(
     fault_latched: bool = False,
     fault_reason: Optional[str] = None,
 ) -> str:
-    """Formats gate decision and state metrics into a clean JSON string."""
+    """Formats gate decision and state metrics into a clean JSON string with diagnostics."""
     if fault_latched:
         mode_str = "FAULT"
         reason_str = f"NODE_FAULT_LATCHED: {fault_reason}"
@@ -277,6 +279,8 @@ def format_gate_state_json(
         "hsr_source": hsr_source,
         "hsr_required": hsr_required,
         "hsr_drained_total": hsr_drained,
+        "hsr_rejected_total": hsr_rejected,
+        "hsr_last_rejection_reason": hsr_last_rejection_reason,
         "hsr_socket_error": hsr_error,
         "hsr_frozen": hsr_frozen,
         "hsr_rebase_in_progress": hsr_rebase,
@@ -543,6 +547,8 @@ if ROS2_AVAILABLE:
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
+                    hsr_rejected=getattr(self._hsr_receiver, "packets_rejected_total", 0),
+                    hsr_last_rejection_reason=getattr(self._hsr_receiver, "last_rejection_reason", None),
                     hsr_error=getattr(self._hsr_receiver, "socket_error", None),
                     hsr_frozen=getattr(self._hsr_receiver, "frozen_latched", False),
                     hsr_rebase=getattr(self._hsr_receiver, "rebase_in_progress", False),
@@ -556,11 +562,9 @@ if ROS2_AVAILABLE:
 
         def _tick_callback(self) -> None:
             """Deterministic Gate evaluation tick (Fail-Closed Guarantees)."""
-            # Early exit if ROS 2 context is shutting down (SIGINT / Ctrl+C)
             if not rclpy.ok():
                 return
 
-            # Node fault latch: if previously tripped, remain fail-closed permanently
             if self._fault_latch.is_latched:
                 if rclpy.ok():
                     try:
@@ -576,11 +580,9 @@ if ROS2_AVAILABLE:
                 reset_source = RESET_SOURCE_OPERATOR if self._reset_requested else None
                 self._reset_requested = False
 
-                # Consume invalid proposal flag for this control tick
                 proposal_invalid = self._proposal_invalid
                 self._proposal_invalid = False
 
-                # Echo clock to synthetic producer on port 5007
                 send_state(self._state_sock, now_us, port=self._state_port)
 
                 # Poll HSR reflex telemetry stream (stream monitor & freeze detection)
@@ -614,7 +616,6 @@ if ROS2_AVAILABLE:
 
                 # Actuator publication (fail-closed clamped)
                 if self._log_write_failed:
-                    # R-10 Fail-Closed: if audit log write failed, immediately zero actuator command
                     safe_linear_x = 0.0
                     safe_angular_z = 0.0
                 else:
@@ -633,7 +634,7 @@ if ROS2_AVAILABLE:
                 safe_twist.angular.z = safe_angular_z
                 self._pub_cmd_safe.publish(safe_twist)
 
-                # Publish diagnostic state telemetry (including t_react, HSR, flight log, and events)
+                # Publish diagnostic state telemetry
                 state_msg = String()
                 state_msg.data = format_gate_state_json(
                     self._state,
@@ -646,21 +647,21 @@ if ROS2_AVAILABLE:
                     log_write_failed=self._log_write_failed,
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
-                    hsr_drained=self._hsr_receiver.packets_drained_total,
-                    hsr_error=self._hsr_receiver.socket_error,
-                    hsr_frozen=self._hsr_receiver.frozen_latched,
-                    hsr_rebase=self._hsr_receiver.rebase_in_progress,
-                    hsr_rebase_streak=self._hsr_receiver.rebase_streak,
+                    hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
+                    hsr_rejected=getattr(self._hsr_receiver, "packets_rejected_total", 0),
+                    hsr_last_rejection_reason=getattr(self._hsr_receiver, "last_rejection_reason", None),
+                    hsr_error=getattr(self._hsr_receiver, "socket_error", None),
+                    hsr_frozen=getattr(self._hsr_receiver, "frozen_latched", False),
+                    hsr_rebase=getattr(self._hsr_receiver, "rebase_in_progress", False),
+                    hsr_rebase_streak=getattr(self._hsr_receiver, "rebase_streak", 0),
                     fault_latched=False,
                     fault_reason=None,
                 )
                 self._pub_state.publish(state_msg)
 
             except Exception as exc:
-                # If context was already shut down by SIGINT, exit cleanly without logging/publishing
                 if not rclpy.ok():
                     return
-                # Trip persistent node-level fault latch fail-closed
                 self._fault_latch.trip(exc)
                 try:
                     self.get_logger().error(
