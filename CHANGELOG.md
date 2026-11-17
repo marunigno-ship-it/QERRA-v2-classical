@@ -3,16 +3,18 @@
 SEMEV-12 vectors are maintained as a stable core across versions. This log
 records additions, changes, fixes and retired integration paths.
 
-## [Unreleased] — Standalone ROS 2 Gate Node: Packaging, Native Jazzy CI, Fault Latch, Perception Stream Monitor, Timing Profiles, Flight Log, Adversarial Verification, Live DDS Traffic, Dual-Protocol Watchdogs, Launch Configuration, Pattern B Remapping, Node Regressions & CI Isolation (2026-10-30 to 2026-11-15)
+## [Unreleased] — Standalone ROS 2 Gate Node: Packaging, Native Jazzy CI, Fault Latch, Perception Stream Monitor, Timing Profiles, Flight Log, Adversarial Verification, Live DDS Traffic, Dual-Protocol Watchdogs, Launch Configuration, Pattern B Remapping, Node Regressions & CI Isolation, Phase 1 Non-Finite Twist Inhibition, Layer 1B Wire Contract v0.4.0, Receiver Diagnostics & ODD Documentation Alignment (2026-10-30 to 2026-11-17)
 
-### Current branch baseline — 15 November 2026
+### Current branch baseline — 17 November 2026
 
-The current verified `main` baseline is commit `be45e4c`. The standalone ROS 2
-package `qerra_core` is at package version `2.4.1` (ROS package format 3,
-`ament_python`, Apache-2.0). The repository's Git tag list is currently empty;
-`2.4.1` is package metadata on `main`, not a tagged release. Gate Core remains
+The current verified code baseline on `main` is commit `027438a` (17 November
+2026), following Phase 1 non-finite Twist inhibition at commit `fb1eb2b` and
+Phase 2 Milestones 2.1–2.3. The standalone ROS 2 package `qerra_core` remains
+at package version `2.4.1` (ROS package format 3, `ament_python`, Apache-2.0);
+no new Git release tag has been created for these updates. Gate Core remains
 v0.4, the ROS 2 node `qerra_gate_node` remains v0.3.1, and the HSR telemetry
-contract (`gate/hsr_telemetry.py`) remains v0.3.1.
+contract (`gate/hsr_telemetry.py`) is updated from v0.3.1 to v0.4.0. Milestone
+2.3 aligns the documentation with this 17 November 2026 baseline.
 
 `qerra_core` is built as a standalone package. The experimental
 `src/qerra_msgs` subtree is masked by `src/qerra_msgs/COLCON_IGNORE`, is not a
@@ -38,24 +40,29 @@ the test output in each workflow is the authority for the reported counts.
 | 2026-11-10 | `ci(jazzy)` | #802 | #68 | 218 (211 pass, 7 skip) | 32 (17 + 8 + 4 + 2 + 1) |
 | 2026-11-11 | `ci(nav2)` | #808 | #75 | 222 (211 pass, 11 skip) | 36 (17 + 8 + 4 + 2 + 1 + 4) |
 | **2026-11-15** | **`be45e4c`** | **#834 — passed (1 min 6 s)** | **#99 — passed (1 min 4 s)** | **230 collected: 217 passed, 13 skipped, 0 failed** | **40 passed (19 + 8 + 4 + 4 + 1 + 4)** |
+| **2026-11-16** | **`fb1eb2b`** | **#842 at `1505db1`; green on `fb1eb2b`** | **#111 — passed (1 min 12 s)** | **241 collected: 227 passed, 14 skipped, 0 failed** | **43 passed (21 + 8 + 5 + 4 + 1 + 4)** |
+| **2026-11-17** | **`027438a`** | **#857 — passed (1 min 20 s)** | **#122 — passed (1 min 10 s)** | **257 collected: 243 passed, 14 skipped, 0 failed** | **43 passed (21 + 8 + 5 + 4 + 1 + 4)** |
 
-The 13 host skips are expected on Windows without `rclpy`: 4 live-traffic
-tests, 4 dual-protocol/node-regression tests, 1 remapping test, and 4
-Nav2-compatible exterior tests. The separate `hsr/` suite contributes another
-20 passing tests in Test Suite run #834; these 20 tests are not included in
-the 230-test `tests/` host count.
+The 14 host skips on Windows without `rclpy` are: 5 live-traffic tests
+(`test_gate_ros2_live_traffic.py`), 4 dual-protocol/node-regression tests
+(`test_gate_ros2_dual_protocol.py`), 1 remapping test
+(`test_gate_ros2_remapping.py`), and 4 Nav2-compatible exterior tests
+(`test_gate_ros2_nav2_exterior.py`). The separate `hsr/` suite contributes 20
+passing tests in Test Suite run #857; these tests are not included in the 257
+`tests/` host count.
 
-The 40 native Jazzy container tests are distributed as follows:
+The 43 native Jazzy container tests are distributed across six modules as
+follows:
 
 | Test module | Tests | Coverage |
 |---|---:|---|
-| `tests/test_gate_ros2_node.py` | 19 | 17 existing node/translator tests plus the 10 Hz `dt_us` scaling and post-reset HSR phase-sweep regressions |
+| `tests/test_gate_ros2_node.py` | 21 | Node translator and regression tests, including non-finite Twist handling and timing configuration |
 | `tests/test_gate_ros2_node_wiring.py` | 8 | Node wiring, parameter construction, forged-input and fault-injection cases |
-| `tests/test_gate_ros2_live_traffic.py` | 4 | Live DDS traffic and Layer 1A watchdog scenarios |
-| `tests/test_gate_ros2_dual_protocol.py` | 4 | 2 live DDS/UDP dual-protocol tests plus 2 actual `QerraGateNode` regressions |
+| `tests/test_gate_ros2_live_traffic.py` | 5 | Live DDS traffic, Layer 1A watchdog, and non-finite Twist inhibition/recovery scenarios |
+| `tests/test_gate_ros2_dual_protocol.py` | 4 | Live DDS/UDP dual-protocol tests and actual `QerraGateNode` regressions; valid HSR packets include the v0.4.0 mandatory fields |
 | `tests/test_gate_ros2_remapping.py` | 1 | Pattern B topic remapping |
 | `tests/test_gate_ros2_nav2_exterior.py` | 4 | Nav2-compatible exterior command-interface harness |
-| **Total** | **40** | **Native `rclpy` execution in `ros:jazzy`** |
+| **Total** | **43** | **Native `rclpy` execution in `ros:jazzy`** |
 
 The 2 new tests in `test_gate_ros2_node.py` are
 `test_10hz_dt_us_scales_max_tick_gap_and_allows_dwell_recovery` and
@@ -67,6 +74,9 @@ propagation and that an accepted reset preserves the receiver's state.
 
 ### Added
 
+- **Exhaustive Layer 1B conformance & wire-security suite (17 Nov) (`tests/test_hsr_conformance.py`):** Added 8 standard-library `unittest` tests sweeping 28,028 valid grid combinations (`0..1000` permille × hazard × `0..6` persons × interruptibility) to verify exact 0.001-grid equivalence between `hsr/qerra_hsr.py` and `gate/hsr_telemetry.py`, plus threshold constant synchronization, a 24-case malformed-payload matrix, and a NaN asymmetry pin.
+- **HSR UDP receiver diagnostics & standard-library test suite (17 Nov) (`ros2/hsr_receiver.py`, `ros2/qerra_gate_node.py`, `tests/test_hsr_receiver_diagnostics.py`):** Added process-lifetime monotonic `packets_drained_total`, `packets_rejected_total`, and sanitized `last_rejection_reason` categories (at most 64 characters, never echoing raw wire values); exported `hsr_rejected_total` and `hsr_last_rejection_reason` on `/gate/state`; added 8 `unittest` tests using `FakeDatagramSocket` and `WindowsMessageTooLargeError` (`WSAEMSGSIZE`, 10040).
+- **Phase 1 non-finite Twist command inhibition (16 Nov, `fb1eb2b`) (`gate/gate_core.py`, `ros2/qerra_gate_node.py`, `gate/gate_log.py`):** Added `GateInputs.proposal_invalid` and `GateState.proposal_inhibited`. Non-finite (`NaN`/`Inf`) `Twist` inputs now emit `Event.MSG_REJECTED_INVALID`, force immediate `(0, 0)` wheel output in `Mode.RUN` without refreshing `held.sim_stamp_us`, automatically recover on a fresh valid `Twist`, or escalate via `TRIP_PROPOSER_STALE` at 150 ms. Added 7 core tests (`test_gate_core.py`, total 61), 2 node translator/telemetry tests (`test_gate_ros2_node.py`, total 21), 1 live DDS inhibition/recovery test (`test_gate_ros2_live_traffic.py`, total 5), and 1 bit-for-bit flight-log replay regression (`test_gate_log.py`, total 16).
 - **Rate-scaled Gate Core timing regression coverage (15 Nov) (`tests/test_gate_ros2_node.py`):** Added a pure-Python 10 Hz parameter/dwell regression. With `dt_us=100_000`, `max_tick_gap_us` is `200_000` (2 × `dt_us`), and a continuous dwell remains valid across nominal 100 ms ticks. Added an actual-node regression in `tests/test_gate_ros2_dual_protocol.py` to verify that `QerraGateNode` propagates its `rate_hz`-derived `self._dt_us` into `get_live_gate_params()`.
 - **HSR post-reset continuity regression coverage (15 Nov) (`tests/test_gate_ros2_node.py`, `tests/test_gate_ros2_dual_protocol.py`):** Added a pure-Python `HsrReceiver`/`step()` phase sweep across 40 ms and 50 ms UDP producer periods, testing every 1 ms phase offset across `RESET_ACCEPTED`. Added an actual ROS-node regression verifying that the accepted-reset path preserves `HsrReceiver` state. This protects against a phase-dependent false `TRIP_HSR_INVALID` on the first `RUN` tick for HSR streams slower than the 31.25 Hz gate tick.
 - **CI process and DDS isolation checks (15 Nov) (`.github/workflows/ros2_jazzy.yml`):** Added per-step `ROS_DOMAIN_ID` isolation using IDs 11–18 so tests and launch processes do not discover traffic from other workflow steps. Added explicit `pkill -9 -f "[q]erra_gate_node"` cleanup after launch/executable steps and a follow-up process check. A remaining `<defunct>` process entry is distinguished from a live node process; the check is intended to ensure no active orphaned gate node contaminates later tests.
@@ -89,6 +99,8 @@ propagation and that an accepted reset preserves the receiver's state.
 
 ### Changed
 
+- **HSR telemetry wire contract hardened to v0.4.0 (17 Nov) (`gate/hsr_telemetry.py`, `tests/`):** Eliminated fail-open `.get()` defaults by making `hazard_proximity` (`bool`) and `persons_nearby_count` (`int >= 0`) strictly mandatory in `parse_hsr_telemetry()`. Conformed `test_gate_ipc.py`, `test_adversarial_hsr.py`, `test_gate_ros2_node.py`, `test_gate_ros2_dual_protocol.py`, and `ros2/hsr_receiver.py` `_self_test()`.
+- **Monotonic lifetime diagnostics & Windows socket handling (17 Nov) (`ros2/hsr_receiver.py`):** Preserved `packets_drained_total`, `packets_rejected_total`, and `last_rejection_reason` across `reset()`; excluded `WSAECONNRESET` (`10054`) from drained counts and counted `WSAEMSGSIZE` (`10040`) as `oversized_datagram` rejection.
 - **Package version and standalone package boundary (15 Nov) (`package.xml`, `setup.py`, `src/qerra_msgs/COLCON_IGNORE`, `.github/workflows/ros2_jazzy.yml`):** Synchronized `qerra_core` package metadata in `package.xml` and `setup.py` to `2.4.1`. The root package remains format 3, `ament_python`, Apache-2.0. Removed `qerra_msgs` from the root package dependencies, added/retained `src/qerra_msgs/COLCON_IGNORE` to mask that subtree, and excluded it from the Jazzy build. Package version `2.4.1` is not yet represented by a Git tag.
 - **AR-2 reverse-command clamping (15 Nov) (`gate/gate_core.py`, `LIMITATIONS.md`):** Documented AR-2 Option A with `w_min_urad_s = 0`: if either wheel proposal is negative, both wheel outputs are clamped symmetrically to `(0, 0)`. This is a command-envelope clamp, not a separate trip. No clamp Event is emitted. Consequently, `/gate/state` may report `mode="RUN"`, `reason="PASS"` and an empty `events` list while `cmd_left_urad_s` and `cmd_right_urad_s` report the clamped zero commands. `Reason.PASS` means no trip fired on that tick; it does not guarantee unclamped passthrough.
 - **Rate-dependent dwell continuity (15 Nov) (`ros2/qerra_gate_node.py`, `gate/gate_config.py`):** Corrected the node to store the timer period derived from `rate_hz` as `self._dt_us` and pass `dt_us=self._dt_us` to `get_live_gate_params()`. The resulting `max_tick_gap_us` is `2 * dt_us`: 64,000 µs at the default 31.25 Hz (32 ms) and 200,000 µs at 10 Hz (100 ms). This fixes dwell continuity when the node is configured below its default rate.
@@ -104,6 +116,8 @@ propagation and that an accepted reset preserves the receiver's state.
 
 ### Fixed
 
+- **Mitigated non-finite (`NaN`/`Inf`) Twist hold-last-valid gap (16 Nov, `fb1eb2b`) (`ros2/qerra_gate_node.py`, `gate/gate_core.py`):** Replaced hold-last-valid behavior on rejected non-finite Twists with immediate `(0, 0)` software command inhibition (`proposal_inhibited=True`, `Event.MSG_REJECTED_INVALID`).
+- **Fixed fail-open optional defaults in HSR wire parser (17 Nov, `027438a`) (`gate/hsr_telemetry.py`):** Omitted `hazard_proximity` or `persons_nearby_count` fields now raise `ValueError` instead of silently disabling isolation escalation.
 - **`dt_us` propagation into live gate parameters (15 Nov) (`ros2/qerra_gate_node.py`):** Fixed an omission where the node calculated and validated its timer period from `rate_hz` but did not pass that period to `get_live_gate_params()`. At 10 Hz, the core now receives `dt_us=100_000` and derives `max_tick_gap_us=200_000`, preserving the intended dwell-continuity tolerance.
 - **Post-reset HSR false re-trip (15 Nov) (`ros2/qerra_gate_node.py`):** Removed the post-`RESET_ACCEPTED` call to `HsrReceiver.reset()`. The one-second fresh-CLEAR dwell has already established continuity; retaining receiver state prevents the next tick from interpreting the cleared receiver state as missing/invalid telemetry solely because a valid UDP packet has not arrived within that 32 ms phase.
 - **Linux UDP flood-test packet loss (15 Nov) (`tests/test_adversarial_hsr.py`):** Increased the test socket's receive-buffer request to 1 MiB before binding, with `OSError` handling, so Linux's default socket receive buffer does not discard packets in the test burst before the receiver drains them. This corrects test determinism, not the production 256-datagram drain limit.
@@ -114,23 +128,31 @@ propagation and that an accepted reset preserves the receiver's state.
 
 ### Known behaviour and retained limitations
 
-- **Non-finite Twist proposals (15 Nov) (`ros2/qerra_gate_node.py`, `gate/gate_core.py`):** `twist_to_proposal()` rejects NaN/Inf values with `ValueError`. `_cmd_vel_callback()` logs the rejection and sets `_latest_proposal = None`. The core treats an absent new proposal as no update and retains `state.held`; therefore the previously accepted non-zero command may remain the held command until the proposer watchdog expires at `t_watch_us = 150_000` and produces `TRIP_PROPOSER_STALE`. This path is not an immediate zero-command stop. It remains a documented limitation for a later explicit fail-closed policy decision.
+- **Non-finite Twist proposals — resolved in Phase 1 (16 Nov, `fb1eb2b`) (`ros2/qerra_gate_node.py`, `gate/gate_core.py`):** A rejected non-finite (`NaN`/`Inf`) Twist now immediately inhibits the Gate output to `(0, 0)` in `Mode.RUN` and emits `MSG_REJECTED_INVALID`; it does not refresh the held proposal timestamp. Residual boundaries remain: `(0, 0)` is a software setpoint, not a physical stop, and rapid alternating `VALID -> NaN -> VALID` proposals can refresh the held timestamp on valid samples without a separate chattering-debounce mechanism.
 - **AR-2 diagnostic semantics (15 Nov):** The symmetrical `(0, 0)` reverse clamp is reflected in the published wheel-command fields but does not currently emit a dedicated Event. `PASS` reports that no trip fired, not that the proposal passed through unchanged.
 - **HSR timing (15 Nov):** The default 96 ms freshness threshold does not support nominal 10 Hz / 100 ms HSR producers. At least 20 Hz is the practical nominal producer-rate boundary for the current threshold, not a guarantee under jitter or end-to-end delays.
+- **HSR `MONITOR` semantics (17 Nov):** `MONITOR` imposes no velocity cap in `Mode.RUN`; the configured 3.0 rad/s wheel envelope at a 98 mm radius bounds the nominal linear wheel speed at 0.294 m/s. Speed-and-Separation Monitoring cannot be justified from the current HSR wire packet because it carries no person-distance metric. `MONITOR` resets `hsr_clear_since_us` and blocks recovery by preventing clear-dwell completion and rejecting operator resets (`RESET_REJECTED_HAZARD`) while the Gate is latched in `TRIPPED` or `AWAITING_RESET`.
+- **HSR ODD and threshold non-claim (17 Nov):** The 0.45 / 0.75 normalized distress thresholds (450 / 750 permille) and `ISOLATION_COUNT_THRESHOLD = 1` are author-chosen engineering placeholders, not validated against a human population, posture, gait, or sensor data. ODD profiles are configuration slots; only the default profile is exercised in simulation and CI. The current wire contract carries no person-distance metric. No claim is made about real-distress detection, false-alarm rate, or miss rate.
+- **ROS callback execution assumption (17 Nov):** `QerraGateNode` currently relies on `rclpy.spin(node)` and the default single-threaded executor path to serialize subscription and timer callbacks without explicit mutex locks. The default callback group is mutually exclusive; concurrent access is a concern if shared-state callbacks are moved into separate or reentrant groups, or otherwise run concurrently under a multithreaded executor. In that case, `_latest_proposal`, `_latest_ranges`, and `_reset_requested` require explicit callback-group or synchronization design.
+- **HSR contradictory-frame handling / black-channel boundary (17 Nov):** Under the intended black-channel treatment, rejected contradictory datagrams (including `state_mismatch` and timestamp-causality failures) are dropped, counted in `hsr_rejected_total`, and assigned fixed rejection categories; they do not independently trigger `TRIP_HSR_INVALID`. If valid `CLEAR` frames continue to arrive interleaved with rejected contradictory frames, the last valid `CLEAR` remains held. The 96 ms HSR freshness watchdog trips only when valid frames stop refreshing that held status long enough for it to become stale.
 - **ROS 2 actuator authority:** Topic remapping remains configuration, not publisher authentication or exclusive base-controller access control. The Nav2-compatible exterior tests use a harness and do not instantiate an actual Nav2 stack.
 - **Software stop and hardware boundary:** A zero `Twist` is a software velocity setpoint, not an emergency stop, mechanical brake or hardware STO. No physical robot tests, functional-safety certification, PL/SIL claim or standards conformity are implied by green CI.
 
 ### Testing & Validation
 
-- **Host suite (15 Nov):** 230 tests collected under `tests/`; 217 passed, 13 cleanly skipped on Windows without `rclpy`, and 0 failed. The 13 expected skips comprise 4 live-traffic tests, 4 dual-protocol/node-regression tests, 1 remapping test and 4 Nav2-compatible exterior tests.
-- **HSR suite (15 Nov):** 20 tests passed separately under `hsr/` in Test Suite workflow run #834; they are not included in the 230 host `tests/` count.
-- **Native ROS 2 Jazzy suite (15 Nov):** 40 tests passed in the official `ros:jazzy` container: 19 node tests + 8 wiring tests + 4 live-traffic tests + 4 dual-protocol/node-regression tests + 1 remapping test + 4 Nav2-compatible exterior tests.
-- **GitHub Actions evidence (15 Nov, commit `be45e4c`):** `QERRA-v2 Classical Test Suite` (`tests.yml`) run #834 passed in 1 min 6 s; `ROS 2 Jazzy Validation` (`ros2_jazzy.yml`) run #99 passed in 1 min 4 s.
+- **16 November baseline (`fb1eb2b`):** 241 host tests collected under `tests/`; 227 passed, 14 cleanly skipped without `rclpy`, and 0 failed. The native ROS 2 Jazzy container suite passed 43 tests. Test Suite run #842 passed at intermediate commit `1505db1` and the workflow was green on `fb1eb2b`; ROS 2 Jazzy Validation run #111 passed in 1 min 12 s.
+- **17 November baseline (`027438a`):** 257 host tests collected under `tests/` by `python -m unittest discover -s tests -p "test_*.py"`; 243 passed, 14 cleanly skipped without `rclpy`, and 0 failed. The author's local Windows 11 runs used Python 3.12 and 3.14; the GitHub Actions Ubuntu host job (`tests.yml`) uses Python 3.10. The native ROS 2 Jazzy suite passed 43 tests in the official `ros:jazzy` container. Test Suite run #857 passed in 1 min 20 s; ROS 2 Jazzy Validation run #122 passed in 1 min 10 s.
+- **New Layer 1B conformance suite (`tests/test_hsr_conformance.py`):** 8 standard-library `unittest` tests, including a 28,028-case grid sweep verifying 0.001-grid float-to-permille equivalence and threshold synchronization, plus a 24-case rejected-payload matrix and a NaN asymmetry pin.
+- **New HSR receiver diagnostics suite (`tests/test_hsr_receiver_diagnostics.py`):** 8 standard-library `unittest` tests using `FakeDatagramSocket` and `WindowsMessageTooLargeError` to exercise monotonic receiver counters and bounded sanitized rejection categories.
+- **v0.4.0 fixture conformance:** `test_gate_ipc.py`, `test_adversarial_hsr.py`, `test_gate_ros2_node.py`, and `test_gate_ros2_dual_protocol.py` were updated so valid wire payloads include the mandatory `hazard_proximity` and `persons_nearby_count` fields. Malformed-input cases in `test_gate_ros2_node_wiring.py` intentionally omit required fields to verify rejection.
+- **QERRA-HSR suite:** 20 tests passed separately under `hsr/` in Test Suite run #857; they are not included in the 257 host `tests/` count.
+- **Native ROS 2 Jazzy suite:** 43 tests passed in the official `ros:jazzy` container across six modules: 21 node tests + 8 wiring tests + 5 live-traffic tests + 4 dual-protocol/node-regression tests + 1 remapping test + 4 Nav2-compatible exterior tests. `test_gate_ros2_dual_protocol.py` executes against the v0.4.0 mandatory HSR wire fields.
 - **ROS 2 import enforcement:** `tests/test_gate_ros2_dual_protocol.py` and `tests/test_gate_ros2_nav2_exterior.py` both enforce `QERRA_REQUIRE_ROS2="1"` in the Jazzy environment; a ROS import failure is an error rather than a silent skip in these modules.
-- **Historical suite evolution:** The 11 November baseline was 222 host tests (211 passed, 11 skipped) and 36 Jazzy tests. The 15 November baseline supersedes those counts; historical entries in the table above are retained for traceability.
+- **Historical suite evolution:** The 11 November baseline was 222 host tests (211 passed, 11 skipped) and 36 Jazzy tests. The 15 November baseline and the subsequent 16–17 November baselines supersede those counts; historical entries in the table above are retained for traceability.
 
 ### Documentation
 
+- **Milestone 2.3 documentation alignment (17 Nov, `027438a`):** Aligned `SAFETY_CONCEPT.md` v0.11, `README.md`, `LIMITATIONS.md`, and `TECHNICAL_BRIEF_ROS2_GATE.md` v1.6.0 with the 17 November 2026 software baseline, including the Phase 1 non-finite Twist inhibition, Layer 1B wire contract v0.4.0, receiver diagnostics, updated evidence counts, and the ODD/threshold non-claim boundaries.
 - **`TECHNICAL_BRIEF_ROS2_GATE.md` updated to document 1.4.0 (15 Nov):** Updated the software baseline to `qerra_core` 2.4.1 on commit `be45e4c`, corrected the standalone package boundary, test evidence and 14-parameter launch interface, and documented rate-scaled `dt_us`, AR-2 symmetrical clamping, HSR freshness/rate boundary, post-reset receiver continuity and the non-finite Twist hold-last-valid behaviour.
 - **`LIMITATIONS.md` synchronized to v2.4.1 (15 Nov):** Documented AR-2 Option A symmetrical `(0, 0)` clamping while retaining the historical stationary-wheel wording; added the 96 ms HSR freshness/20 Hz practical producer-rate boundary and the non-finite Twist hold-last-valid limitation.
 - **Safety-concept comparison note in `TECHNICAL_BRIEF_ROS2_GATE.md` (15 Nov):** Updated the brief's comparison note to identify `qerra_core` Release v2.4.1 on `main`. The cited `SAFETY_CONCEPT.md` baseline remains v0.10; this documentation alignment does not change the Gate Core version or claim safety certification.
