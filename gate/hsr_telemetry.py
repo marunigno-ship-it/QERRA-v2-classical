@@ -1,7 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Marussa Metocharaki
 """
 QERRA-v2 Classical — Layer 1B Telemetry Contract
 Module: gate.hsr_telemetry
-Version: 0.3.1 (Explicit Elapsed-Time Dwell Hardening)
+Version: 0.4.0 (Mandatory 3-Vector Field Hardening)
 License: Apache-2.0
 
 Pure-standard-library telemetry contract, validation, reduction, and stream
@@ -110,13 +112,13 @@ def parse_hsr_telemetry(
     """
     Parse and strictly validate a wire payload (JSON string or bytes).
 
-    Invariants enforced:
+    Invariants enforced (Fail-Closed):
       1. obs_id >= 0
       2. 0 <= t_obs_us <= t_emit_us
       3. t_obs_us <= t_rx_us (rejects future timestamps fail-closed)
       4. 0 <= distress_permille <= 1000 (strictly integer)
-      5. Optional hazard_proximity must be boolean.
-      6. Optional persons_nearby_count must be integer >= 0.
+      5. hazard_proximity is MANDATORY and strictly boolean (no fail-open default).
+      6. persons_nearby_count is MANDATORY and strictly integer >= 0 (no fail-open default).
       7. If 'state' is explicitly declared, it must match ground-truth classification.
     """
     if isinstance(raw_payload, bytes):
@@ -126,13 +128,27 @@ def parse_hsr_telemetry(
     if not isinstance(data, dict):
         raise ValueError(f"Payload must be a JSON object, got {type(data).__name__}")
 
-    required = ("obs_id", "t_obs_us", "t_emit_us", "distress_permille")
-    for field in required:
+    # Mandatory integer fields
+    required_int_fields = ("obs_id", "t_obs_us", "t_emit_us", "distress_permille")
+    for field in required_int_fields:
         if field not in data:
             raise ValueError(f"Missing required HSR telemetry field: '{field}'")
         val = data[field]
         if not isinstance(val, int) or isinstance(val, bool):
             raise ValueError(f"Field '{field}' must be integer, got {val!r}")
+
+    # Mandatory 3-vector fields (closes fail-open default vulnerability)
+    if "hazard_proximity" not in data:
+        raise ValueError("Missing required HSR telemetry field: 'hazard_proximity'")
+    hazard_proximity = data["hazard_proximity"]
+    if not isinstance(hazard_proximity, bool):
+        raise ValueError(f"hazard_proximity must be bool, got {hazard_proximity!r}")
+
+    if "persons_nearby_count" not in data:
+        raise ValueError("Missing required HSR telemetry field: 'persons_nearby_count'")
+    persons_nearby_count = data["persons_nearby_count"]
+    if not isinstance(persons_nearby_count, int) or isinstance(persons_nearby_count, bool) or persons_nearby_count < 0:
+        raise ValueError(f"persons_nearby_count must be non-negative int, got {persons_nearby_count!r}")
 
     obs_id = data["obs_id"]
     t_obs_us = data["t_obs_us"]
@@ -150,14 +166,6 @@ def parse_hsr_telemetry(
         raise ValueError(f"Clock inversion / future frame: t_rx_us ({t_rx}) < t_obs_us ({t_obs_us})")
     if not (0 <= distress_permille <= 1000):
         raise ValueError(f"distress_permille out of range [0, 1000]: {distress_permille}")
-
-    hazard_proximity = data.get("hazard_proximity", False)
-    if not isinstance(hazard_proximity, bool):
-        raise ValueError(f"hazard_proximity must be bool, got {hazard_proximity!r}")
-
-    persons_nearby_count = data.get("persons_nearby_count", 2)
-    if not isinstance(persons_nearby_count, int) or isinstance(persons_nearby_count, bool) or persons_nearby_count < 0:
-        raise ValueError(f"persons_nearby_count must be non-negative int, got {persons_nearby_count!r}")
 
     derived_state = classify_hsr_telemetry(
         distress_permille=distress_permille,
@@ -396,7 +404,7 @@ def step_hsr_stream(
 # Inline Verification Suite
 # ----------------------------------------------------------------------------
 if __name__ == "__main__":
-    print("[HSR TELEMETRY CONTRACT] Running inline verification suites...")
+    print("[HSR TELEMETRY CONTRACT v0.4.0] Running inline verification suites...")
 
     # 1. Exact permille boundary verification (0.45 and 0.75)
     assert classify_hsr_telemetry(0) == HSR_CLEAR
@@ -414,38 +422,55 @@ if __name__ == "__main__":
     # 3. Environmental hazard proximity flag
     assert classify_hsr_telemetry(0, hazard_proximity=True) == HSR_CRITICAL
 
-    # 4. Wire parsing with valid payload
+    # 4. Wire parsing with complete valid payload
     valid_payload = json.dumps({
         "obs_id": 101,
         "t_obs_us": 32000,
         "t_emit_us": 33000,
         "distress_permille": 750,
         "state": "CRITICAL",
+        "hazard_proximity": False,
+        "persons_nearby_count": 2,
     })
     pkt = parse_hsr_telemetry(valid_payload, t_rx_us=34000)
     assert pkt.obs_id == 101
     assert pkt.state == HSR_CRITICAL
     assert pkt.severity() == 2
 
-    # 5. Causal and future timestamp failure checks
+    # 5. Mandatory field checks (Fail-Closed verification)
     try:
-        bad_emit = json.dumps({"obs_id": 1, "t_obs_us": 200, "t_emit_us": 100, "distress_permille": 0})
+        missing_hp = json.dumps({"obs_id": 1, "t_obs_us": 200, "t_emit_us": 200, "distress_permille": 0, "persons_nearby_count": 2})
+        parse_hsr_telemetry(missing_hp, t_rx_us=300)
+        assert False, "Should fail when hazard_proximity is missing"
+    except ValueError:
+        pass
+
+    try:
+        missing_pc = json.dumps({"obs_id": 1, "t_obs_us": 200, "t_emit_us": 200, "distress_permille": 0, "hazard_proximity": False})
+        parse_hsr_telemetry(missing_pc, t_rx_us=300)
+        assert False, "Should fail when persons_nearby_count is missing"
+    except ValueError:
+        pass
+
+    # 6. Causal and future timestamp failure checks
+    try:
+        bad_emit = json.dumps({"obs_id": 1, "t_obs_us": 200, "t_emit_us": 100, "distress_permille": 0, "hazard_proximity": False, "persons_nearby_count": 2})
         parse_hsr_telemetry(bad_emit, t_rx_us=300)
         assert False, "Should fail on t_emit < t_obs"
     except ValueError:
         pass
 
     try:
-        future_frame = json.dumps({"obs_id": 1, "t_obs_us": 500, "t_emit_us": 550, "distress_permille": 0})
+        future_frame = json.dumps({"obs_id": 1, "t_obs_us": 500, "t_emit_us": 550, "distress_permille": 0, "hazard_proximity": False, "persons_nearby_count": 2})
         parse_hsr_telemetry(future_frame, t_rx_us=400)
         assert False, "Should fail on t_rx < t_obs"
     except ValueError:
         pass
 
-    # 6. Worst-severity drain reduction
-    p_clear = HSRTelemetryPacket(10, 1000, 1100, 1500, 100, HSR_CLEAR)
-    p_crit_early = HSRTelemetryPacket(11, 1050, 1150, 1500, 800, HSR_CRITICAL)
-    p_clear_late = HSRTelemetryPacket(12, 1100, 1200, 1500, 50, HSR_CLEAR)
+    # 7. Worst-severity drain reduction
+    p_clear = HSRTelemetryPacket(10, 1000, 1100, 1500, 100, HSR_CLEAR, False, 2)
+    p_crit_early = HSRTelemetryPacket(11, 1050, 1150, 1500, 800, HSR_CRITICAL, False, 2)
+    p_clear_late = HSRTelemetryPacket(12, 1100, 1200, 1500, 50, HSR_CLEAR, False, 2)
 
     batch = [p_clear, p_crit_early, p_clear_late]
     winning = drain_worst_severity(batch)
@@ -453,16 +478,16 @@ if __name__ == "__main__":
     assert winning.obs_id == 11
     assert winning.state == HSR_CRITICAL
 
-    # 7. Pure predicate frozen frame detector
+    # 8. Pure predicate frozen frame detector
     assert not is_perception_frozen(current_obs_id=5, last_seen_obs_id=None)
     assert not is_perception_frozen(current_obs_id=6, last_seen_obs_id=5)
     assert is_perception_frozen(current_obs_id=5, last_seen_obs_id=5)
     assert is_perception_frozen(current_obs_id=4, last_seen_obs_id=5)
 
-    # 8. Hardened Stream Monitor (step_hsr_stream) verification
+    # 9. Hardened Stream Monitor (step_hsr_stream) verification
     s0 = HSRStreamState()
     # Nominal initial tick
-    p1 = HSRTelemetryPacket(1, 100_000, 101_000, 102_000, 0, HSR_CLEAR)
+    p1 = HSRTelemetryPacket(1, 100_000, 101_000, 102_000, 0, HSR_CLEAR, False, 2)
     s1, st, stamp = step_hsr_stream(s0, [p1], now_us=102_000)
     assert st == HSR_CLEAR and stamp == 100_000
     assert s1.last_seen_obs_id == 1 and not s1.frozen_latched
@@ -472,7 +497,7 @@ if __name__ == "__main__":
     assert st == HSR_CLEAR and stamp == 100_000
 
     # Frozen frame detection (repeated obs_id=1) -> Trips sticky fault
-    p_frozen = HSRTelemetryPacket(1, 166_000, 167_000, 168_000, 0, HSR_CLEAR)
+    p_frozen = HSRTelemetryPacket(1, 166_000, 167_000, 168_000, 0, HSR_CLEAR, False, 2)
     s3, st, stamp = step_hsr_stream(s2, [p_frozen], now_us=168_000)
     assert s3.frozen_latched is True
     assert st is None and stamp is None, "Frozen frame must immediately clear status to trip gate"
@@ -483,8 +508,8 @@ if __name__ == "__main__":
 
     # Within-batch duplicate / freeze (Trap 2: p_a has obs_id=5, p_b has obs_id=5)
     s_clean = HSRStreamState(last_seen_obs_id=4, last_seen_t_obs_us=100_000)
-    p_dup_a = HSRTelemetryPacket(5, 200_000, 201_000, 202_000, 0, HSR_CLEAR)
-    p_dup_b = HSRTelemetryPacket(5, 200_100, 201_100, 202_000, 0, HSR_CLEAR)
+    p_dup_a = HSRTelemetryPacket(5, 200_000, 201_000, 202_000, 0, HSR_CLEAR, False, 2)
+    p_dup_b = HSRTelemetryPacket(5, 200_100, 201_100, 202_000, 0, HSR_CLEAR, False, 2)
     s_trap2, st, stamp = step_hsr_stream(s_clean, [p_dup_a, p_dup_b], now_us=202_000)
     assert s_trap2.frozen_latched is True
     assert st is None, "Within-batch duplicate must trip frozen latch"
@@ -492,7 +517,7 @@ if __name__ == "__main__":
     # Producer Restart & Dual-Gate Dwell Verification (streak >= 5 AND elapsed >= 160 ms)
     s_high = HSRStreamState(last_seen_obs_id=5000, last_seen_t_obs_us=1_000_000)
     # Restart datagram: obs_id drops to 0
-    p_restart = HSRTelemetryPacket(0, 1_032_000, 1_033_000, 1_034_000, 0, HSR_CLEAR)
+    p_restart = HSRTelemetryPacket(0, 1_032_000, 1_033_000, 1_034_000, 0, HSR_CLEAR, False, 2)
     s_re, st, _ = step_hsr_stream(s_high, [p_restart], now_us=1_034_000)
     assert s_re.rebase_in_progress is True
     assert s_re.rebase_streak == 0
@@ -500,9 +525,9 @@ if __name__ == "__main__":
     assert st is None
 
     # Tick 1: Burst of 3 packets in 1 tick only credits +1 tick streak, establishes start_t_obs = 1,064,000 (first packet)
-    p_b1 = HSRTelemetryPacket(1, 1_064_000, 1_065_000, 1_066_000, 0, HSR_CLEAR)
-    p_b2 = HSRTelemetryPacket(2, 1_064_100, 1_065_100, 1_066_000, 0, HSR_CLEAR)
-    p_b3 = HSRTelemetryPacket(3, 1_064_200, 1_065_200, 1_066_000, 0, HSR_CLEAR)
+    p_b1 = HSRTelemetryPacket(1, 1_064_000, 1_065_000, 1_066_000, 0, HSR_CLEAR, False, 2)
+    p_b2 = HSRTelemetryPacket(2, 1_064_100, 1_065_100, 1_066_000, 0, HSR_CLEAR, False, 2)
+    p_b3 = HSRTelemetryPacket(3, 1_064_200, 1_065_200, 1_066_000, 0, HSR_CLEAR, False, 2)
     s_re, st, _ = step_hsr_stream(s_re, [p_b1, p_b2, p_b3], now_us=1_066_000)
     assert s_re.rebase_streak == 1
     assert s_re.rebase_start_t_obs_us == 1_064_000
@@ -510,23 +535,23 @@ if __name__ == "__main__":
 
     # Ticks 2, 3, 4 with advancing CLEAR packets
     for i in range(2, 5):
-        pkt_i = HSRTelemetryPacket(3 + i, 1_064_000 + i * 32_000, 1_065_000 + i * 32_000, 1_066_000 + i * 32_000, 0, HSR_CLEAR)
+        pkt_i = HSRTelemetryPacket(3 + i, 1_064_000 + i * 32_000, 1_065_000 + i * 32_000, 1_066_000 + i * 32_000, 0, HSR_CLEAR, False, 2)
         s_re, st, _ = step_hsr_stream(s_re, [pkt_i], now_us=1_066_000 + i * 32_000)
         assert s_re.rebase_streak == i
         assert st is None
 
     # Boundary test: at 159 ms elapsed (t_obs = 1_064_000 + 159_000 = 1_223_000), dwell must NOT complete
-    pkt_boundary = HSRTelemetryPacket(8, 1_223_000, 1_224_000, 1_225_000, 0, HSR_CLEAR)
+    pkt_boundary = HSRTelemetryPacket(8, 1_223_000, 1_224_000, 1_225_000, 0, HSR_CLEAR, False, 2)
     s_boundary, st_b, _ = step_hsr_stream(s_re, [pkt_boundary], now_us=1_225_000)
     assert s_boundary.rebase_in_progress is True, "At 159 ms elapsed, dwell must not complete"
     assert st_b is None
 
     # Exact threshold: at 160 ms elapsed (t_obs = 1_064_000 + 160_000 = 1_224_000), dwell completes!
-    pkt_fin = HSRTelemetryPacket(9, 1_224_000, 1_225_000, 1_226_000, 0, HSR_CLEAR)
+    pkt_fin = HSRTelemetryPacket(9, 1_224_000, 1_225_000, 1_226_000, 0, HSR_CLEAR, False, 2)
     s_fin, st_fin, stamp_fin = step_hsr_stream(s_re, [pkt_fin], now_us=1_226_000)
     assert s_fin.rebase_in_progress is False
     assert s_fin.rebase_streak == 0
     assert s_fin.rebase_start_t_obs_us is None
     assert st_fin == HSR_CLEAR and stamp_fin == 1_224_000, "160 ms elapsed dwell must complete rebase and emit CLEAR"
 
-    print("[HSR TELEMETRY CONTRACT] All 8 assertion suites PASSED cleanly.")
+    print("[HSR TELEMETRY CONTRACT v0.4.0] All assertion suites PASSED cleanly.")
