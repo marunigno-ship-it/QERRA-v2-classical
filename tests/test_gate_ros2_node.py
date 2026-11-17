@@ -7,9 +7,16 @@ import json
 import math
 import os
 import socket
+import sys
 import tempfile
 import unittest
 from dataclasses import asdict
+from pathlib import Path
+
+# Ensure repository root is on sys.path when test is run directly
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from gate.gate_config import get_live_gate_params
 from gate.gate_core import (
@@ -400,13 +407,15 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         ranges = [2.0, 2.0, 2.0, 2.0, 2.0]
         dt_us = 32_000
 
-        # Send initial CLEAR datagram
+        # Send initial CLEAR datagram conforming to v0.4.0 mandatory fields
         clear_payload = json.dumps({
             "obs_id": 1,
             "t_obs_us": 100_000,
             "t_emit_us": 101_000,
             "distress_permille": 0,
             "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }).encode("utf-8")
         sender.sendto(clear_payload, ("127.0.0.1", port))
 
@@ -468,13 +477,15 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertGreater(res_run.cmd_left_urad_s, 0)
         self.assertGreater(res_run.cmd_right_urad_s, 0)
 
-        # 4. Transmit CRITICAL distress datagram via UDP
+        # 4. Transmit CRITICAL distress datagram via UDP conforming to v0.4.0 mandatory fields
         distress_payload = json.dumps({
             "obs_id": 2,
             "t_obs_us": sim_t + dt_us,
             "t_emit_us": sim_t + dt_us + 1_000,
             "distress_permille": 850,
             "state": "CRITICAL",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }).encode("utf-8")
         sender.sendto(distress_payload, ("127.0.0.1", port))
 
@@ -538,6 +549,8 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
                                 "t_emit_us": next_emit_us + 1_000,
                                 "distress_permille": 0,
                                 "state": "CLEAR",
+                                "hazard_proximity": False,
+                                "persons_nearby_count": 2,
                             }).encode("utf-8")
                             sender.sendto(pkt, ("127.0.0.1", port))
                             next_emit_us += period_us
@@ -637,13 +650,15 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         params = get_live_gate_params(lidar_n_expected=5, hsr_required=True)
         prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
 
-        # 1. Initial valid CLEAR packet (obs_id=10)
+        # 1. Initial valid CLEAR packet (obs_id=10) conforming to v0.4.0 mandatory fields
         p_init = json.dumps({
             "obs_id": 10,
             "t_obs_us": 100_000,
             "t_emit_us": 101_000,
             "distress_permille": 0,
             "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }).encode("utf-8")
         sender.sendto(p_init, ("127.0.0.1", port))
 
@@ -651,13 +666,15 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertEqual(status, "CLEAR")
         self.assertEqual(stamp, 100_000)
 
-        # 2. Frozen packet: repeated obs_id=10 at fresh timestamp
+        # 2. Frozen packet: repeated obs_id=10 at fresh timestamp conforming to v0.4.0 mandatory fields
         p_frozen = json.dumps({
             "obs_id": 10,
             "t_obs_us": 132_000,
             "t_emit_us": 133_000,
             "distress_permille": 0,
             "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }).encode("utf-8")
         sender.sendto(p_frozen, ("127.0.0.1", port))
 
@@ -693,25 +710,29 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.addCleanup(sender.close)
 
-        # 1. Establish initial high counter
+        # 1. Establish initial high counter conforming to v0.4.0 mandatory fields
         p_init = json.dumps({
             "obs_id": 100,
             "t_obs_us": 100_000,
             "t_emit_us": 101_000,
             "distress_permille": 0,
             "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }).encode("utf-8")
         sender.sendto(p_init, ("127.0.0.1", port))
         status, _ = rx.poll(now_us=102_000)
         self.assertEqual(status, "CLEAR")
 
-        # 2. Producer restart: obs_id drops to 0
+        # 2. Producer restart: obs_id drops to 0 conforming to v0.4.0 mandatory fields
         p_rst = json.dumps({
             "obs_id": 0,
             "t_obs_us": 132_000,
             "t_emit_us": 133_000,
             "distress_permille": 0,
             "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }).encode("utf-8")
         sender.sendto(p_rst, ("127.0.0.1", port))
         status, _ = rx.poll(now_us=134_000)
@@ -726,6 +747,8 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
                 "t_emit_us": 165_000,
                 "distress_permille": 0,
                 "state": "CLEAR",
+                "hazard_proximity": False,
+                "persons_nearby_count": 2,
             }).encode("utf-8")
             sender.sendto(p, ("127.0.0.1", port))
         status, _ = rx.poll(now_us=166_000)
@@ -741,6 +764,8 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
                 "t_emit_us": t_sim + 1_000,
                 "distress_permille": 0,
                 "state": "CLEAR",
+                "hazard_proximity": False,
+                "persons_nearby_count": 2,
             }).encode("utf-8")
             sender.sendto(p, ("127.0.0.1", port))
             status, _ = rx.poll(now_us=t_sim + 2_000)
@@ -755,6 +780,8 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
             "t_emit_us": t_fin + 1_000,
             "distress_permille": 0,
             "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
         }).encode("utf-8")
         sender.sendto(p_fin, ("127.0.0.1", port))
         status, stamp = rx.poll(now_us=t_fin + 2_000)
