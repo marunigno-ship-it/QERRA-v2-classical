@@ -57,7 +57,7 @@ The decision logic is deterministic, inspectable, and auditable. Every result ou
 - **Permissive Robotics Architecture:** Permissive for chassis-local ROS 2 integration, academic research, and commercial robotics adoption.
 - **Original Work & Archival**: The core frameworks, vector logic, and scoring architectures are timestamped and permanently archived on Zenodo.
 
-  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.24053163  
+  **DOI (Zenodo):** https://doi.org/10.5281/zenodo.24337026
   **ORCID:** https://orcid.org/0009-0009-4100-9881
 
 ## Quickstart
