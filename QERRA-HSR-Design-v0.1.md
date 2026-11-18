@@ -1,10 +1,10 @@
 # QERRA-HSR v0.1 — Design Document
 
-**Status:** Hardened & Verified in simulation (v2.0.1) — September 2026; revised 5 November 2026  
+**Status:** Hardened & Verified in simulation (v2.0.1) — September 2026; revised 5 November 2026; revised 17 November 2026 (Telemetry Contract v0.4.0 & Diagnostics Parity)  
 **Original Release:** 12 June 2026  
 **Author:** Marussa Metocharaki  
 **Repository:** https://github.com/marunigno-ship-it/QERRA-v2-classical  
-**Companion to:** SEMEV-12 v1.9.1 and Supervisory Gate Core v0.4
+**Companion to:** SEMEV-12 v1.9.2, Supervisory Gate Core v0.4, and HSR Telemetry Contract v0.4.0
 
 ---
 
@@ -42,6 +42,8 @@ HSRInput(
 
 **Perception boundary (non-claim).** QERRA-HSR consumes `distress_confidence`, `persons_nearby_count` and `hazard_proximity_flag` as given. In all simulation demonstrations these inputs are injected or synthetic. They have not been evaluated against a physical, live vision perception pipeline. The activation thresholds are design estimates and have not been calibrated against sensor streams.
 
+> Thresholds (`0.45` / `0.75` normalized score, mapped to `450` / `750` permille, and `ISOLATION_COUNT_THRESHOLD = 1`) are author-chosen engineering placeholders. They have not been validated against any human population, posture, gait, or sensor data. ODD profiles are configuration slots; only the default profile is exercised in simulation and CI. No claim is made about real-distress detection, false-alarm rate, or miss rate. Furthermore, the Layer 1B telemetry contract carries no metric distance to the human subject.
+
 ---
 
 ### Note for integrators: computing `hazard_proximity_flag`
@@ -68,13 +70,14 @@ class HSRResult:
 | `MONITOR` | Elevated signal — proceed with caution, do not halt |
 | `CRITICAL` | Immediate physical response required — motors commanded to 0.0, SEMEV-12 suspended |
 
+> *Supervisory Gate integration note:* When wired into `gate_core.py` v0.4 and `QerraGateNode`, `MONITOR` imposes **no velocity cap** during active `Mode.RUN` (the `3.0 rad/s` wheel envelope at `98 mm` radius already bounds linear speed at `0.294 m/s`, and Speed and Separation Monitoring requires person-distance telemetry not present in the packet). `MONITOR` acts fail-closed only while latched (`Mode.TRIPPED` or `Mode.AWAITING_RESET`), blocking dwell completion and rejecting operator resets (`RESET_REJECTED_HAZARD`).
+
 ---
 
 ## 5. Key Design Principles
 
 - **Pure Python, zero ML:** Zero extra dependencies, runs on local CPU.
 - **Same-tick reflex, measured in simulation:** The HSR evaluation is pure Python with a sub-millisecond software compute budget. In Webots, the commanded velocity is clamped to 0.0 rad/s on the same 32 ms tick as the injected `CRITICAL` input (cycle 125 in Demo 9). The full gate cycle in that run, which includes logging, averaged 1.38 ms (p99 3.70 ms, max 4.50 ms).
-
   Physical stopping distance depends on actuator dynamics: about 0.9 cm over about 0.08 s at 0.33 m/s was measured on a 56.58 kg four-wheeled test platform in Webots (not the TIAGo). This is a simulation measurement, not a hardware result.
 - **Fully deterministic & explainable:** Auditable logic with human-readable reasoning traces.
 - **Fail-closed precedence:** A `CRITICAL` output suspends SEMEV-12 deliberation immediately (API pipeline) and trips the Supervisory Gate to 0.0 rad/s (Webots controllers and `qerra_gate_node`).
@@ -88,7 +91,10 @@ Hardened and exercised in simulation (Webots R2025a, PAL Robotics TIAGo AMR). Th
 
 Related Gate/HSR test modules are present under `tests/`, including Gate/HSR state integration (`test_gate_hsr.py`), telemetry parsing and reduction (`test_gate_hsr_telemetry.py`), Gate clear-dwell behavior (`test_gate_hsr_clear_dwell.py`), an asynchronous UDP pipeline test (`test_async_hsr_pipeline.py`), synthetic telemetry scenarios (`test_synthetic_hsr_telemetry.py`), and adversarial UDP-ingestion demonstrations (`test_adversarial_hsr.py`). Their scopes are not interchangeable: for example, `test_async_hsr_pipeline.py` exercises the `drain_hsr_telemetry()` path, whereas the current node receiver uses `HsrReceiver` and `step_hsr_stream()`.
 
-The project reports a 211-case host-test total. This is a project-reported inventory, not a claim that all 211 cases are independently verified or executed by one CI workflow. The currently inspected `.github/workflows/tests.yml` runs `tests/test_gate_*.py`, the `hsr/test_*.py` suite, the license-boundary test and the SEMEV-12 regression command. The `test_adversarial_hsr.py`, `test_async_hsr_pipeline.py` and `test_synthetic_hsr_telemetry.py` filenames do not match the `test_gate_*.py` discovery pattern; their execution by that workflow is therefore not established by that workflow file. Check the relevant workflow runs or add explicit test commands before describing these particular modules as CI-verified.
+The `.github/workflows/tests.yml` workflow executes `python -m unittest discover -s tests -p "test_*.py"`, which automatically discovers and executes all `test_*.py` modules in `tests/`, including `test_adversarial_hsr.py`, `test_async_hsr_pipeline.py`, `test_synthetic_hsr_telemetry.py`, and the two new standard-library suites below. It runs alongside the separate 20-test `hsr/` suite. The current verified host baseline (17 November 2026, commit `027438a`, `tests.yml` Run #857) is **257 collected host tests** under `tests/` (243 passed, 14 cleanly skipped without `rclpy`, 0 failures), plus 20 passing tests under `hsr/`.
+
+- `tests/test_hsr_conformance.py`: 8 `unittest` cases sweeping 28,028 valid grid combinations (`0..1000` permille × hazard × `0..6` persons × interruptibility) to verify threshold parity and 0.001-grid equivalence between `hsr/qerra_hsr.py` and `gate/hsr_telemetry.py`, plus a 24-case malformed-payload matrix and a NaN invalid-input asymmetry pin.
+- `tests/test_hsr_receiver_diagnostics.py`: 8 `unittest` cases (`FakeDatagramSocket` and `WindowsMessageTooLargeError`) verifying lifetime monotonic rejection counters, 64-character sanitized categories, `WSAEMSGSIZE` (`10040`), and counter preservation across `reset()`.
 
 **Non-claims:** HSR inputs in the simulation demonstrations are injected or synthetic and have not been evaluated against a physical, live perception pipeline. The system has not been tested on physical hardware. QERRA-HSR is not a certified safety function and does not establish a physical stopping guarantee.
 
@@ -254,26 +260,28 @@ The repository also contains tests that exercise different parts of the wider in
 - `tests/test_gate_hsr_clear_dwell.py`: Gate-level continuous-`CLEAR` dwell and operator-reset behavior when `hsr_required=True`.
 - `tests/test_adversarial_hsr.py`: two adversarial demonstrations described in Section 10.
 - `tests/test_async_hsr_pipeline.py` and `tests/test_synthetic_hsr_telemetry.py`: earlier synthetic asynchronous/Gate-input scenarios; these do not exercise every behavior of the current `HsrReceiver`/`step_hsr_stream()` path.
+- `tests/test_hsr_conformance.py`: 8 `unittest` cases covering the 28,028-combination valid-input grid, threshold parity, 0.001-grid equivalence, the 24-case malformed-payload matrix and the NaN invalid-input asymmetry pin.
+- `tests/test_hsr_receiver_diagnostics.py`: 8 `unittest` cases using `FakeDatagramSocket` and `WindowsMessageTooLargeError` to verify lifetime counters, sanitized rejection categories, Windows oversized-datagram handling and counter preservation across `reset()`.
 
-The current `tests.yml` workflow's `test_gate_*.py` selector includes files with that prefix, but does not select the three files whose names begin `test_adversarial`, `test_async` or `test_synthetic`. Confirm their execution separately before representing them as part of the automated CI result.
+The `.github/workflows/tests.yml` workflow executes `python -m unittest discover -s tests -p "test_*.py"`, which automatically discovers and executes all `test_*.py` modules in `tests/`, including `test_adversarial_hsr.py`, `test_async_hsr_pipeline.py`, `test_synthetic_hsr_telemetry.py`, `test_hsr_conformance.py` and `test_hsr_receiver_diagnostics.py`. The separate 20-test `hsr/` suite also runs. The current verified baseline (17 November 2026, commit `027438a`, `tests.yml` Run #857) is 257 collected host tests under `tests/` (243 passed, 14 cleanly skipped without `rclpy`, 0 failures), plus 20 passing tests under `hsr/`.
 
 ---
 
 ## 10. Integration with the Supervisory Gate — Telemetry Contract
 
-The Supervisory Gate consumes validated HSR telemetry through `gate/hsr_telemetry.py` v0.3.1. In the ROS 2 node, `ros2/hsr_receiver.py` (`HsrReceiver`) receives UDP datagrams on localhost (`127.0.0.1`), default port 5008, configurable through the node's `hsr_port` parameter. The pure stream monitor `step_hsr_stream()` is actively called by `HsrReceiver.poll()` and its result is passed to `qerra_gate_node` and then to Gate Core.
+The Supervisory Gate consumes validated HSR telemetry through `gate/hsr_telemetry.py` v0.4.0. In the ROS 2 node, `ros2/hsr_receiver.py` (`HsrReceiver`) receives UDP datagrams on localhost (`127.0.0.1`), default port 5008, configurable through the node's `hsr_port` parameter. The pure stream monitor `step_hsr_stream()` is actively called by `HsrReceiver.poll()` and its result is passed to `qerra_gate_node` and then to Gate Core.
 
 | Item | Contract |
 |---|---|
 | Distress scale | Integer permille, 0 to 1000. Monitor threshold ≥ 450; critical threshold ≥ 750. This mirrors 0.45 and 0.75 without floating-point threshold comparisons in the wire classifier. |
 | Classification | `CRITICAL` if distress ≥ 750, or hazard proximity is true, or distress ≥ 450 with persons nearby ≤ 1; `MONITOR` if distress ≥ 450 and no `CRITICAL` condition applies; otherwise `CLEAR`. If a `state` is declared in the packet, it must match the derived state. |
 | Bounded ingestion | `HsrReceiver` drains at most `MAX_DRAIN_PER_CALL = 256` datagrams per `poll()` call. With the node's default `rate_hz = 31.25`, this is a maximum of 256 datagrams per nominal 32 ms Gate tick; the rate is configurable. |
-| Packet fields | Required: `obs_id`, `t_obs_us`, `t_emit_us`, `distress_permille`. Optional: `hazard_proximity`, `persons_nearby_count`, `state`. Integer and Boolean fields are type-checked; the declared state is checked against the computed classification. |
+| Packet fields | Required (all 6 mandatory; missing any raises `ValueError` fail-closed): `obs_id`, `t_obs_us`, `t_emit_us`, `distress_permille`, `hazard_proximity` (`bool`), `persons_nearby_count` (`int >= 0`). Optional: `state` (if present, must match derived classification). |
 | Timestamp checks | The parser checks `obs_id ≥ 0`, `t_obs_us ≥ 0`, `t_emit_us ≥ t_obs_us`, and `t_obs_us ≤ t_rx_us`. It rejects an observation timestamp later than Gate receipt time. The current parser does **not** check `t_emit_us ≤ t_rx_us`; therefore the full ordering `t_obs ≤ t_emit ≤ t_rx` is not enforced. The producer and Gate must use a compatible clock domain for the comparisons to be meaningful. |
 | Arrival order and reduction | The stream monitor inspects every successfully parsed packet in socket-drain arrival order before reduction. In nominal operation, the batch reduction selects the worst severity (`CRITICAL` > `MONITOR` > `CLEAR`); ties are resolved by newest `t_obs_us`, then highest `obs_id`. |
 | Regression handling | A repeated `obs_id` sets the sticky `frozen_latched` condition. A lower `obs_id` or a backward `t_obs_us` sets `rebase_in_progress`. During either condition the stream monitor returns `(None, None)`. This is a fail-closed stream state, not merely silent acceptance of the regressing packet. |
 | Gate behavior | `CRITICAL` trips `TRIP_HSR_CRITICAL`. With `hsr_required=True`, missing/invalid stream output trips `TRIP_HSR_INVALID`, and an HSR observation older than `t_hsr_stale_us` (96 ms by the default profile) trips `TRIP_HSR_STALE`. With `hsr_required=False`, a missing `(None, None)` HSR output does not itself trip the Gate. |
-| Diagnostics | `/gate/state` reports HSR status/source and receiver diagnostics, including `hsr_frozen`, `hsr_rebase_in_progress`, and `hsr_rebase_streak`. |
+| Diagnostics | `/gate/state` reports `hsr_drained_total`, `hsr_rejected_total`, `hsr_last_rejection_reason`, `hsr_frozen`, `hsr_rebase_in_progress`, and `hsr_rebase_streak`. `HsrReceiver` maps parser rejections to fixed sanitized categories (`invalid_utf8`, `invalid_json`, `missing_required_field`, `timestamp_causality_error`, `future_observation_timestamp`, `state_mismatch`, `invalid_declared_state`, `oversized_datagram`, `invalid_telemetry`) bounded to 64 characters (`MAX_REJECTION_REASON_CHARS = 64`) without echoing untrusted wire data. It preserves cumulative drained/rejected totals and the latest rejection category monotonically across `reset()`. | 
 
 ### Stream Freshness State Machine (`step_hsr_stream`)
 
@@ -287,7 +295,7 @@ The Supervisory Gate consumes validated HSR telemetry through `gate/hsr_telemetr
    **Important implementation detail:** an idle poll with no successfully parsed packets does not earn streak credit, but it preserves the existing streak and dwell start timestamp. Therefore the current implementation requires five qualifying ticks plus the elapsed-time threshold; it does not strictly guarantee five uninterrupted/consecutive control ticks.
 5. **Recovery-streak reset.** During recovery, a parsed `MONITOR` or `CRITICAL` packet, stale packet, repeated counter, or sequence/timestamp regression resets the streak and dwell start. A packet whose `t_obs_us` is later than Gate receipt time is rejected by `parse_hsr_telemetry()` before it reaches `step_hsr_stream()`. Malformed or oversized datagrams are also discarded before the stream monitor; if no successfully parsed packet remains in that poll, the idle-poll behavior described above applies (the existing streak and dwell start are preserved).
 6. **Fail-closed output.** While `frozen_latched` or `rebase_in_progress` remains active, the stream monitor returns `(None, None)`. When `hsr_required=True`, Gate Core interprets the missing status as `TRIP_HSR_INVALID`. When `hsr_required=False`, missing HSR is an explicitly permitted legacy/optional mode and is not independently fail-closed by Gate Core.
-7. **Diagnostic visibility.** The ROS 2 node includes `hsr_frozen`, `hsr_rebase_in_progress` and `hsr_rebase_streak` in `/gate/state` diagnostics.
+7. **Diagnostic visibility.** The ROS 2 node includes `hsr_drained_total`, `hsr_rejected_total`, `hsr_last_rejection_reason`, `hsr_frozen`, `hsr_rebase_in_progress` and `hsr_rebase_streak` in `/gate/state` diagnostics. `HsrReceiver` uses fixed sanitized rejection categories (`invalid_utf8`, `invalid_json`, `missing_required_field`, `timestamp_causality_error`, `future_observation_timestamp`, `state_mismatch`, `invalid_declared_state`, `oversized_datagram`, `invalid_telemetry`) capped at 64 characters (`MAX_REJECTION_REASON_CHARS = 64`), does not echo untrusted wire data, and preserves cumulative drained/rejected counters and the latest rejection category across `reset()`.
 
 ### Documented Limits & Security Non-Claims
 
@@ -298,6 +306,7 @@ The Supervisory Gate consumes validated HSR telemetry through `gate/hsr_telemetr
 5. **Ingestion crowding demonstration.** `tests/test_adversarial_hsr.py::test_adversarial_flood_above_max_drain_delays_critical` places 260 valid `CLEAR` datagrams ahead of a `CRITICAL` datagram. Because the receiver drains at most 256 datagrams in one poll, the first poll returns `CLEAR` and the `CRITICAL` packet is not processed until the next poll in the test. This is a receiver-level UDP ingestion denial-of-service demonstration, not a measured ROS 2 executor or physical actuation delay. It shows that a bounded drain protects per-tick work but can also defer a critical packet queued behind a sufficiently large burst.
 6. **Timestamp trust and clock domain.** Timestamps are producer-supplied. The parser checks observation time against emission time and Gate receipt time, but does not authenticate those timestamps or require `t_emit_us ≤ t_rx_us`. The comparisons also assume a shared/compatible clock domain. A producer can lie consistently about its timestamps.
 7. **No hard-real-time or physical guarantee.** UDP delivery, socket queueing, polling cadence, ROS 2 executor scheduling, command transport, base-controller response and actuator braking are outside the pure stream monitor's proof boundary. A same-tick software decision is not a guaranteed end-to-end response time or a physical emergency-stop function.
+8. **Black-channel packet-drop scope.** Under EN 50159 black-channel principles, malformed or contradictory frames (such as `state_mismatch`) are dropped and counted rather than immediately latching `TRIP_HSR_INVALID`. If a live producer interleaves valid `CLEAR` frames with contradictory frames, the last valid `CLEAR` remains held until valid frames cease and the 96 ms staleness watchdog trips. This describes the current parser/receiver behaviour; it is not an authenticated channel or a complete EN 50159 safety implementation.
 
 ---
 
