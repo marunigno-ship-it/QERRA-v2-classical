@@ -1,6 +1,6 @@
 # HSR-ADR-001: Three-Vector Design for QERRA-HSR v0.1
 
-**Status:** Accepted — 12 June 2026 (Updated: September 2026 / v2.0.1)  
+**Status:** Accepted — 12 June 2026 (Updated: September 2026 / v2.0.1; honesty wording aligned November 2026)  
 **Author:** Marussa Metocharaki  
 **Repository:** https://github.com/marunigno-ship-it/QERRA-v2-classical  
 **Full technical specification:** [`QERRA-HSR-Design-v0.1.md`](./QERRA-HSR-Design-v0.1.md)  
@@ -24,13 +24,13 @@ QERRA-HSR v0.1 tracks exactly three vectors:
 Two further decisions were made alongside the vector count:
 
 - A `CRITICAL` result from QERRA-HSR unconditionally suspends SEMEV-12 deliberation. Physical immediacy takes precedence over ethical reasoning when a human may be in danger right now.
-- `robot_task_interruptible` affects **how** the robot responds, never **whether** it responds. A `CRITICAL` reflex always commands zero velocity immediately regardless of that flag. Once conditions clear, it governs the **Recovery Directive**: routine tasks resume automatically, while delicate tasks hold position until a human confirms resumption.
+- `robot_task_interruptible` affects **how** the robot responds, never **whether** it responds. A `CRITICAL` reflex always commands zero velocity immediately regardless of that flag. Once conditions clear, it governs the **Recovery Directive**: routine tasks resume automatically, while delicate tasks hold position until a human confirms resumption. *(Note: when wired to the Layer 1A Supervisory Gate via `gate/hsr_telemetry.py` v0.4.0, the Gate unconditionally enforces an operator reset and omits `robot_task_interruptible` from the Layer 1B wire contract; see [`QERRA-HSR-Design-v0.1.md`](./QERRA-HSR-Design-v0.1.md) Section 10).*
 
-Full activation thresholds, the complete LTL safety properties, and the 14-case regression suite (plus 6-case hysteresis suite) are specified in [`QERRA-HSR-Design-v0.1.md`](./QERRA-HSR-Design-v0.1.md).
+Full activation thresholds, the LTL safety properties, and the 14-case regression suite (plus 6-case hysteresis suite) are specified in [`QERRA-HSR-Design-v0.1.md`](./QERRA-HSR-Design-v0.1.md).
 
 ## Consequences
 
-**What this buys:** near-zero overhead (< 1ms per call, independently verified at 0.0 ms command delay and <1 cm physical stop in simulation), full determinism, and safety properties that are provable by direct code inspection rather than requiring a model checker.
+**What this buys:** near-zero software compute overhead (< 1ms per call, observed at 0.0 ms software command delay and ~0.9 cm simulated stopping distance on a 56.58 kg four-wheeled Webots test platform), full determinism, and logic that is straightforward to audit by direct code inspection and unit testing rather than requiring an ML interpretability layer.
 
 **What this depends on:** QERRA-HSR does not perceive anything itself. All four input signals — `distress_confidence`, `persons_nearby_count`, `hazard_proximity_flag`, `robot_task_interruptible` — come from the host robot's own perception stack. Output quality is bounded entirely by the quality of those upstream signals; this is an explicit, accepted boundary, not a gap to be closed inside this module.
 
