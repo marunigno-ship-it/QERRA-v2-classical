@@ -628,6 +628,35 @@ What the take shows (every reason code and event is printed by the gate itself i
 
 [![QERRA-v2 Supervisory Gate Webots Demo 9](https://img.youtube.com/vi/CC1J8FCeSgs/hqdefault.jpg)](https://youtu.be/CC1J8FCeSgs)
 
+## Simulation Demo 10: Asynchronous HSR Telemetry Integrity, Frozen-Frame Fault & Controlled Recovery
+
+[![QERRA-v2 Supervisory Gate Webots Demo 10](https://img.youtube.com/vi/8LiholSSTSA/hqdefault.jpg)](https://youtu.be/8LiholSSTSA)
+
+**Video Link:** [Watch Demo 10 on YouTube](https://youtu.be/8LiholSSTSA)  
+**Run ID:** `DEMO10_FROZEN_FRAME_20261120_125540`  
+**Environment:** Webots R2025a (PAL Robotics TIAGo base) on Windows 11  
+
+### Summary of Demonstration
+Demo 10 validates the asynchronous UDP HSR telemetry pipeline and solves a critical perception vulnerability: preventing a silent upstream camera/perception freeze from tricking the robot into believing it is safe. 
+
+While earlier versions of QERRA caught frozen frames in ROS 2, the Webots simulation path only checked timestamps and ignored observation counters (`obs_id`). Demo 10 introduces a unified, pure-Python stream monitor (`gate/hsr_receiver.py`) shared identically across Webots and ROS 2.
+
+### Observed Timeline & Behaviour
+1. **`0.03 s – 0.224 s` (Startup & UDP Lock):** Event-driven synthetic HSR producer connects on UDP port `5008` (clock sync on port `5009`) and establishes live `CLEAR` telemetry.
+2. **`1.216 s – 1.248 s` (Startup Reset):** Initial startup calm dwell completes; reset is accepted (`RESET_ACCEPTED`). TIAGo transitions `AWAITING_RESET -> RUN` and cruises down the corridor at $2.00\,\text{rad/s}$.
+3. **`4.032 s` (Frozen-Frame Fault Injection):** The producer enters `frozen_frame` mode, keeping `obs_id` static while simulation timestamps advance. The shared stream monitor detects the stuck sequence, clears status to `None`, and the Gate immediately trips fail-closed with **`TRIP_HSR_INVALID`**, clamping wheel commands to $0.000\,\text{rad/s}$ (even though LiDAR ahead is fully clear at $3820\,\text{mm}$ and proposer age is $32\,\text{ms}$).
+4. **`5.024 s` (Reset Rejection Under Active Fault):** An automated operator reset attempt during the active freeze is strictly refused (**`RESET_REJECTED_HAZARD`**). The Gate holds `TRIPPED` fail-closed.
+5. **`7.00 s – 7.200 s` (Dual-Gate Rebase Dwell):** Advancing CLEAR observations resume. The stream monitor enforces the dual-gate rebase criteria (5 consecutive advancing ticks and $\ge 160\,\text{ms}$ observation time) before restoring `CLEAR`.
+6. **`8.22 s – 8.320 s` (Gate Calm Dwell & Recovery Reset):** The Gate completes its $1.0\,\text{s}$ calm dwell, enters `AWAITING_RESET`, and accepts the scripted recovery reset (`RESET_ACCEPTED`). TIAGo remains stationary on the reset tick ($0.000\,\text{rad/s}$) and resumes smooth cruising at $2.00\,\text{rad/s}$ on the subsequent tick.
+7. **`14.05 s` (Clean Termination):** Run terminates at `QERRA_END_AT_S` (`14.02 s`) with zero host jitter warnings.
+
+### Verification & Artifacts
+* **Flight Log Replay (`verify_log.py --replay`):** `439 / 439` control cycles reproduced bit-for-bit through pure `gate_core.step()`.
+* **SHA-256 Head Hash (Seal):** `0250fdcbff64af691dc52f5d60a89305d691ce3ca6b662281e7e9c73ff46437a`
+* **Host Test Suite (`python -m pytest`):** `270 passed, 14 skipped, 0 failures` (including offline stream recovery tests).
+* **Evidence Documentation:** [DEMO10_EVIDENCE.md](docs/demo10/DEMO10_EVIDENCE.md)
+* **Run Artifacts:** [results/DEMO10_FROZEN_FRAME_20261120_125540/](results/DEMO10_FROZEN_FRAME_20261120_125540/)
+
 ---
 
 ## Repository Structure
