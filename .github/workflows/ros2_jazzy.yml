@@ -262,6 +262,7 @@ jobs:
           assert node._hsr_required is True
           assert node._hsr_source == 'udp'
           assert node._hsr_port == 5008
+          assert node._standstill_required is False
           node.destroy_node()
           rclpy.shutdown()
           print('[CI-TEST] Node lifecycle destroyed cleanly fail-closed.')
@@ -277,6 +278,7 @@ jobs:
           cd ros2_ws/src/qerra_core
           python3 -m unittest -v tests/test_gate_ros2_node.py
           python3 -m unittest -v tests/test_gate_ros2_node_wiring.py
+          python3 -m unittest -v tests/test_gate_ros2_odom.py
 
       - name: Run live ROS 2 topic traffic integration tests in Jazzy (Priority P9)
         shell: bash
