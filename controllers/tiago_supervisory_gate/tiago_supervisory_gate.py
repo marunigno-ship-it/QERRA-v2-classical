@@ -50,6 +50,7 @@ if "--demo10-frozen-frame" in sys.argv:
     os.environ.setdefault("QERRA_SMOKE_OBSTACLE", "0")
     os.environ.setdefault("QERRA_LIDAR_FAULT", "none")
     os.environ.setdefault("QERRA_PROPOSER_FAULT", "none")
+    os.environ.setdefault("QERRA_STANDSTILL_REQUIRED", "1")
     os.environ.setdefault("QERRA_RUN_ID", f"DEMO10_FROZEN_FRAME_{time.strftime('%Y%m%d_%H%M%S')}")
 
 
@@ -130,6 +131,8 @@ HSR_EVENT = os.environ.get("QERRA_HSR_EVENT", "distress")
 HSR_EVENT_SIM_S = float(os.environ.get("QERRA_HSR_EVENT_SIM_S", "4.0"))
 _hsr_end_raw = os.environ.get("QERRA_HSR_EVENT_END_SIM_S", "7.0")
 HSR_EVENT_END_SIM_S = float(_hsr_end_raw) if _hsr_end_raw not in (None, "") else None
+
+STANDSTILL_REQUIRED = os.environ.get("QERRA_STANDSTILL_REQUIRED", "1") == "1"
 
 PROPOSAL_PORT = 5005
 OPERATOR_PORT = 5006
@@ -292,13 +295,14 @@ def main():
     hsr_sock = create_udp_receiver(port=HSR_PORT) if HSR_SOURCE == "udp" else None
     hsr_receiver = HsrReceiver(port=HSR_PORT, enabled=True, sock=hsr_sock) if HSR_SOURCE == "udp" else None
 
-    # 6. Gate Parameters (Fail-closed HSR reflex layer explicitly required)
+    # 6. Gate Parameters (Fail-closed HSR reflex layer & Standstill Verification)
     params = get_live_gate_params(
         lidar_n_expected=resolution,
         dt_us=dt_us,
         w_max_urad_s=w_max_urad_s,
         t_react_us=32_000,
         hsr_required=True,
+        standstill_required=STANDSTILL_REQUIRED,
     )
     state = initial_state()
 
@@ -373,6 +377,7 @@ def main():
     print(f"  • Telemetry CSV  : {telemetry_path}")
     print(f"  • AI Brain (PID) : {proposer_proc.pid if proposer_proc else 'Manual'}")
     print(f"  • HSR Source     : {HSR_SOURCE} (UDP port: {HSR_PORT if HSR_SOURCE == 'udp' else 'N/A'} | State Clock Port: {HSR_STATE_PORT if HSR_SOURCE == 'udp' else 'N/A'})")
+    print(f"  • Standstill Gate: {'ENABLED (strictly verified via wheel sensors)' if STANDSTILL_REQUIRED else 'disabled (legacy open-loop)'}")
     print(f"  • Proposal Port  : {PROPOSAL_PORT} | Reset Port: {OPERATOR_PORT} | State Port: {PROPOSAL_STATE_PORT}")
     print(f"  • Smoke obstacle : {'ENABLED' if SMOKE_OBSTACLE else 'disabled'}")
     print("  • QERRA_* env seen by this controller:")
@@ -438,6 +443,9 @@ def main():
                 meas_right_rad_s = (pos_right - prev_pos_right) / dt_s
                 prev_pos_left = pos_left
                 prev_pos_right = pos_right
+
+            meas_left_urad_s = int(round(meas_left_rad_s * 1_000_000))
+            meas_right_urad_s = int(round(meas_right_rad_s * 1_000_000))
 
             proposal, _ = drain_proposals(prop_sock)
 
@@ -521,6 +529,8 @@ def main():
                 raw_valid_points=raw_valid_points,
                 hsr_status=hsr_status_str,
                 hsr_stamp_us=hsr_stamp_us,
+                meas_left_urad_s=meas_left_urad_s,
+                meas_right_urad_s=meas_right_urad_s,
             )
             log_failed_prev = False
 
