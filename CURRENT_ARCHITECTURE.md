@@ -1,7 +1,7 @@
 # CURRENT_ARCHITECTURE.md
 # QERRA-v2 Classical — Architecture Documentation
-# Version: 2.4.1 (Supervisory Gate Core v0.4 + HSR Telemetry Contract v0.4.0 + ROS 2 Jazzy Node v0.3.1 + QERRA-HSR v0.1 + SEMEV-12 v1.9.2 + QERRA-THRIVE v2.0.0)
-# Last updated: November 2026
+# Version: 2.4.2 (Supervisory Gate Core v0.5 + HSR Telemetry Contract v0.4.0 + ROS 2 Jazzy Node v0.3.1 + QERRA-HSR v0.1 + SEMEV-12 v1.9.2 + QERRA-THRIVE v2.0.0)
+# Last updated: 22 November 2026
 
 ---
 
@@ -16,9 +16,9 @@ The architecture has two separate paths:
 * **Actuation path (authoritative):** an untrusted proposer sends wheel-speed proposals to the Layer 1A Supervisory Gate. The Gate Core evaluates proposals against the kinematic stopping envelope, lidar integrity and freshness, command freshness, clock behaviour and Layer 1B HSR telemetry. In the Webots controller, the Gate is the only process that writes simulated wheel velocities. In ROS 2, `qerra_gate_node` publishes the designated base-controller command topic; ROS 2 topics do not enforce a sole publisher, so the integrator must configure the base controller to accept commands only from that path.
 * **Deliberation path (advisory):** the HTTP API, PyTrees nodes and `ros2_bridge.py` evaluate situation descriptions and candidate choices. SEMEV-12 screens text instructions and QERRA-THRIVE ranks candidate action descriptions. These layers return auditable decisions and score traces; they are not connected to wheel authority today.
 
-As of November 2026, QERRA-v2 Classical consists of:
-1. **Layer 1A — Supervisory Gate Core v0.4 (`gate/`) + ROS 2 node (`ros2/qerra_gate_node.py`) v0.3.1 (Apache-2.0):** Pure-function integer state machine with a dynamic stopping envelope, fail-closed latching, command-proposal inhibition, and a tamper-evident decision log. The ROS 2 adapter connects the core to `/cmd_vel`, `/scan`, reset and HSR telemetry interfaces.
-2. **Layer 1B — QERRA-HSR v0.1 (`hsr/`, Apache-2.0):** Pure-Python physical/social reflex classifier (distress, isolation, hazard proximity). It supplies reflex status to both the API deliberation path and, through the v0.4.0 wire contract and `HsrReceiver`, the Gate actuation path.
+As of 22 November 2026, QERRA-v2 Classical consists of:
+1. **Layer 1A — Supervisory Gate Core v0.5 (`gate/`) + ROS 2 node (`ros2/qerra_gate_node.py`) v0.3.1 (Apache-2.0):** Pure-function integer state machine with a dynamic stopping envelope, fail-closed latching, command-proposal inhibition, standstill-qualified recovery dwell, and a tamper-evident decision log. The ROS 2 adapter connects the core to `/cmd_vel`, `/scan`, `/odom`, reset and HSR telemetry interfaces.
+2. **Layer 1B — QERRA-HSR v0.1 (`hsr/`, Apache-2.0):** Pure-Python physical/social reflex classifier (distress, isolation, hazard proximity). It supplies reflex status to both the API deliberation path and, through the v0.4.0 wire contract and the shared `HsrReceiver` (`gate/hsr_receiver.py`, re-exported by the compatibility shim `ros2/hsr_receiver.py`), the Gate actuation path.
 3. **Layer 2 — SEMEV-12 v1.9.2 (Apache-2.0):** Advisory moral deliberation engine for harm/coercion screening of text instructions.
 4. **Layer 3 — QERRA-THRIVE v2.0.0 (Apache-2.0):** Advisory Action Ranker evaluating HRI and ecological values across candidate text choices.
 
@@ -26,14 +26,14 @@ As of November 2026, QERRA-v2 Classical consists of:
 
 | Component | Status |
 |-----------|--------|
-| Layer 1A Supervisory Gate | Demonstrated in Webots R2025a (Demos 7, 8 and 9 — PAL Robotics TIAGo base, Windows 11 non-real-time host) and built/exercised in native **ROS 2 Jazzy** container CI (43 integration tests across 6 modules). Not yet tested on physical hardware. |
-| Layer 1B QERRA-HSR | Implemented and unit-tested (20 tests in `hsr/`, plus a 28,028-case conformance sweep in `tests/test_hsr_conformance.py`). The HSR-to-Gate actuation relationship is demonstrated in Webots Demo 9; the ROS 2 implementation uses `gate/hsr_telemetry.py` v0.4.0 and `ros2/hsr_receiver.py`, and is exercised in native ROS 2 Jazzy CI. Activation thresholds (0.45 / 0.75) are author-chosen ODD placeholders, not validated biometrics or validated perception outputs. |
+| Layer 1A Supervisory Gate | Demonstrated in Webots R2025a (Demos 7, 8, 9 and 10 — PAL Robotics TIAGo base, Windows 11 non-real-time host) and built/exercised in native **ROS 2 Jazzy** container CI (**50 integration tests across 7 modules**). Not yet tested on physical hardware. |
+| Layer 1B QERRA-HSR | Implemented and unit-tested (20 tests in `hsr/`, plus a 28,028-case conformance sweep in `tests/test_hsr_conformance.py`). The HSR-to-Gate actuation relationship is demonstrated in Webots Demo 9, and asynchronous telemetry integrity and frozen-frame recovery with synthetic UDP telemetry in Demo 10 (`DEMO10_FROZEN_FRAME_20261120_125540`); the ROS 2 implementation uses `gate/hsr_telemetry.py` v0.4.0 and the shared `gate/hsr_receiver.py` (compatibility shim `ros2/hsr_receiver.py`), and is exercised in native ROS 2 Jazzy CI. Activation thresholds (0.45 / 0.75) are author-chosen ODD placeholders, not validated biometrics or validated perception outputs. |
 | Layer 2 SEMEV-12 | Advisory; not part of the safety function. Benchmarked (80-case baseline, adversarial suite). The adversarial benchmark documents known bypasses and false positives. |
 | Layer 3 QERRA-THRIVE | Advisory. Unit-tested. Not yet evaluated with human participants. |
 
 ### Integration status
 
-The actuation path integrates Layer 1A (`gate_core.py` v0.4) with Layer 1B HSR reflex status. Webots Demo 9 demonstrates an HSR-triggered Gate trip; the ROS 2 implementation receives HSR telemetry over UDP port 5008 through `gate/hsr_telemetry.py` v0.4.0 and `HsrReceiver` in `qerra_gate_node`. A valid HSR `CRITICAL` status can trip the Gate. Layers 2 (`SEMEV-12`) and 3 (`QERRA-THRIVE`) remain on the separate advisory deliberation path (`ros2_bridge.py`, HTTP API and PyTrees) and are not connected to wheel authority today. The architecture therefore has a physical-reflex input in the actuation path, but the semantic moral filter and values ranker do not control the wheels.
+The actuation path integrates Layer 1A (`gate_core.py` v0.5) with Layer 1B HSR reflex status. Webots Demo 9 demonstrates an HSR-triggered Gate trip; the ROS 2 implementation receives HSR telemetry over UDP port 5008 through `gate/hsr_telemetry.py` v0.4.0 and `HsrReceiver` (`gate/hsr_receiver.py`) in `qerra_gate_node`. A valid HSR `CRITICAL` status can trip the Gate. Layers 2 (`SEMEV-12`) and 3 (`QERRA-THRIVE`) remain on the separate advisory deliberation path (`ros2_bridge.py`, HTTP API and PyTrees) and are not connected to wheel authority today. The architecture therefore has a physical-reflex input in the actuation path, but the semantic moral filter and values ranker do not control the wheels.
 
 ---
 
@@ -47,9 +47,11 @@ The actuation path integrates Layer 1A (`gate_core.py` v0.4) with Layer 1B HSR r
                 ▼ DELIBERATION PATH (advisory)            ▼ ACTUATION PATH
    ┌─────────────────────────────┐             ┌─────────────────────────────┐
    │ QERRA-HSR API input         │             │ Layer 1A SUPERVISORY GATE   │
-   │ Layer 2   SEMEV-12          │             │ gate_core.py v0.4           │
+   │ Layer 2   SEMEV-12          │             │ gate_core.py v0.5           │
    │ Layer 3   QERRA-THRIVE      │             │ + ROS 2 qerra_gate_node     │
    └─────────────────────────────┘             │ + lidar / proposer watchdog │
+                                               │ + /odom measured feedback   │
+                                               │   (100 ms / age < 0 guard)  │
                                                │ + Layer 1B HSR UDP :5008    │
                                                │   telemetry / HsrReceiver  │
                                                └──────────────┬──────────────┘
@@ -64,7 +66,7 @@ The actuation path integrates Layer 1A (`gate_core.py` v0.4) with Layer 1B HSR r
        Layers 2 and 3 remain advisory and do not hold wheel authority.
 ```
 
-### Layer 1A: Supervisory Gate Core v0.4 (Actuator Authority)
+### Layer 1A: Supervisory Gate Core v0.5 (Actuator Authority)
 
 * **Directory and files:** `gate/` (Apache-2.0), `verify_log.py`, `controllers/tiago_supervisory_gate/` (Webots controller), `worlds/` (Webots scenarios), `ros2/qerra_gate_node.py` v0.3.1, and `launch/qerra_gate.launch.py`.
 * **Modules:**
@@ -74,6 +76,7 @@ The actuation path integrates Layer 1A (`gate_core.py` v0.4) with Layer 1B HSR r
   - `gate_lidar.py` — `CorridorFilter`: projects lidar samples into the configured forward corridor and replaces valid samples outside it with `+inf`. Invalid values are not converted into clear readings.
   - `gate_link.py` — gate-to-proposer simulation-time channel.
   - `hsr_telemetry.py` v0.4.0 — mandatory HSR wire-packet parser, integer-permille classifier and pure `step_hsr_stream()` sequence/freshness monitor.
+  - `hsr_receiver.py` (`gate/hsr_receiver.py`) — shared pure-Python UDP HSR receiver and stream-integrity wrapper used by Webots and re-exported by the `ros2/hsr_receiver.py` compatibility shim.
   - `gate_log.py` — SHA-256 hash-chained flight recorder with deterministic replay support.
 * **Units:** integers in the decision/log core — time in microseconds, wheel speed in microradians per second, distance in millimetres.
 * **Parameters:** held in immutable `GateParams` (validated on construction). Inputs cannot mutate the parameter record.
@@ -92,8 +95,13 @@ The actuation path integrates Layer 1A (`gate_core.py` v0.4) with Layer 1B HSR r
 * **Modes:** `RUN`, `TRIPPED`, `AWAITING_RESET`. The Gate starts `TRIPPED` (fail-closed). A node-level `FAULT` is a separate process-lifetime `NodeFaultLatch` overlay, not a fourth Gate Core mode.
 * **Trip reasons:** `TRIP_LOG_FAILURE`, `TRIP_SENSOR_INVALID`, `TRIP_OBSTACLE`, `TRIP_PROPOSER_DEAD`, `TRIP_PROPOSER_STALE`, `TRIP_CLOCK_ANOMALY`, `TRIP_HSR_CRITICAL`, `TRIP_HSR_INVALID`, and `TRIP_HSR_STALE`.
 * **Lidar validation:** the scan must have the expected sample count and be fresh; invalid values (NaN, non-positive or non-numeric) are rejected. The live configuration requires `min_raw_lidar_returns >= 5` across the 240-degree scan. An all-`+inf` scan has no finite raw returns and trips `TRIP_SENSOR_INVALID`; it is not treated as a valid clear scan.
-* **HSR telemetry contract and receiver diagnostics:** `gate/hsr_telemetry.py` v0.4.0 requires all six wire fields: `obs_id`, `t_obs_us`, `t_emit_us`, `distress_permille`, `hazard_proximity`, and `persons_nearby_count`. Omitting either contextual field is rejected; there are no fail-open parser defaults. `step_hsr_stream()` detects repeated-frame freeze and counter/timestamp regression. Controlled rebase requires at least five qualifying packet-bearing control ticks (maximum one credit per poll) and at least 160 ms of observation-time dwell. `HsrReceiver` preserves monotonic lifetime drained/rejected counters across `reset()` and exposes fixed sanitized rejection categories bounded to 64 characters; `/gate/state` publishes `hsr_drained_total`, `hsr_rejected_total` and `hsr_last_rejection_reason`, alongside freeze/rebase diagnostics. `MONITOR` imposes no velocity cap in `Mode.RUN`; it blocks clear-dwell completion and operator reset while latched in `TRIPPED` or `AWAITING_RESET`.
-* **Recovery contract:** after a trip, the Gate remains latched until the relevant hazard is clear for a continuous 1.0 s dwell and an explicit operator reset is accepted. The accepted-reset tick remains quiescent and commands zero; motion can resume on a subsequent eligible `RUN` tick.
+* **HSR telemetry contract and receiver diagnostics:** `gate/hsr_telemetry.py` v0.4.0 requires all six wire fields: `obs_id`, `t_obs_us`, `t_emit_us`, `distress_permille`, `hazard_proximity`, and `persons_nearby_count`. Omitting either contextual field is rejected; there are no fail-open parser defaults. `step_hsr_stream()` detects repeated-frame freeze and counter/timestamp regression. Controlled rebase requires at least five qualifying packet-bearing control ticks (maximum one credit per poll) and at least 160 ms of observation-time dwell. `HsrReceiver` (`gate/hsr_receiver.py`) preserves monotonic lifetime drained/rejected counters across `reset()` and exposes fixed sanitized rejection categories bounded to 64 characters; `/gate/state` publishes `hsr_drained_total`, `hsr_rejected_total` and `hsr_last_rejection_reason`, alongside freeze/rebase diagnostics. `MONITOR` imposes no velocity cap in `Mode.RUN`; it blocks clear-dwell completion and operator reset while latched in `TRIPPED` or `AWAITING_RESET`.
+* **Recovery contract:** after a trip, the Gate remains latched until the relevant hazard is clear for a continuous 1.0 s dwell and an explicit operator reset is accepted. The accepted-reset tick remains quiescent and commands zero; motion can resume on a subsequent eligible `RUN` tick. Gate Core v0.5 adds **standstill qualification** of the recovery calm dwell:
+  - **Architectural decision:** generating an open-loop deceleration trajectory (`TRIP_BRAKING`) inside Gate Core was explicitly evaluated and rejected, so the Gate remains a Checker rather than a trajectory planner. The Gate commands `(0, 0)` immediately upon any trip; physical braking profiles remain with the base controller or drive subsystem.
+  - **Standstill Dwell Trap fix:** `GateParams` adds `standstill_required: bool = False` (default `False` for backward compatibility) and `w_standstill_tol_urad_s: int = 50_000` (0.05 rad/s, approximately 4.9 mm/s on 98 mm wheels). `GateInputs` adds optional integer fields `meas_left_urad_s` and `meas_right_urad_s`.
+  - **Dwell gating:** when `standstill_required=True`, `is_at_standstill()` blocks the 1.0 s calm dwell timer in `Mode.TRIPPED` until physical standstill is verified, and resets `clear_since_us` to `None` immediately if motion resumes mid-dwell. Missing feedback fails closed.
+  - **ROS 2 `/odom` path:** `qerra_gate_node` subscribes to `/odom` (`nav_msgs/msg/Odometry`), converts the body twist to integer wheel speeds via `twist_to_wheel_speeds()`, and enforces a 100 ms freshness and backward clock-jump watchdog: `odom_age_us < 0 or odom_age_us > 100_000` fails closed to `None`.
+  - **Webots path:** `tiago_supervisory_gate.py` feeds wheel position-sensor derivatives (`urad/s`) into `GateInputs` and defaults `QERRA_STANDSTILL_REQUIRED` to `"1"`.
 * **Default Webots/ROS 2 parameters:**
 
   | Parameter | Value |
@@ -102,16 +110,19 @@ The actuation path integrates Layer 1A (`gate_core.py` v0.4) with Layer 1B HSR r
   | Proposer freshness limit (`t_watch_us`) | 150,000 µs (150 ms) |
   | HSR freshness limit (`t_hsr_stale_us`) | 96,000 µs (96 ms) |
   | Lidar freshness limit | 96,000 µs in the simulation profile; 300,000 µs in the stated 10 Hz scanner profile |
+  | ROS 2 `/odom` freshness limit | 100,000 µs (100 ms); also fails closed on negative clock age |
   | Reaction allowance (`t_react_us`) | 32,000 / 96,000 / 160,000 µs (Webots / ROS 2 simulation / 10 Hz Hokuyo profiles) |
   | Continuous-clear dwell (`t_dwell_us`) | 1,000,000 µs (1.0 s) |
   | Maximum tick gap (`max_tick_gap_us`) | `2 * dt_us`: 64,000 µs at 31.25 Hz; 200,000 µs at 10 Hz |
+  | Standstill-qualified dwell (`standstill_required`) | `False` by default in `GateParams`, the ROS 2 node and the launch file; `True` by default in Webots via `QERRA_STANDSTILL_REQUIRED=1` |
+  | Standstill tolerance (`w_standstill_tol_urad_s`) | 50,000 µrad/s (0.05 rad/s) |
   | Design deceleration (`a_design_mmps2`) | 500 mm/s² |
   | Safety margin (`margin_mm`) | 300 mm |
   | Wheel radius | 98 mm (TIAGo base) |
   | Wheel speed envelope | 0 to 3,000,000 µrad/s (3.0 rad/s), capped by the motor maximum in the controller; no reverse |
   | Lidar | Hokuyo baseline, 682 samples in the ROS 2 default profile; Webots TIAGo scan: 667 samples; 240° field of view and 0.32 m corridor half-width |
 
-* **Flight recorder:** the canonical JSONL records are chained using `hash = SHA256(prev_hash || canonical_bytes)`, starting from a 64-zero genesis hash. `gate_log.py` persists `obstacle_breach`, `hsr_status`, `hsr_age_us`, and `proposal_invalid` in the relevant record inputs/fields and supports bit-for-bit offline replay via `verify_log.py --replay`. Demo 7 (`RUN_1791713619`) and Demo 9 (`DEMO9_SCENARIO_B_FINAL`) have recorded evidence; Demo 9's historical run was produced with Gate v0.3 and has been replayed through Gate Core v0.4. In `qerra_gate_node`, an enabled flight-log append/flush/`fsync` failure produces `TRIP_LOG_FAILURE` and zero software command output on the same control tick (R-10). The hash chain is tamper-evident relative to a trusted anchor; the node does not independently anchor its head hash.
+* **Flight recorder:** the canonical JSONL records are chained using `hash = SHA256(prev_hash || canonical_bytes)`, starting from a 64-zero genesis hash. `gate_log.py` persists `obstacle_breach`, `hsr_status`, `hsr_age_us`, and `proposal_invalid` in the relevant record inputs/fields, also records and reconstructs the optional `meas_left_urad_s` and `meas_right_urad_s` (defaulting to `None` for legacy logs), and supports bit-for-bit offline replay via `verify_log.py --replay`. Demo 7 (`RUN_1791713619`), Demo 9 (`DEMO9_SCENARIO_B_FINAL`) and Demo 10 (`DEMO10_FROZEN_FRAME_20261120_125540`) have recorded evidence. Demo 9's historical run was produced with Gate v0.3 and has been replayed through Gate Core v0.4; Demo 10 (439 cycles, head seal `0250fdcbff64af691dc52f5d60a89305d691ce3ca6b662281e7e9c73ff46437a`) replays 439/439 cycles bit-for-bit through Gate Core v0.5. The archived Demo 7, 9 and 10 runs predate `standstill_required=True` activation. In `qerra_gate_node`, an enabled flight-log append/flush/`fsync` failure produces `TRIP_LOG_FAILURE` and zero software command output on the same control tick (R-10). The hash chain is tamper-evident relative to a trusted anchor; the node does not independently anchor its head hash.
 
 ### Layer 1B: QERRA-HSR v0.1 (Physical / Social Reflex)
 
@@ -162,6 +173,7 @@ The actuation and deliberation paths use separate budgets:
 | Proposer freshness | 150 ms | `gate_core.py` (`t_watch_us`) | Stale or absent proposals trip the Gate |
 | Lidar freshness | 96 ms simulation; 300 ms 10 Hz scanner profile | Gate configuration | Stale scans trip the Gate |
 | HSR freshness (`t_hsr_stale_us`) | 96 ms | `gate_core.py` | Stale required HSR telemetry trips the Gate |
+| ROS 2 `/odom` freshness | 100 ms | `ros2/qerra_gate_node.py` (`DEFAULT_ODOM_STALE_US`) | Stale or clock-regressed measured odometry resets measured wheel speeds to `None`; blocks the standstill-qualified dwell when `standstill_required=True` |
 | Maximum inter-tick gap | `2 * dt_us` | `gate_config.py` / `qerra_gate_node` | Bounds accepted continuous-dwell tick gaps |
 | Clear dwell before reset | 1.0 s | `gate_core.py` | Continuous clear time before operator reset can be accepted |
 | HSR stabilizer dwell | 1.0 s | `hsr/hysteresis_wrapper.py` | Holds an elevated evaluator status until calm readings persist |
@@ -217,29 +229,30 @@ Key files and directories (selected architecture and verification paths):
 
 ```text
 QERRA-v2-classical/
-├── gate/                                      # Layer 1A: Supervisory Gate Core v0.4 (Apache-2.0)
+├── gate/                                      # Layer 1A: Supervisory Gate Core v0.5 (Apache-2.0)
 │   ├── gate_core.py                           # pure-function state machine (stdlib only)
 │   ├── gate_config.py                         # live parameters / rate-derived timing
 │   ├── gate_ipc.py                            # non-blocking UDP IPC receiver
 │   ├── gate_lidar.py                           # forward-corridor lidar filter
 │   ├── gate_link.py                            # gate/proposer simulation-time channel
 │   ├── gate_log.py                             # SHA-256 flight log and replay schema
+│   ├── hsr_receiver.py                         # shared pure-Python UDP HSR receiver and stream monitor
 │   └── hsr_telemetry.py                        # HSR wire contract v0.4.0 and stream monitor
 ├── hsr/                                       # Layer 1B: QERRA-HSR v0.1 (Apache-2.0)
 │   ├── qerra_hsr.py                            # deterministic 3-vector evaluator
 │   └── hysteresis_wrapper.py                   # StabilizedHSR
 ├── ros2/                                      # ROS 2 Jazzy adapter (Apache-2.0)
-│   ├── qerra_gate_node.py                      # qerra_gate_node v0.3.1
-│   └── hsr_receiver.py                         # UDP HSR receiver / diagnostics
+│   ├── qerra_gate_node.py                      # qerra_gate_node v0.3.1 (/cmd_vel, /scan, /odom)
+│   └── hsr_receiver.py                         # compatibility shim re-exporting gate.hsr_receiver
 ├── launch/
-│   └── qerra_gate.launch.py                   # 14 typed parameters + 5 Pattern B remappings
+│   └── qerra_gate.launch.py                   # 15 typed parameters + 6 Pattern B remappings
 ├── src/qerra_msgs/
 │   └── COLCON_IGNORE                          # masked from standalone qerra_core colcon build
 ├── scripts/
 │   ├── untrusted_proposer.py                  # Webots Demo 7 proposer
 │   └── synthetic_hsr_producer.py              # synthetic ROS 2 HSR telemetry producer
 ├── controllers/tiago_supervisory_gate/        # Webots supervisory controller
-├── worlds/                                    # Webots Demo 7–9 worlds
+├── worlds/                                    # Webots Demo 7–10 worlds
 ├── results/                                   # simulation logs and anchors
 ├── verify_log.py                              # offline flight-recorder verifier
 ├── values/                                    # Layer 3 QERRA-THRIVE v2.0.0 (Apache-2.0)
@@ -259,19 +272,21 @@ QERRA-v2-classical/
 │   ├── test_hsr_conformance.py                # 28,028-case v0.4.0 parity sweep (8 tests)
 │   ├── test_hsr_receiver_diagnostics.py       # monotonic UDP diagnostics (8 tests)
 │   ├── test_adversarial_hsr.py                # two executable HSR exploit demonstrations
+│   ├── test_demo10_stream_recovery.py         # Demo 10 stream-recovery coverage
+│   ├── test_gate_ros2_odom.py                 # 7 isolated /odom ingestion and watchdog tests
 │   └── test_gate_ros2_*.py                    # ROS 2 node, traffic, wiring, remapping and exterior tests
 ├── .github/workflows/
 │   ├── tests.yml                              # host/unit, HSR, license and SEMEV regression CI
 │   └── ros2_jazzy.yml                         # native ROS 2 Jazzy container integration CI
-├── package.xml / setup.py                     # qerra_core 2.4.1, ament_python, Apache-2.0
+├── package.xml / setup.py                     # qerra_core 2.4.2, ament_python, Apache-2.0
 ├── LICENSE                                    # Apache License 2.0
 ├── NOTICE                                     # copyright and attribution notices
-├── SAFETY_CONCEPT.md                          # v0.11
-├── TECHNICAL_BRIEF_ROS2_GATE.md               # v1.6.0
+├── SAFETY_CONCEPT.md                          # v0.12
+├── TECHNICAL_BRIEF_ROS2_GATE.md               # v1.7.0
 ├── QERRA-HSR-Design-v0.1.md                   # HSR design and non-claims
 ├── LIMITATIONS.md                             # current engineering limitations
 ├── README.md                                  # project entry point
-└── CHANGELOG.md                               # version and milestone history
+└── CHANGELOG.md / CHANGELOG.rst               # version and milestone history
 ```
 
 ### Licensing map
@@ -292,16 +307,16 @@ QERRA-v2-classical/
 
 ### Packaging
 
-`qerra_core` is package metadata version **2.4.1**, built with `ament_python`, ROS package format 3 and Apache-2.0. It is a standalone package and does not depend on `qerra_msgs`. The experimental `src/qerra_msgs/` subtree is masked from colcon discovery by `src/qerra_msgs/COLCON_IGNORE` and excluded from the root `package.xml` dependencies and the current Jazzy build. Console entry points include `qerra_gate_node` and `bridge`. The `qerra_msgs` action interface is not generated or tested by the standalone `qerra_core` CI workflow.
+`qerra_core` is package metadata version **2.4.2**, built with `ament_python`, ROS package format 3 and Apache-2.0. It is a standalone package and does not depend on `qerra_msgs`. `package.xml` declares `<exec_depend>nav_msgs</exec_depend>` alongside `launch` and `launch_ros`. The experimental `src/qerra_msgs/` subtree is masked from colcon discovery by `src/qerra_msgs/COLCON_IGNORE` and excluded from the root `package.xml` dependencies and the current Jazzy build. Console entry points include `qerra_gate_node` and `bridge`. The `qerra_msgs` action interface is not generated or tested by the standalone `qerra_core` CI workflow.
 
 ### Continuous Integration
 
-The 17 November 2026 baseline is commit `027438a` on `main`. Package metadata remains 2.4.1; no new Git release tag is asserted for these updates.
+The 22 November 2026 baseline is verified on commit `5734dd7` on `main` (with subsequent documentation alignment commits for v2.4.2). Package metadata is 2.4.2; no Git release tag is asserted by this document.
 
-* **Host CI** (`.github/workflows/tests.yml`, Ubuntu Python 3.10, Run #857): runs `python -m unittest discover -s tests -p "test_*.py"` — **257 collected (243 passed, 14 cleanly skipped without `rclpy`, 0 failures)**, plus **20 HSR tests** under `hsr/`, **15 SEMEV-12 regression cases**, and `tests/test_license_boundary.py`.
-* **Native ROS 2 Jazzy CI** (`.github/workflows/ros2_jazzy.yml`, official `ros:jazzy` container, Run #122): builds standalone `qerra_core` and runs **43 container integration tests** across six modules: `21 + 8 + 5 + 4 + 1 + 4`.
+* **Host CI** (`.github/workflows/tests.yml`, Ubuntu Python 3.10, Run #895, 1m 13s): runs `python -m unittest discover -s tests -p "test_*.py"` — **266 collected (252 passed, 14 cleanly skipped without `rclpy`, 0 failed)** in 0.837 s, plus **20 HSR tests** under `hsr/` (1.204 s), **15 SEMEV-12 regression cases**, and `tests/test_license_boundary.py`.
+* **Native ROS 2 Jazzy CI** (`.github/workflows/ros2_jazzy.yml`, official `ros:jazzy` container, Run #160, 1m 37s): builds standalone `qerra_core` and runs **50 container integration tests across 7 modules**: `21` `test_gate_ros2_node.py` + `8` `test_gate_ros2_node_wiring.py` + `7` `test_gate_ros2_odom.py` (isolated ROS 2 module stubs; no live DDS `/odom` publisher) + `5` `test_gate_ros2_live_traffic.py` + `4` `test_gate_ros2_dual_protocol.py` + `1` `test_gate_ros2_remapping.py` + `4` `test_gate_ros2_nav2_exterior.py`.
 
-The 14 host skips are ROS-dependent tests that cannot run on a host without `rclpy`: 5 live-traffic tests, 4 dual-protocol/node-regression tests, 1 remapping test and 4 Nav2-compatible exterior tests. The 43 native Jazzy tests comprise 21 `test_gate_ros2_node.py`, 8 `test_gate_ros2_node_wiring.py`, 5 `test_gate_ros2_live_traffic.py`, 4 `test_gate_ros2_dual_protocol.py`, 1 `test_gate_ros2_remapping.py`, and 4 `test_gate_ros2_nav2_exterior.py` tests. The license/version boundary guard is part of host CI. These results are software/CI evidence, not physical robot validation or a real-time guarantee.
+The 14 host skips are ROS-dependent tests that cannot run on a host without `rclpy`: 5 live-traffic tests, 4 dual-protocol/node-regression tests, 1 remapping test and 4 Nav2-compatible exterior tests. The license/version boundary guard is part of host CI. These results are software/CI evidence, not physical robot validation or a real-time guarantee.
 
 ---
 
@@ -313,12 +328,12 @@ The 14 host skips are ROS-dependent tests that cannot run on a host without `rcl
 * The Webots evidence is simulation evidence. It does not establish real sensor performance, physical motor braking, hardware timing or safety certification.
 
 **Layer 1A Supervisory Gate**
-* **Commanded, not measured, velocity:** `d_stop` uses commanded wheel speed. Simulated wheel telemetry has shown periods where measured wheel rotation and commanded speed disagreed (consistent with caster drag or slip, an attribution not isolated by a separate experiment). Physical integration needs measured velocity and braking data.
+* **Commanded, not measured, velocity:** `d_stop` uses commanded wheel speed. Gate Core v0.5 gates the **recovery calm dwell** on measured wheel speeds when `standstill_required=True`, but the stopping envelope still evaluates commanded speed, not measured speed. `standstill_required` defaults to `False` in `GateParams`, the ROS 2 node and the launch file (opt-in). ROS 2 `/odom` verifies physical standstill only when it is backed by closed-loop wheel encoders or state estimation (`open_loop=false` in `diff_drive_controller`); under `open_loop=true` or locked-wheel skidding it does not. Simulated wheel telemetry has shown periods where measured wheel rotation and commanded speed disagreed (consistent with caster drag or slip, an attribution not isolated by a separate experiment). Physical integration needs measured velocity and braking data.
 * **Rotational sweep is unmodelled:** the corridor filter models forward translation only. It does not calculate the full swept footprint during a pivot or curved trajectory; a nearby side obstacle can therefore be outside the current forward-corridor approximation.
-* **Single-threaded executor assumption:** `QerraGateNode` relies on the default `SingleThreadedExecutor` / `rclpy.spin(node)` callback serialization and has no mutex locks around shared callback state. Running callbacks concurrently in a `MultiThreadedExecutor` without suitable mutually exclusive callback-group protection would introduce read/write race risks for `_latest_proposal`, `_latest_ranges` and `_reset_requested`.
+* **Single-threaded executor assumption:** `QerraGateNode` relies on the default `SingleThreadedExecutor` / `rclpy.spin(node)` callback serialization and has no mutex locks around shared callback state. Running callbacks concurrently in a `MultiThreadedExecutor` without suitable mutually exclusive callback-group protection would introduce read/write race risks for `_latest_proposal`, `_latest_ranges`, `_reset_requested`, `_meas_left_urad_s`, `_meas_right_urad_s` and `_odom_stamp_us`.
 * **Localhost trust boundary:** UDP channels and ROS 2 topics are unauthenticated. A local process able to publish to the base command topic can bypass the Gate; the current design assumes a trusted local process boundary and does not provide SROS2 access control or sender authentication.
 * **Two executable adversarial exploits:** `tests/test_adversarial_hsr.py` demonstrates masked-distress re-arm using forged unauthenticated telemetry and ingestion crowding where a burst exceeding the 256-datagram per-poll limit delays a trailing `CRITICAL` packet. These are known residual risks, not protections.
-* **`Twist` has no source timestamp:** proposals are stamped when received by the node. The 150 ms watchdog detects lack of fresh messages at the Gate, not planner computation age before publication.
+* **`Twist` has no source timestamp:** proposals are stamped when received by the node. The 150 ms watchdog detects lack of fresh messages at the Gate, not planner computation age before publication. `/odom` likewise uses callback receipt time (`_get_ros_time_us()`) rather than `Odometry.header.stamp`, so its 100 ms freshness watchdog bounds time since receipt, not the age of the underlying measurement. `/odom` is unauthenticated: a forged standstill input is unmitigated under the localhost/ROS trust boundary. The negative-age guard (`odom_age_us < 0`) in `qerra_gate_node.py` lacks a dedicated subtest in `test_gate_ros2_odom.py`, and no live DDS `/odom` test exists yet (that file uses isolated ROS 2 stubs).
 * **Rapid valid/invalid proposal chattering:** alternating `VALID -> NaN/Inf -> VALID` proposals can repeatedly inhibit and restore output while valid proposals refresh the held timestamp. There is no separate chattering debounce. A zero command remains a software setpoint, not a physical stop.
 * **Zero command and downstream behaviour:** `0.0` `Twist` is not an emergency stop, mechanical brake or hardware STO. If the node dies or stops ticking, a downstream controller may hold its last command unless it has its own independently configured and tested timeout or safety function.
 * **Lidar metadata and coverage:** the current callback validates beam count and data values but does not fully validate `LaserScan` angular metadata, frame transforms or all sensor-acquisition properties. The forward corridor is not full-body or rearward protection. The `min_raw_lidar_returns >= 5` check is a global scan-liveness condition, not proof that the forward sector is visible.
@@ -344,13 +359,13 @@ QERRA-v2 Classical is an unrated supervisory software research prototype. It is 
 | ADR-001 | Creation and Design of SEMEV-12 Ethical Framework | Accepted |
 | HSR-ADR-001 | Three-Vector Design Decision for QERRA-HSR v0.1 | Accepted |
 
-There is no separate ADR for the Supervisory Gate. Its principal design record is `SAFETY_CONCEPT.md` (**v0.11**, aligned to the 17 November 2026 baseline), covering claims and non-claims, hazards, parameters and architecture rules. The supporting engineering documents are:
+There is no separate ADR for the Supervisory Gate. Its principal design record is `SAFETY_CONCEPT.md` (**v0.12**, aligned to the 22 November 2026 baseline), covering claims and non-claims, hazards, parameters and architecture rules. The supporting engineering documents are:
 
-* `TECHNICAL_BRIEF_ROS2_GATE.md` (**v1.6.0**) — ROS 2 Jazzy systems-engineering brief for the supervisory Gate and HSR integration.
+* `TECHNICAL_BRIEF_ROS2_GATE.md` (**v1.7.0**) — ROS 2 Jazzy systems-engineering brief for the supervisory Gate and HSR integration.
 * `QERRA-HSR-Design-v0.1.md` — Layer 1B vector definitions, activation logic, formal properties and perception/ODD non-claims.
 * `LIMITATIONS.md` — known implementation, timing, security and physical-validation boundaries.
 * `README.md` and `CHANGELOG.md` — project overview and dated implementation history.
 
 ---
 
-*This document reflects the architecture as of November 2026 (qerra_core 2.4.1 / Gate Core v0.4).*
+*This document reflects the architecture as of 22 November 2026 (qerra_core 2.4.2 / Gate Core v0.5).*
