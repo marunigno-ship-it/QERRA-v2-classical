@@ -2,6 +2,17 @@
 Changelog for package qerra_core
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+2.4.2 (2026-11-22)
+------------------
+* Gate Core v0.5 standstill-qualification contract: added immutable standstill_required (default False) and w_standstill_tol_urad_s (default 50,000 urad/s) parameters to GateParams, plus meas_left_urad_s and meas_right_urad_s fields to GateInputs.
+* Fixed Standstill Dwell Trap in Mode.TRIPPED: 1.0 s calm dwell strictly requires confirmed physical standstill (is_at_standstill()) and immediately resets clear_since_us to None if motion is detected mid-dwell.
+* ROS 2 Jazzy node odometry ingestion: subscribed to /odom (nav_msgs/msg/Odometry) in QerraGateNode, translating body twist to integer wheel speeds via twist_to_wheel_speeds() with a 100 ms freshness watchdog and clock-regression guard (age < 0 fails closed).
+* Declared nav_msgs exec_depend in package.xml and exposed standstill_required and odom_topic launch arguments in launch/qerra_gate.launch.py.
+* Wired TIAGo wheel position sensor derivatives (urad/s) into GateInputs in controllers/tiago_supervisory_gate/tiago_supervisory_gate.py with QERRA_STANDSTILL_REQUIRED environment configuration.
+* Extended gate/gate_log.py reconstruct_inputs() to deserialize measured wheel speeds with backward-compatible defaults; verified 439/439 Demo 10 flight log cycles replay bit-for-bit.
+* Added TestStandstillDwellQualification (4 unit tests) in tests/test_gate_core.py and isolated /odom ingestion tests (7 unit tests) in tests/test_gate_ros2_odom.py; integrated into ros2_jazzy.yml CI workflow.
+* Contributors: Marussa Metocharaki
+
 2.4.1 (2026-11-15)
 ------------------
 * Standalone ROS 2 Gate Node: packaging, native Jazzy CI, persistent NodeFaultLatch, and single ROS clock domain.
