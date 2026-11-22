@@ -141,6 +141,8 @@ def reconstruct_inputs(record: Dict[str, Any]) -> GateInputs:
         hsr_status=inputs_data.get("hsr_status"),
         hsr_stamp_us=inputs_data.get("hsr_stamp_us"),
         proposal_invalid=bool(inputs_data.get("proposal_invalid", False)),
+        meas_left_urad_s=inputs_data.get("meas_left_urad_s"),
+        meas_right_urad_s=inputs_data.get("meas_right_urad_s"),
     )
 
 
