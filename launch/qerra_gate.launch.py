@@ -28,6 +28,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="/scan",
         description="Input LaserScan topic (Best Effort QoS)",
     )
+    odom_topic_arg = DeclareLaunchArgument(
+        "odom_topic",
+        default_value="/odom",
+        description="Input Odometry topic for measured chassis velocity standstill verification",
+    )
     reset_topic_arg = DeclareLaunchArgument(
         "reset_topic",
         default_value="/gate/reset",
@@ -102,6 +107,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="true",
         description="Fail-closed trip if Layer 1B reflex telemetry is missing or stale ('true'/'false')",
     )
+    standstill_required_arg = DeclareLaunchArgument(
+        "standstill_required",
+        default_value="false",
+        description="Require confirmed physical standstill from /odom before starting calm dwell ('true'/'false')",
+    )
     state_port_arg = DeclareLaunchArgument(
         "state_port",
         default_value="5007",
@@ -136,6 +146,7 @@ def generate_launch_description() -> LaunchDescription:
                 "hsr_source": ParameterValue(LaunchConfiguration("hsr_source"), value_type=str),
                 "hsr_port": ParameterValue(LaunchConfiguration("hsr_port"), value_type=int),
                 "hsr_required": ParameterValue(LaunchConfiguration("hsr_required"), value_type=bool),
+                "standstill_required": ParameterValue(LaunchConfiguration("standstill_required"), value_type=bool),
                 "state_port": ParameterValue(LaunchConfiguration("state_port"), value_type=int),
                 "flight_log_path": ParameterValue(LaunchConfiguration("flight_log_path"), value_type=str),
             }
@@ -144,6 +155,7 @@ def generate_launch_description() -> LaunchDescription:
             ("/cmd_vel", LaunchConfiguration("cmd_vel_in")),
             ("/cmd_vel_safe", LaunchConfiguration("cmd_vel_out")),
             ("/scan", LaunchConfiguration("scan_topic")),
+            ("/odom", LaunchConfiguration("odom_topic")),
             ("/gate/reset", LaunchConfiguration("reset_topic")),
             ("/gate/state", LaunchConfiguration("state_topic")),
         ],
@@ -154,6 +166,7 @@ def generate_launch_description() -> LaunchDescription:
             cmd_vel_in_arg,
             cmd_vel_out_arg,
             scan_topic_arg,
+            odom_topic_arg,
             reset_topic_arg,
             state_topic_arg,
             rate_hz_arg,
@@ -168,6 +181,7 @@ def generate_launch_description() -> LaunchDescription:
             hsr_source_arg,
             hsr_port_arg,
             hsr_required_arg,
+            standstill_required_arg,
             state_port_arg,
             flight_log_path_arg,
             qerra_gate_node,
