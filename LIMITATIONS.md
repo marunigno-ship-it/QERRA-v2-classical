@@ -1,7 +1,7 @@
 # LIMITATIONS of QERRA-v2 Classical
 
-**Last updated:** 17 November 2026  
-**Engine version:** Gate Core v0.4 + QERRA-HSR v0.1 + HSR Telemetry Contract v0.4.0 + ROS 2 Node v0.3.1 (Package metadata v2.4.1)
+**Last updated:** 22 November 2026  
+**Engine version:** Gate Core v0.5 + QERRA-HSR v0.1 + HSR Telemetry Contract v0.4.0 + ROS 2 Node v0.3.1 (Package metadata v2.4.2)
 
 This document is maintained with full transparency as part of QERRA's
 commitment to explainability. The same honesty that applies to the system's
@@ -66,7 +66,7 @@ rate. Furthermore, the HSR telemetry packet carries **no metric distance** to
 the human subject.
 
 **`MONITOR` state imposes no velocity cap in `Mode.RUN`.**
-In `gate_core.py` v0.4 and `QerraGateNode`, `hsr_status == "MONITOR"` acts
+In `gate_core.py` v0.5 and `QerraGateNode`, `hsr_status == "MONITOR"` acts
 fail-closed only when latched (`Mode.TRIPPED` or `Mode.AWAITING_RESET`),
 resetting dwell timers and rejecting operator resets (`RESET_REJECTED_HAZARD`).
 During active `Mode.RUN`, `MONITOR` imposes no velocity cap inside the Gate
@@ -133,8 +133,12 @@ from the reflex layer and remains a candidate for future research.
 
 ## 3. Supervisory Gate (Layer 1A) Empirical Limitations
 
-**Commanded vs. measured velocity & reaction time in stopping envelope.**
-The dynamic stopping distance $d_{\text{stop}}(v) = \lceil v^2 / (2 \cdot a_{\text{design}}) \rceil + \lceil v \cdot t_{\text{react}} / 10^6 \rceil + margin$ calculates deceleration requirements using the commanded velocity proposal, not measured wheel encoder odometry. In Demo 7 telemetry (`RUN_1791713619`), wheel encoders recorded slip and caster drag between $t = 5.76\text{ s}$ and $t = 14.40\text{ s}$ where commanded speed was 2.0 rad/s but physical displacement was delayed. If a robot is skidding with momentum while the planner commands zero speed, $d_{\text{stop}}$ evaluates strictly to the static margin ($300\text{ mm}$), underestimating true physical stopping distance. In live deployment, `t_react_us` is configured to $32\,000\ \mu\text{s}$ ($32\text{ ms}$, 1 tick) in the Webots simulation controller, expanding the stop envelope at cruise speed ($0.196\text{ m/s}$) from $339\text{ mm}$ to $346\text{ mm}$ ($+7\text{ mm}$, or $347\text{ mm}$ at $200\text{ mm/s}$). In the ROS 2 simulation profile, `t_react_us` is parameterized to $96\,000\ \mu\text{s}$ ($96\text{ ms}$, stopping envelope $358\text{ mm}$ at $196\text{ mm/s}$ or $360\text{ mm}$ at $200\text{ mm/s}$). In the 10 Hz Hokuyo hardware profile, `t_react_us` is $160\,000\ \mu\text{s}$ ($160\text{ ms}$, stopping envelope $371\text{ mm}$ at $196\text{ mm/s}$ or $372\text{ mm}$ at $200\text{ mm/s}$). At higher velocities ($\ge 1.0\text{ m/s}$), integrators must configure `t_react_us >= dt_us` to prevent reaction latency from eroding the standoff margin. The 96 ms and 160 ms budgets are engineering cycle estimates, not physically measured latency distributions.
+**Commanded vs. measured velocity, standstill gating, & reaction time in stopping envelope.**
+The dynamic stopping distance $d_{\text{stop}}(v) = \lceil v^2 / (2 \cdot a_{\text{design}}) \rceil + \lceil v \cdot t_{\text{react}} / 10^6 \rceil + margin$ still calculates deceleration requirements using the **commanded** velocity proposal, not measured wheel encoder velocity. In Demo 7 telemetry (`RUN_1791713619`), wheel encoders recorded slip and caster drag between $t = 5.76\text{ s}$ and $t = 14.40\text{ s}$ where commanded speed was 2.0 rad/s but physical displacement was delayed. If a robot is skidding with momentum while the planner commands zero speed, $d_{\text{stop}}$ evaluates strictly to the static margin ($300\text{ mm}$), underestimating true physical stopping distance.
+
+*Standstill qualification scope (Gate Core v0.5):* Gate Core v0.5 resolves the recovery "Standstill Dwell Trap" by accepting measured wheel speeds (`meas_left_urad_s`, `meas_right_urad_s`) and `standstill_required` (`w_standstill_tol_urad_s = 50_000` $\mu\text{rad/s} \approx 4.9\text{ mm/s}$ on 98 mm wheels). When `standstill_required=True`, `Mode.TRIPPED` inhibits the 1.0 s calm dwell timer until physical standstill is verified and resets `clear_since_us` to `None` if motion resumes mid-dwell. However, three boundaries remain: (1) `standstill_required` defaults to `False` in `GateParams`, `QerraGateNode`, and `launch/qerra_gate.launch.py` for backward compatibility (while enabled by default via `QERRA_STANDSTILL_REQUIRED=1` in the Webots supervisory controller); (2) `d_stop` itself still evaluates commanded speed rather than measured speed; and (3) standstill feedback quality depends entirely on the upstream source (e.g., if a ROS 2 base controller publishes open-loop `/odom` from commanded velocities rather than closed-loop encoders, `/odom` cannot detect skidding or delayed physical deceleration).
+
+In live deployment, `t_react_us` is configured to $32\,000\ \mu\text{s}$ ($32\text{ ms}$, 1 tick) in the Webots simulation controller, expanding the stop envelope at cruise speed ($0.196\text{ m/s}$) from $339\text{ mm}$ to $346\text{ mm}$ ($+7\text{ mm}$, or $347\text{ mm}$ at $200\text{ mm/s}$). In the ROS 2 simulation profile, `t_react_us` is parameterized to $96\,000\ \mu\text{s}$ ($96\text{ ms}$, stopping envelope $358\text{ mm}$ at $196\text{ mm/s}$ or $360\text{ mm}$ at $200\text{ mm/s}$). In the 10 Hz Hokuyo hardware profile, `t_react_us` is $160\,000\ \mu\text{s}$ ($160\text{ ms}$, stopping envelope $371\text{ mm}$ at $196\text{ mm/s}$ or $372\text{ mm}$ at $200\text{ mm/s}$). At higher velocities ($\ge 1.0\text{ m/s}$), integrators must configure `t_react_us >= dt_us` to prevent reaction latency from eroding the standoff margin. The 96 ms and 160 ms budgets are engineering cycle estimates, not physically measured latency distributions.
 
 **Rotational sweep is unmodeled & AR-2 symmetrical reverse clamping.**
 The corridor filter (`gate_lidar.CorridorFilter`) projects laser returns across a straight forward translation corridor matching base half-width ($0.32\text{ m}$). Previously, clamping only a reverse wheel produced an unmonitored **arc about the stationary wheel** $(+w, 0)$ rather than a center pivot in place. Under the current AR-2 Option A policy (`w_min = 0`), because the robot lacks rearward sensor coverage, any proposal commanding reverse rotation on either wheel causes **both wheel outputs to clamp symmetrically to zero** `(0, 0)`. Consequently, differential center pivots $(+w, -w)$ and reverse maneuvers are completely halted fail-closed rather than executed. For permitted forward-only turning maneuvers where both wheels rotate forward ($w_L > 0, w_R > 0, w_L \ne w_R$), the robot moves along a curved arc ($R = v/\omega$). The straight forward corridor filter does not compute swept circular polygonal volumes along these curved turning trajectories; lateral obstacles adjacent to the swinging chassis flank outside the straight forward corridor evaluate as clear (`PASS`).
@@ -159,7 +163,7 @@ The process restart arbitration mechanism introduced in Gate v0.3 / F3 uses a `s
 4. *Trust boundary mismatch:* The deliberation proposer is explicitly an untrusted actor (AR-2, C-1). In a safety-critical architecture, arbitration cannot depend on untrusted clients self-assigning unforgeable, monotonically increasing epoch tokens.
 
 **Simulation-only baseline ($n=1$) on non-RTOS host.**
-Empirical actuator authority claims rest on a single verified baseline run (`RUN_1791713619`, 1,485 control cycles, 47.52 s sim time) in Webots R2025a using a PAL Robotics TIAGo base. The host environment was Windows 11 with a non-real-time OS thread scheduler, requiring the proposer freshness watchdog to be set to $150\text{ ms}$ (`t_watch_us = 150_000`) to tolerate thread jitter. Physical multi-run distributions across varying friction surfaces and battery levels have not been evaluated.
+Empirical actuator authority claims rest on verified simulation baseline runs (`RUN_1791713619` in Demo 7, `DEMO9_SCENARIO_B_FINAL` in Demo 9, and `DEMO10_FROZEN_FRAME_20261120_125540` in Demo 10) in Webots R2025a using a PAL Robotics TIAGo base. The host environment was Windows 11 with a non-real-time OS thread scheduler, requiring the proposer freshness watchdog to be set to $150\text{ ms}$ (`t_watch_us = 150_000`) to tolerate thread jitter (Demo 10 recorded host wall intervals with p50 32.0 ms, p99 53.0 ms, and max 148.3 ms). Physical multi-run distributions across varying friction surfaces and battery levels have not been evaluated.
 
 ---
 
@@ -198,7 +202,7 @@ infrastructure resource constraint, not an engine algorithmic delay.
 ## 5. Adversarial & Security Boundaries (Verified in Test Suite)
 
 **Localhost is an assumed trusted process boundary (Section 4.6).**
-Localhost UDP ports (5005, 5006, 5007, 5008) and ROS 2 topics are unauthenticated and unencrypted. QERRA does not defend against hostile local processes running under the same OS user. Two concrete vulnerabilities have been proven through executable unit tests (`tests/test_adversarial_hsr.py`):
+Localhost UDP ports (5005, 5006, 5007, 5008, 5009) and ROS 2 topics are unauthenticated and unencrypted. QERRA does not defend against hostile local processes running under the same OS user. Two concrete vulnerabilities have been proven through executable unit tests (`tests/test_adversarial_hsr.py`):
 1. **Masked-distress re-arm exploit (Section 4.6a):** If a legitimate perception producer is silenced after a real distress stop, an unauthenticated local attacker can transmit a counter regression (`obs_id = 0`), supply 5 clean ticks spaced to reach $\ge 160\text{ ms}$ elapsed dwell, maintain `CLEAR` for the 1.0 s Gate dwell, and issue an operator reset string (`"operator"`). The Gate returns to `Mode.RUN` despite genuine distress having occurred. (Verified in `test_adversarial_masked_distress_rearm_succeeds_without_auth`).
 2. **Ingestion buffer crowding exploit (Section 4.6b):** Ingestion from UDP sockets is bounded by `MAX_DRAIN_PER_CALL = 256` datagrams per tick. If an attacker floods $\ge 260$ valid `CLEAR` datagrams into the socket queue, a trailing legitimate `CRITICAL` datagram is left unread in the OS buffer, delaying the protective stop across control cycles. (Verified in `test_adversarial_flood_above_max_drain_delays_critical`).
 3. **Actuator authority non-claim in ROS 2:** The ROS 2 DDS transport does not enforce sole-publisher authority. Any local node publishing to `/cmd_vel_safe` bypasses the supervisory gate entirely. SROS2 permissions and OS-level containerization are required to enforce write authority.
@@ -209,14 +213,13 @@ Localhost UDP ports (5005, 5006, 5007, 5008) and ROS 2 topics are unauthenticate
 
 **Single-threaded executor assumption.**
 `QerraGateNode` relies on ROS 2's default `SingleThreadedExecutor` (`rclpy.spin(node)`)
-to serialize subscription callbacks (`_cmd_vel_callback`, `_scan_callback`,
+to serialize subscription callbacks (`_cmd_vel_callback`, `_odom_callback`, `_scan_callback`,
 `_reset_callback`) and `_tick_callback` without mutex locks. Running the node
-inside a `MultiThreadedExecutor` without placing callbacks in an explicit
-`MutuallyExclusiveCallbackGroup` creates concurrent read/write races on
-`_latest_proposal`, `_latest_ranges`, and `_reset_requested`.
+inside a `MultiThreadedExecutor` with callbacks split across separate callback groups or inside a `ReentrantCallbackGroup` creates concurrent read/write races on
+`_latest_proposal`, `_meas_left_urad_s`, `_meas_right_urad_s`, `_odom_stamp_us`, `_latest_ranges`, and `_reset_requested`.
 
-**Twist interface lacks planner generation timestamp.**
-`QerraGateNode` subscribes to standard `geometry_msgs/msg/Twist` on `/cmd_vel`. Because `Twist` carries no header stamp, the node assigns `sim_stamp_us = now_us` upon message receipt. Consequently, the proposal watchdog ($150\text{ ms}$) measures transport and subscription callback delay at the Gate, but cannot detect compute lag or stalled cycles inside the upstream planner before publication.
+**Twist interface lacks planner generation timestamp & `/odom` receipt-time stamping.**
+`QerraGateNode` subscribes to standard `geometry_msgs/msg/Twist` on `/cmd_vel` and `nav_msgs/msg/Odometry` on `/odom`. Because `Twist` carries no header stamp, the node assigns `sim_stamp_us = now_us` upon message receipt. Similarly, `_odom_callback()` stamps `_odom_stamp_us = self._get_ros_time_us()` upon receipt and checks `0 <= now_us - _odom_stamp_us <= 100_000` (failing closed to `None` on staleness or backward clock jump). Consequently, the watchdogs measure transport and callback delay at the Gate, not compute lag inside the upstream planner or hardware encoder capture delay. Additionally, when `standstill_required=True`, an open-loop `/odom` publisher (`diff_drive_controller` with `open_loop=true`) reflects commanded velocity rather than true wheel motion.
 
 **Non-finite (`NaN`/`Inf`) `Twist` commands trigger temporary command inhibition (mitigated; residual alternating chattering boundary).**
 In `_cmd_vel_callback()`, non-finite `Twist` values (`NaN` or `Inf`) raise `ValueError` in `twist_to_wheel_speeds()`, log a warning, set `_latest_proposal = None`, and flag `proposal_invalid=True` for the next `step()` cycle. `gate_core.step()` records `Event.MSG_REJECTED_INVALID`, sets `proposal_inhibited=True`, and immediately clamps the commanded wheel velocity to `(0, 0)` in `Mode.RUN` without refreshing `held.sim_stamp_us`. Inhibition persists across inter-tick silence until a fresh, finite proposal arrives; if valid proposals do not resume within `t_watch_us` ($150\text{ ms}$), the watchdog escalates to `Mode.TRIPPED` (`TRIP_PROPOSER_STALE`). **Residual boundaries:** (1) commanding `(0, 0)` is a software setpoint, not an instantaneous physical stop; and (2) rapid alternating valid/invalid proposals (`Valid -> NaN -> Valid`) refresh the proposal timestamp on each valid frame, preventing watchdog escalation while alternating between commanded motion and zero output.
