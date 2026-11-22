@@ -9,7 +9,7 @@ package_name = "qerra_core"
 
 setup(
     name=package_name,
-    version="2.4.1",
+    version="2.4.2",
     py_modules=[
         "verify_log",
     ],
