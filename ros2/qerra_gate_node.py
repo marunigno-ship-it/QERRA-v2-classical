@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Marussa Metocharaki
 """QERRA ROS 2 supervisory gate node.
 
-Provides standard ROS 2 node wrapping around the deterministic gate_core.py v0.4
+Provides standard ROS 2 node wrapping around the deterministic gate_core.py v0.4/v0.5
 engine, alongside pure-Python kinematic, lidar, and HSR reflex translators that
 execute independently on hosts without ROS 2 installed.
 """
@@ -52,12 +52,16 @@ DEFAULT_T_REACT_MS: float = 96.0
 DEFAULT_LIDAR_PERIOD_MS: float = 32.0
 DEFAULT_LIDAR_STALE_MS: float = 96.0
 
+# Odometry freshness watchdog ceiling (100 ms)
+DEFAULT_ODOM_STALE_US: int = 100_000
+
 try:
     import rclpy
     from rclpy.executors import ExternalShutdownException
     from rclpy.node import Node
     from rclpy.qos import qos_profile_sensor_data
     from geometry_msgs.msg import Twist
+    from nav_msgs.msg import Odometry
     from sensor_msgs.msg import LaserScan
     from std_msgs.msg import String
 
@@ -69,6 +73,7 @@ except ImportError as exc:
     Node = object  # Fallback base class for linting on non-ROS hosts
     qos_profile_sensor_data = None
     Twist = None
+    Odometry = None
     LaserScan = None
     String = None
     ROS2_AVAILABLE = False
@@ -231,6 +236,7 @@ def format_gate_state_json(
     log_write_failed: bool = False,
     hsr_source: str = "none",
     hsr_required: bool = False,
+    standstill_required: bool = False,
     hsr_drained: int = 0,
     hsr_rejected: int = 0,
     hsr_last_rejection_reason: Optional[str] = None,
@@ -278,6 +284,7 @@ def format_gate_state_json(
         "hsr_status": result_record.get("hsr_status"),
         "hsr_source": hsr_source,
         "hsr_required": hsr_required,
+        "standstill_required": standstill_required,
         "hsr_drained_total": hsr_drained,
         "hsr_rejected_total": hsr_rejected,
         "hsr_last_rejection_reason": hsr_last_rejection_reason,
@@ -334,6 +341,7 @@ if ROS2_AVAILABLE:
             self.declare_parameter("hsr_source", "udp")
             self.declare_parameter("hsr_port", DEFAULT_HSR_PORT)
             self.declare_parameter("hsr_required", True)
+            self.declare_parameter("standstill_required", False)
             self.declare_parameter("state_port", DEFAULT_STATE_PORT)
 
             rate_hz = float(self.get_parameter("rate_hz").value)
@@ -353,6 +361,7 @@ if ROS2_AVAILABLE:
             self._hsr_source = str(self.get_parameter("hsr_source").value).strip().lower()
             self._hsr_port = int(self.get_parameter("hsr_port").value)
             self._hsr_required = bool(self.get_parameter("hsr_required").value)
+            self._standstill_required = bool(self.get_parameter("standstill_required").value)
             self._state_port = int(self.get_parameter("state_port").value)
 
             # Parameter bounds validation (fail-closed on non-finite or negative)
@@ -398,6 +407,7 @@ if ROS2_AVAILABLE:
                 t_react_us=self._t_react_us,
                 lidar_period_us=self._lidar_period_us,
                 t_stale_us=self._lidar_stale_us,
+                standstill_required=self._standstill_required,
             )
             self._lidar_pipeline = create_lidar_pipeline(
                 n_samples=self._lidar_n_expected,
@@ -437,6 +447,11 @@ if ROS2_AVAILABLE:
             self._lidar_stamp_us: Optional[int] = None
             self._raw_valid_points: Optional[int] = None
 
+            # Measured Odometry tracking
+            self._meas_left_urad_s: Optional[int] = None
+            self._meas_right_urad_s: Optional[int] = None
+            self._odom_stamp_us: Optional[int] = None
+
             self._reset_requested = False
             self._hsr_status: Optional[str] = None
             self._hsr_stamp_us: Optional[int] = None
@@ -452,6 +467,9 @@ if ROS2_AVAILABLE:
             self._sub_reset = self.create_subscription(
                 String, "/gate/reset", self._reset_callback, 10
             )
+            self._sub_odom = self.create_subscription(
+                Odometry, "/odom", self._odom_callback, 10
+            )
 
             # Publishers
             self._pub_cmd_safe = self.create_publisher(Twist, "/cmd_vel_safe", 10)
@@ -465,6 +483,7 @@ if ROS2_AVAILABLE:
                 f"Tick: {timer_period_s * 1000:.1f} ms | "
                 f"Lidar: {self._lidar_n_expected} beams, T={self._lidar_period_ms:.1f} ms, Stale={self._lidar_stale_ms:.1f} ms | "
                 f"t_react: {self._t_react_ms:.1f} ms ({self._t_react_us} us) | "
+                f"Standstill required: {self._standstill_required} | "
                 f"HSR: source={self._hsr_source}, port={self._hsr_port}, required={self._hsr_required} | "
                 f"Flight log: {self._flight_log_path if self._flight_logger else 'disabled'}"
             )
@@ -495,6 +514,25 @@ if ROS2_AVAILABLE:
                 self.get_logger().warn(f"Rejected invalid Twist proposal: {exc}")
                 self._latest_proposal = None
                 self._proposal_invalid = True
+
+        def _odom_callback(self, msg: Odometry) -> None:
+            """Ingests measured chassis odometry twist and computes wheel velocities."""
+            try:
+                lin_x = float(msg.twist.twist.linear.x)
+                ang_z = float(msg.twist.twist.angular.z)
+                w_left, w_right = twist_to_wheel_speeds(
+                    lin_x,
+                    ang_z,
+                    track_width_m=self._track_width_m,
+                    wheel_radius_m=self._wheel_radius_m,
+                )
+                self._meas_left_urad_s = w_left
+                self._meas_right_urad_s = w_right
+                self._odom_stamp_us = self._get_ros_time_us()
+            except Exception as exc:
+                self.get_logger().warn(f"Invalid /odom twist received: {exc}")
+                self._meas_left_urad_s = None
+                self._meas_right_urad_s = None
 
         def _scan_callback(self, msg: LaserScan) -> None:
             """Ingests laser scan using fixed parameter geometry (Fail-Closed on Mismatch)."""
@@ -546,6 +584,7 @@ if ROS2_AVAILABLE:
                     log_write_failed=self._log_write_failed,
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
+                    standstill_required=self._standstill_required,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
                     hsr_rejected=getattr(self._hsr_receiver, "packets_rejected_total", 0),
                     hsr_last_rejection_reason=getattr(self._hsr_receiver, "last_rejection_reason", None),
@@ -588,6 +627,15 @@ if ROS2_AVAILABLE:
                 # Poll HSR reflex telemetry stream (stream monitor & freeze detection)
                 self._hsr_status, self._hsr_stamp_us = self._hsr_receiver.poll(now_us)
 
+                # Freshness watchdog on measured odometry: if stale (>100ms) or clock anomaly (<0), fail closed to None
+                meas_l = self._meas_left_urad_s
+                meas_r = self._meas_right_urad_s
+                if self._odom_stamp_us is not None:
+                    odom_age_us = now_us - self._odom_stamp_us
+                    if odom_age_us < 0 or odom_age_us > DEFAULT_ODOM_STALE_US:
+                        meas_l = None
+                        meas_r = None
+
                 inputs = GateInputs(
                     sim_time_us=now_us,
                     proposal=self._latest_proposal,
@@ -599,6 +647,8 @@ if ROS2_AVAILABLE:
                     raw_valid_points=self._raw_valid_points,
                     hsr_status=self._hsr_status,
                     hsr_stamp_us=self._hsr_stamp_us,
+                    meas_left_urad_s=meas_l,
+                    meas_right_urad_s=meas_r,
                 )
 
                 result = step(self._state, self._params, inputs)
@@ -647,6 +697,7 @@ if ROS2_AVAILABLE:
                     log_write_failed=self._log_write_failed,
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
+                    standstill_required=self._standstill_required,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
                     hsr_rejected=getattr(self._hsr_receiver, "packets_rejected_total", 0),
                     hsr_last_rejection_reason=getattr(self._hsr_receiver, "last_rejection_reason", None),
