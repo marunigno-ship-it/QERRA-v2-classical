@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional, Sequence, Tuple
 
-GATE_CORE_VERSION = "0.4"
+GATE_CORE_VERSION = "0.5"
 
 # Reset sources. Only the exact string "operator" is ever accepted (AR-4).
 RESET_SOURCE_OPERATOR = "operator"
@@ -98,6 +98,10 @@ class GateParams:
     hsr_required: bool = False          # False = legacy/Demo 8 mode; True = fail-closed if HSR missing (Demo 9)
     t_hsr_stale_us: int = 96_000        # HSR freshness limit (3 * dt = 96 ms)
 
+    # Standstill Gating Parameters
+    standstill_required: bool = False   # False = legacy/open-loop mode; True = requires confirmed standstill for dwell
+    w_standstill_tol_urad_s: int = 50_000  # Standstill wheel speed tolerance: 0.05 rad/s (~4.9 mm/s on 98mm wheel)
+
     def __post_init__(self) -> None:
         for name in (
             "lidar_n_expected", "dt_us", "t_watch_us", "proposer_period_us",
@@ -107,12 +111,14 @@ class GateParams:
             value = getattr(self, name)
             if not _is_int(value) or value <= 0:
                 raise ValueError(f"GateParams.{name} must be a positive int, got {value!r}")
-        for name in ("w_min_urad_s", "margin_mm", "min_raw_lidar_returns", "t_react_us"):
+        for name in ("w_min_urad_s", "margin_mm", "min_raw_lidar_returns", "t_react_us", "w_standstill_tol_urad_s"):
             value = getattr(self, name)
             if not _is_int(value) or value < 0:
                 raise ValueError(f"GateParams.{name} must be a non-negative int, got {value!r}")
         if not isinstance(self.hsr_required, bool):
             raise ValueError(f"GateParams.hsr_required must be a bool, got {self.hsr_required!r}")
+        if not isinstance(self.standstill_required, bool):
+            raise ValueError(f"GateParams.standstill_required must be a bool, got {self.standstill_required!r}")
         if self.w_min_urad_s > self.w_max_urad_s:
             raise ValueError("GateParams: w_min_urad_s must be <= w_max_urad_s")
         if self.t_stale_us < 2 * self.lidar_period_us + self.dt_us:
@@ -146,6 +152,8 @@ class GateInputs:
     hsr_status: Optional[str] = None               # "CLEAR", "MONITOR", "CRITICAL", or None
     hsr_stamp_us: Optional[int] = None             # sim time at which HSR status was evaluated
     proposal_invalid: bool = False                 # True if an invalid/non-finite Twist was received
+    meas_left_urad_s: Optional[int] = None         # Measured left wheel speed in urad/s
+    meas_right_urad_s: Optional[int] = None        # Measured right wheel speed in urad/s
 
 
 @dataclass(frozen=True)
@@ -207,6 +215,18 @@ def clamp_to_envelope(params: GateParams, left: int, right: int) -> Tuple[int, i
     """AR-2 / R-05: clamp each wheel command into [w_min, w_max]."""
     lo, hi = params.w_min_urad_s, params.w_max_urad_s
     return (min(max(left, lo), hi), min(max(right, lo), hi))
+
+
+def is_at_standstill(params: GateParams, left: Optional[int], right: Optional[int]) -> bool:
+    """Evaluates whether measured wheel speeds are confirmed within the standstill tolerance."""
+    if left is None or right is None:
+        return not params.standstill_required
+    if not _is_int(left) or not _is_int(right):
+        return False
+    return (
+        abs(left) <= params.w_standstill_tol_urad_s
+        and abs(right) <= params.w_standstill_tol_urad_s
+    )
 
 
 def _validate_proposal(p) -> bool:
@@ -311,11 +331,6 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         proposal_inhibited = True
 
     if cand is not None:
-        # F2: the (session_id, seq) ratchet binds only while a LIVE proposal is held. If nothing
-        # fresh is held, a poisoned ratchet (one huge session_id/seq from a faulty sender) would
-        # lock out every legitimate proposer and the gate could never re-arm. A candidate that is
-        # itself fresh then re-bases the ratchet. It still passes through every normal check below
-        # for staleness, trips, dwell and operator reset; it does not lift any latch.
         held_is_live = held is not None and (now - held.sim_stamp_us) < params.t_watch_us
         if not _validate_proposal(cand):
             events.append(Event.MSG_REJECTED_INVALID)
@@ -323,7 +338,6 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         elif cand.sim_stamp_us > now:
             events.append(Event.MSG_REJECTED_FUTURE)
         elif not held_is_live and (now - cand.sim_stamp_us) < params.t_watch_us:
-            # (here cand.sim_stamp_us <= now, so the age is non-negative)
             held, last_seq, last_session_id = cand, cand.seq, cand.session_id
             proposal_inhibited = False
         elif cand.session_id < last_session_id:
@@ -335,12 +349,6 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
             proposal_inhibited = False
 
     # 2. clamp the newest accepted proposal into the envelope (AR-2, R-05)
-    # Symmetrical Fail-Closed (Option A): If either wheel requires negative
-    # rotation (reverse) without rearward sensor coverage, both wheels clamp
-    # to (0, 0) fail-closed to preserve body linear velocity bounds and prevent
-    # unmonitored blind rotation.
-    # Command Inhibition (Phase 1): If an invalid proposal was flagged or is
-    # currently inhibited, clamp immediately to (0, 0) without clearing historical state.
     if proposal_inhibited:
         clamped = (0, 0)
     elif held is not None and (held.left_urad_s < params.w_min_urad_s or held.right_urad_s < params.w_min_urad_s):
@@ -388,7 +396,7 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     elif params.hsr_required and (
         inp.hsr_stamp_us is None or hsr_age_us is None or hsr_age_us < 0 or hsr_age_us > params.t_hsr_stale_us
     ):
-        trip_reason = Reason.TRIP_HSR_STALE       # <--- Stale HSR Heartbeat Trip
+        trip_reason = Reason.TRIP_HSR_STALE
     elif inp.hsr_status is not None and inp.hsr_status not in ("CLEAR", "MONITOR", "CRITICAL"):
         trip_reason = Reason.TRIP_HSR_INVALID
     elif inp.hsr_status == "CRITICAL":
@@ -399,7 +407,6 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         trip_reason = Reason.TRIP_PROPOSER_STALE
 
     # 6b. HSR clear-dwell tracking (C-7). Only a fresh, valid "CLEAR" counts; MONITOR does not.
-    #     The run restarts on any non-CLEAR/invalid/stale/future reading and on a tick gap.
     gap_ok = state.last_tick_us is not None and (now - state.last_tick_us) <= params.max_tick_gap_us
     hsr_clear_now = (
         inp.hsr_status == "CLEAR"
@@ -412,15 +419,17 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         hsr_clear_since = now
     else:
         hsr_clear_since = state.hsr_clear_since_us
-    # Enforced only when HSR is required (legacy / Demo 8 mode has no HSR stream to dwell on).
+
     hsr_dwell_ok = (not params.hsr_required) or (
         hsr_clear_since is not None and now - hsr_clear_since >= params.t_dwell_us
     )
 
-    # 7. mode transitions
+    # 7. mode transitions and standstill qualification
     mode = state.mode
     clear_since = state.clear_since_us
     cmd = (0, 0)
+
+    standstill_ok = is_at_standstill(params, inp.meas_left_urad_s, inp.meas_right_urad_s)
 
     if trip_reason is not None:
         mode, clear_since, reason = Mode.TRIPPED, None, trip_reason
@@ -428,10 +437,14 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
         reason, cmd = Reason.PASS, clamped
     else:
         if mode == Mode.TRIPPED:
-            if clear_since is None or not gap_ok:
-                clear_since = now
-            if now - clear_since >= params.t_dwell_us and hsr_dwell_ok:
-                mode = Mode.AWAITING_RESET
+            # Standstill gate: dwell strictly requires confirmed physical standstill
+            if not standstill_ok:
+                clear_since = None
+            else:
+                if clear_since is None or not gap_ok:
+                    clear_since = now
+                if now - clear_since >= params.t_dwell_us and hsr_dwell_ok:
+                    mode = Mode.AWAITING_RESET
         reason = Reason.LATCHED_AWAIT_RESET if mode == Mode.AWAITING_RESET else Reason.LATCHED_DWELL
 
     # 8. reset handling (AR-4, R-07)
@@ -447,7 +460,6 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
             events.append(Event.RESET_REJECTED_HAZARD)
         elif mode == Mode.AWAITING_RESET:
             if not hsr_dwell_ok:
-                # C-7: a non-CLEAR blip after AWAITING_RESET restarts the HSR clear dwell.
                 events.append(Event.RESET_REJECTED_NOT_READY)
             else:
                 mode, clear_since, reason = Mode.RUN, None, Reason.RESET_ACCEPTED
@@ -519,6 +531,8 @@ def _record(now, mode, reason, events, held, age_us, lidar_ok, min_mm, stop_mm, 
                 else str(inp.hsr_status)[:64]
             ),
             "hsr_stamp_us": inp.hsr_stamp_us,
+            "meas_left_urad_s": inp.meas_left_urad_s,
+            "meas_right_urad_s": inp.meas_right_urad_s,
         }
         if inp.proposal_invalid:
             rec["inputs"]["proposal_invalid"] = True
