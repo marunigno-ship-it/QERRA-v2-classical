@@ -558,7 +558,7 @@ class TestT10LatchAndReset(unittest.TestCase):
         for _ in range(3):
             r = h.tick(ranges=NEAR)
             self.assertEqual(r.reason, Reason.TRIP_OBSTACLE)
-            self.assertEqual((r.cmd_left_urad_s, r.cmd_right_urad_s), (0, 0))
+            self.assertEqual((r.cmd_left_urad_s, res_cmd := (r.cmd_left_urad_s, r.cmd_right_urad_s))[0], 0)
 
 
 # ----------------------------------------------------------------------------
@@ -1042,6 +1042,152 @@ class TestProposalInhibition(unittest.TestCase):
         self.assertEqual((r4.cmd_left_urad_s, r4.cmd_right_urad_s), (0, 0))
         self.assertTrue(r4.state.proposal_inhibited)
         self.assertEqual(r4.state.mode, Mode.RUN)
+
+
+# ----------------------------------------------------------------------------
+# Standstill-Gated Recovery & Dwell Tests (Gate Hardening)
+# ----------------------------------------------------------------------------
+class TestStandstillDwellQualification(unittest.TestCase):
+    """
+    Verifies that the calm dwell timer (1.0s) strictly requires confirmed physical
+    standstill, and that chassis motion during dwell resets the dwell counter.
+    """
+
+    def setUp(self):
+        self.params = make_params(
+            standstill_required=True,
+            w_standstill_tol_urad_s=50_000,  # 0.05 rad/s (~5 mm/s)
+        )
+        self.moving_wheels = (500_000, 500_000)   # 0.5 rad/s: definitely moving
+        self.stopped_wheels = (0, 0)              # 0.0 rad/s: stationary
+
+    def _make_valid_scan(self, stamp_us):
+        return [5.0] * N, stamp_us, 5
+
+    def test_dwell_inhibited_while_chassis_is_physically_moving(self):
+        """Even if the hazard is completely gone, dwell cannot start while wheels turn."""
+        s0 = GateState(mode=Mode.TRIPPED, last_tick_us=100_000)
+        now = 100_000 + DT
+        ranges, scan_stamp, pts = self._make_valid_scan(now)
+
+        # 30 ticks (nearly 1.0s) pass with clear corridor, but wheels are still moving (coasting)
+        state = s0
+        for _ in range(30):
+            now += DT
+            inp = GateInputs(
+                sim_time_us=now,
+                proposal=Proposal(seq=1, sim_stamp_us=now, left_urad_s=W, right_urad_s=W),
+                ranges_m=ranges,
+                lidar_stamp_us=now,
+                raw_valid_points=pts,
+                meas_left_urad_s=self.moving_wheels[0],
+                meas_right_urad_s=self.moving_wheels[1],
+            )
+            res = step(state, self.params, inp)
+            state = res.state
+            # Must remain TRIPPED and clear_since_us must remain None
+            self.assertEqual(res.state.mode, Mode.TRIPPED)
+            self.assertIsNone(res.state.clear_since_us)
+
+    def test_dwell_starts_only_after_wheels_reach_standstill(self):
+        """Once wheels stop, the dwell timer begins and reaches AWAITING_RESET after 1.0s."""
+        state = GateState(mode=Mode.TRIPPED, last_tick_us=100_000)
+        now = 100_000
+        ranges, scan_stamp, pts = self._make_valid_scan(now)
+
+        # 1. First 10 ticks: still coasting
+        for _ in range(10):
+            now += DT
+            inp = GateInputs(
+                sim_time_us=now,
+                proposal=Proposal(seq=1, sim_stamp_us=now, left_urad_s=W, right_urad_s=W),
+                ranges_m=ranges,
+                lidar_stamp_us=now,
+                raw_valid_points=pts,
+                meas_left_urad_s=self.moving_wheels[0],
+                meas_right_urad_s=self.moving_wheels[1],
+            )
+            res = step(state, self.params, inp)
+            state = res.state
+            self.assertIsNone(res.state.clear_since_us)
+
+        # 2. Wheels reach standstill (0, 0)
+        for _ in range(35):  # 34 * 32ms = 1088 ms (>= 1.0s dwell)
+            now += DT
+            inp = GateInputs(
+                sim_time_us=now,
+                proposal=Proposal(seq=1, sim_stamp_us=now, left_urad_s=W, right_urad_s=W),
+                ranges_m=ranges,
+                lidar_stamp_us=now,
+                raw_valid_points=pts,
+                meas_left_urad_s=self.stopped_wheels[0],
+                meas_right_urad_s=self.stopped_wheels[1],
+            )
+            res = step(state, self.params, inp)
+            state = res.state
+
+        # Must have completed dwell and reached AWAITING_RESET
+        self.assertEqual(state.mode, Mode.AWAITING_RESET)
+        self.assertEqual(res.reason, Reason.LATCHED_AWAIT_RESET)
+
+    def test_motion_during_dwell_resets_the_dwell_counter(self):
+        """If the robot is bumped or slides mid-dwell, the 1.0s counter is wiped out."""
+        state = GateState(mode=Mode.TRIPPED, last_tick_us=100_000)
+        now = 100_000
+        ranges, scan_stamp, pts = self._make_valid_scan(now)
+
+        # 1. 20 ticks of good standstill (~640 ms into dwell)
+        for _ in range(20):
+            now += DT
+            inp = GateInputs(
+                sim_time_us=now,
+                proposal=Proposal(seq=1, sim_stamp_us=now, left_urad_s=W, right_urad_s=W),
+                ranges_m=ranges,
+                lidar_stamp_us=now,
+                raw_valid_points=pts,
+                meas_left_urad_s=self.stopped_wheels[0],
+                meas_right_urad_s=self.stopped_wheels[1],
+            )
+            res = step(state, self.params, inp)
+            state = res.state
+        self.assertIsNotNone(state.clear_since_us)
+
+        # 2. Sudden chassis motion spike on tick 21 (e.g. external nudge or slide)
+        now += DT
+        inp_bump = GateInputs(
+            sim_time_us=now,
+            proposal=Proposal(seq=1, sim_stamp_us=now, left_urad_s=W, right_urad_s=W),
+            ranges_m=ranges,
+            lidar_stamp_us=now,
+            raw_valid_points=pts,
+            meas_left_urad_s=self.moving_wheels[0],
+            meas_right_urad_s=self.moving_wheels[1],
+        )
+        res_bump = step(state, self.params, inp_bump)
+        state = res_bump.state
+
+        # The dwell timer must be completely reset!
+        self.assertEqual(state.mode, Mode.TRIPPED)
+        self.assertIsNone(state.clear_since_us)
+
+    def test_dwell_inhibited_if_standstill_required_but_feedback_is_none(self):
+        """If standstill is required, missing feedback (None) fails closed and blocks dwell."""
+        state = GateState(mode=Mode.TRIPPED, last_tick_us=100_000)
+        now = 100_000 + DT
+        ranges, scan_stamp, pts = self._make_valid_scan(now)
+
+        inp = GateInputs(
+            sim_time_us=now,
+            proposal=Proposal(seq=1, sim_stamp_us=now, left_urad_s=W, right_urad_s=W),
+            ranges_m=ranges,
+            lidar_stamp_us=now,
+            raw_valid_points=pts,
+            meas_left_urad_s=None,
+            meas_right_urad_s=None,
+        )
+        res = step(state, self.params, inp)
+        self.assertEqual(res.state.mode, Mode.TRIPPED)
+        self.assertIsNone(res.state.clear_since_us)
 
 
 if __name__ == "__main__":
