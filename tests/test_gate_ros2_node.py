@@ -151,6 +151,85 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(telemetry["cmd_left_urad_s"], 0)
         self.assertEqual(telemetry["cmd_right_urad_s"], 0)
 
+    def test_standstill_and_odometry_telemetry(self) -> None:
+        """
+        Verifies that format_gate_state_json correctly serializes meas_left_urad_s,
+        meas_right_urad_s, and standstill_ok under fresh, moving, standstill, and stale states.
+        """
+        params_std = get_live_gate_params(lidar_n_expected=5, hsr_required=False, standstill_required=True)
+        state = initial_state()
+
+        # 1. Moving chassis: speeds exceed 50_000 urad/s tolerance -> standstill_ok is False
+        inp_moving = GateInputs(
+            sim_time_us=100_000,
+            proposal=twist_to_proposal(1, 100_000, 0.20, 0.0),
+            ranges_m=[2.0] * 5,
+            lidar_stamp_us=100_000,
+            meas_left_urad_s=2_040_816,
+            meas_right_urad_s=2_040_816,
+        )
+        res_moving = step(state, params_std, inp_moving)
+        json_moving = json.loads(format_gate_state_json(
+            res_moving.state,
+            res_moving.record,
+            standstill_required=True,
+            standstill_ok=False,
+        ))
+        self.assertEqual(json_moving["meas_left_urad_s"], 2_040_816)
+        self.assertEqual(json_moving["meas_right_urad_s"], 2_040_816)
+        self.assertTrue(json_moving["standstill_required"])
+        self.assertFalse(json_moving["standstill_ok"])
+
+        # 2. Standstill chassis: speeds within 50_000 urad/s tolerance -> standstill_ok is True
+        inp_still = GateInputs(
+            sim_time_us=132_000,
+            proposal=twist_to_proposal(2, 132_000, 0.0, 0.0),
+            ranges_m=[2.0] * 5,
+            lidar_stamp_us=132_000,
+            meas_left_urad_s=0,
+            meas_right_urad_s=0,
+        )
+        res_still = step(res_moving.state, params_std, inp_still)
+        json_still = json.loads(format_gate_state_json(
+            res_still.state,
+            res_still.record,
+            standstill_required=True,
+            standstill_ok=True,
+        ))
+        self.assertEqual(json_still["meas_left_urad_s"], 0)
+        self.assertEqual(json_still["meas_right_urad_s"], 0)
+        self.assertTrue(json_still["standstill_ok"])
+
+        # 3. Missing/stale odometry: explicit null in JSON; standstill_ok is False when required
+        inp_stale = GateInputs(
+            sim_time_us=164_000,
+            proposal=twist_to_proposal(3, 164_000, 0.20, 0.0),
+            ranges_m=[2.0] * 5,
+            lidar_stamp_us=164_000,
+            meas_left_urad_s=None,
+            meas_right_urad_s=None,
+        )
+        res_stale = step(res_still.state, params_std, inp_stale)
+        json_stale = json.loads(format_gate_state_json(
+            res_stale.state,
+            res_stale.record,
+            standstill_required=True,
+            standstill_ok=False,
+        ))
+        self.assertIsNone(json_stale["meas_left_urad_s"])
+        self.assertIsNone(json_stale["meas_right_urad_s"])
+        self.assertFalse(json_stale["standstill_ok"])
+
+        # 4. Open-loop mode (standstill_required=False): standstill_ok defaults True even if measurements missing
+        json_openloop = json.loads(format_gate_state_json(
+            res_stale.state,
+            res_stale.record,
+            standstill_required=False,
+            standstill_ok=True,
+        ))
+        self.assertFalse(json_openloop["standstill_required"])
+        self.assertTrue(json_openloop["standstill_ok"])
+
     def test_lidar_corridor_filter_and_timestamp(self) -> None:
         """Preserves corridor returns, masks outer returns to +inf, and converts timestamps."""
         pipeline = create_lidar_pipeline(n_samples=5, fov_rad=math.pi, half_width_m=0.32)
