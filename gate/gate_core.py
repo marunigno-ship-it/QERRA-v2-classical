@@ -203,6 +203,24 @@ def wheel_to_mmps(params: GateParams, w_urad_s: int) -> int:
     return _ceil_div(w_urad_s * params.wheel_radius_mm, 1_000_000)
 
 
+def chassis_forward_mmps(
+    params: GateParams, left_urad_s: Optional[int], right_urad_s: Optional[int]
+) -> int:
+    """
+    Computes chassis forward translational speed (mm/s) from differential wheel speeds,
+    rounded up. Zero or negative forward translation (e.g. pure yaw spin or reverse)
+    evaluates to 0 mm/s. Fails safe to 0 if measurements are missing or invalid.
+    """
+    if left_urad_s is None or right_urad_s is None:
+        return 0
+    if not _is_int(left_urad_s) or not _is_int(right_urad_s):
+        return 0
+    w_sum = left_urad_s + right_urad_s
+    if w_sum <= 0:
+        return 0
+    return _ceil_div(w_sum * params.wheel_radius_mm, 2_000_000)
+
+
 def d_stop_mm(params: GateParams, v_mmps: int) -> int:
     """d_stop = ceil(v^2 / (2*a_design)) + ceil(v * t_react / 1e6) + margin, in integer millimetres."""
     v = max(0, v_mmps)
@@ -356,11 +374,13 @@ def step(state: GateState, params: GateParams, inp: GateInputs) -> StepResult:
     else:
         clamped = clamp_to_envelope(params, held.left_urad_s, held.right_urad_s) if held else (0, 0)
 
-    # 3. speed bound and stop distance (F4 reaction-time inclusion)
-    v_ref = max(
+    # 3. speed bound and stop distance (F4 reaction-time inclusion, measured-velocity envelope)
+    v_cmd_mmps = max(
         wheel_to_mmps(params, max(state.last_cmd)),
         wheel_to_mmps(params, max(clamped)),
     )
+    v_meas_mmps = chassis_forward_mmps(params, inp.meas_left_urad_s, inp.meas_right_urad_s)
+    v_ref = max(v_cmd_mmps, v_meas_mmps)
     stop_mm = d_stop_mm(params, v_ref)
 
     # 4. lidar validity and obstacle hazard (R-01, R-04, AR-9, F1)
