@@ -24,6 +24,7 @@ from gate.gate_core import (
     Reason,
     RESET_SOURCE_OPERATOR,
     initial_state,
+    is_at_standstill,
     step,
 )
 from gate.gate_ipc import DEFAULT_HSR_PORT
@@ -237,6 +238,7 @@ def format_gate_state_json(
     hsr_source: str = "none",
     hsr_required: bool = False,
     standstill_required: bool = False,
+    standstill_ok: Optional[bool] = None,
     hsr_drained: int = 0,
     hsr_rejected: int = 0,
     hsr_last_rejection_reason: Optional[str] = None,
@@ -254,12 +256,18 @@ def format_gate_state_json(
         events_list = []
         left_urad = 0
         right_urad = 0
+        meas_left_urad = None
+        meas_right_urad = None
+        standstill_ok_val = False if standstill_required else True
     elif log_write_failed:
         mode_str = "TRIPPED"
         reason_str = Reason.TRIP_LOG_FAILURE
         events_list = []
         left_urad = 0
         right_urad = 0
+        meas_left_urad = None
+        meas_right_urad = None
+        standstill_ok_val = False if standstill_required else True
     else:
         mode_str = state.mode.value
         reason_str = result_record.get("reason")
@@ -267,6 +275,15 @@ def format_gate_state_json(
         events_list = list(events_raw) if isinstance(events_raw, (list, tuple)) else []
         left_urad = result_record.get("cmd_left_urad_s")
         right_urad = result_record.get("cmd_right_urad_s")
+        inputs_rec = result_record.get("inputs", {}) if isinstance(result_record.get("inputs"), dict) else {}
+        meas_left_urad = inputs_rec.get("meas_left_urad_s")
+        meas_right_urad = inputs_rec.get("meas_right_urad_s")
+        if standstill_ok is not None:
+            standstill_ok_val = standstill_ok
+        elif meas_left_urad is None or meas_right_urad is None:
+            standstill_ok_val = not standstill_required
+        else:
+            standstill_ok_val = (abs(meas_left_urad) <= 50_000 and abs(meas_right_urad) <= 50_000)
 
     payload = {
         "node_version": NODE_VERSION,
@@ -285,6 +302,9 @@ def format_gate_state_json(
         "hsr_source": hsr_source,
         "hsr_required": hsr_required,
         "standstill_required": standstill_required,
+        "standstill_ok": standstill_ok_val,
+        "meas_left_urad_s": meas_left_urad,
+        "meas_right_urad_s": meas_right_urad,
         "hsr_drained_total": hsr_drained,
         "hsr_rejected_total": hsr_rejected,
         "hsr_last_rejection_reason": hsr_last_rejection_reason,
@@ -585,6 +605,7 @@ if ROS2_AVAILABLE:
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     standstill_required=self._standstill_required,
+                    standstill_ok=(not self._standstill_required),
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
                     hsr_rejected=getattr(self._hsr_receiver, "packets_rejected_total", 0),
                     hsr_last_rejection_reason=getattr(self._hsr_receiver, "last_rejection_reason", None),
@@ -635,6 +656,8 @@ if ROS2_AVAILABLE:
                     if odom_age_us < 0 or odom_age_us > DEFAULT_ODOM_STALE_US:
                         meas_l = None
                         meas_r = None
+
+                standstill_ok = is_at_standstill(self._params, meas_l, meas_r)
 
                 inputs = GateInputs(
                     sim_time_us=now_us,
@@ -698,6 +721,7 @@ if ROS2_AVAILABLE:
                     hsr_source=self._hsr_source,
                     hsr_required=self._hsr_required,
                     standstill_required=self._standstill_required,
+                    standstill_ok=standstill_ok,
                     hsr_drained=getattr(self._hsr_receiver, "packets_drained_total", 0),
                     hsr_rejected=getattr(self._hsr_receiver, "packets_rejected_total", 0),
                     hsr_last_rejection_reason=getattr(self._hsr_receiver, "last_rejection_reason", None),
