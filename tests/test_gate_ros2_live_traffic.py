@@ -21,6 +21,7 @@ try:
     from rclpy.node import Node
     from rclpy.qos import qos_profile_sensor_data
     from geometry_msgs.msg import Twist
+    from nav_msgs.msg import Odometry
     from sensor_msgs.msg import LaserScan
     from std_msgs.msg import String
 
@@ -33,6 +34,7 @@ except ImportError:
     Node = Any
     qos_profile_sensor_data = Any
     Twist = Any
+    Odometry = Any
     LaserScan = Any
     String = Any
     QerraGateNode = Any
@@ -52,6 +54,7 @@ if ROS2_AVAILABLE:
             self.pub_cmd = self.create_publisher(Twist, "/cmd_vel", 10)
             self.pub_scan = self.create_publisher(LaserScan, "/scan", qos_profile_sensor_data)
             self.pub_reset = self.create_publisher(String, "/gate/reset", 10)
+            self.pub_odom = self.create_publisher(Odometry, "/odom", 10)
 
             # Telemetry subscribers
             self.sub_cmd_safe = self.create_subscription(
@@ -103,6 +106,15 @@ if ROS2_AVAILABLE:
             msg.angular.z = float(angular_z)
             self.pub_cmd.publish(msg)
 
+        def publish_odom(self, linear_x: float, angular_z: float) -> None:
+            odom = Odometry()
+            odom.header.stamp = self.get_clock().now().to_msg()
+            odom.header.frame_id = "odom"
+            odom.child_frame_id = "base_footprint"
+            odom.twist.twist.linear.x = float(linear_x)
+            odom.twist.twist.angular.z = float(angular_z)
+            self.pub_odom.publish(odom)
+
         def publish_scan(self, ranges: List[float], n_expected: int = 682) -> None:
             if len(ranges) != n_expected:
                 raise ValueError(f"Expected {n_expected} ranges, got {len(ranges)}")
@@ -134,6 +146,7 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
     3. Negative Path C: Active hazard reset refusal (RESET_REJECTED_HAZARD event).
     4. Negative Path B: Proposer timeout watchdog (150 ms freshness ceiling).
     5. Phase 1: Non-finite Twist command inhibition, recovery, and watchdog escalation.
+    6. Live DDS /odom pub/sub ingestion, translation, freshness watchdog, and fail-closed NaN rejection.
     """
 
     def setUp(self) -> None:
@@ -431,6 +444,80 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
             3.0,
             "TRIP_PROPOSER_STALE watchdog escalation under continuous Inf Twist stream",
         )
+
+    def test_live_topic_traffic_odom_pub_sub_and_watchdog(self) -> None:
+        """
+        Verifies live DDS pub/sub topic traffic for /odom:
+        1. Publishing Odometry with forward translation (0.20 m/s) reflects in /gate/state
+           telemetry (meas_left_urad_s=2_040_816, meas_right_urad_s=2_040_816).
+        2. Publishing Odometry with in-place rotation reflects differential wheel speeds.
+        3. Halting /odom traffic triggers the 100 ms freshness watchdog, resetting
+           measured wheel speeds in /gate/state to null.
+        4. Publishing non-finite/NaN Odometry fails closed, resetting measured speeds to null.
+        """
+        clear_ranges = [3.0] * 682
+
+        # 1. Bring gate to Mode.RUN
+        self._drive_to_run(clear_ranges)
+
+        # 2. Publish live forward odometry (0.20 m/s) and assert telemetry reflection
+        def _is_odom_forward(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_odom(linear_x=0.20, angular_z=0.0)
+            return (
+                state is not None
+                and state.get("mode") == "RUN"
+                and state.get("meas_left_urad_s") == 2_040_816
+                and state.get("meas_right_urad_s") == 2_040_816
+            )
+
+        self._wait_until(_is_odom_forward, 3.0, "live /odom forward twist reflection in telemetry")
+
+        # 3. Publish in-place rotation (yaw = 1.0 rad/s) and assert differential wheel speeds
+        def _is_odom_turning(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_odom(linear_x=0.0, angular_z=1.0)
+            return (
+                state is not None
+                and state.get("mode") == "RUN"
+                and state.get("meas_left_urad_s") == -2_063_265
+                and state.get("meas_right_urad_s") == 2_063_265
+            )
+
+        self._wait_until(_is_odom_turning, 3.0, "live /odom in-place spin reflection in telemetry")
+
+        # 4. Stop publishing /odom; continue proposals & scan. Watchdog ceiling is 100 ms.
+        # Telemetry must drop measured speeds to None (null in JSON).
+        def _is_odom_stale(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            return (
+                state is not None
+                and state.get("mode") == "RUN"
+                and state.get("meas_left_urad_s") is None
+                and state.get("meas_right_urad_s") is None
+            )
+
+        self._wait_until(_is_odom_stale, 3.0, "live /odom 100 ms staleness watchdog drop to null")
+
+        # 5. Restore fresh odometry, then publish NaN to assert fail-closed drop to null
+        self.harness_node.publish_odom(linear_x=0.20, angular_z=0.0)
+        self._wait_until(_is_odom_forward, 2.0, "re-establishing fresh odometry before NaN injection")
+
+        def _is_odom_nan_dropped(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_odom(linear_x=float("nan"), angular_z=0.0)
+            return (
+                state is not None
+                and state.get("mode") == "RUN"
+                and state.get("meas_left_urad_s") is None
+                and state.get("meas_right_urad_s") is None
+            )
+
+        self._wait_until(_is_odom_nan_dropped, 2.0, "live /odom NaN fail-closed drop to null")
 
 
 if __name__ == "__main__":
