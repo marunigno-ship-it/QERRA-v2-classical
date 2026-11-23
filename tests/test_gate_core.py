@@ -1190,5 +1190,81 @@ class TestStandstillDwellQualification(unittest.TestCase):
         self.assertIsNone(res.state.clear_since_us)
 
 
+# ----------------------------------------------------------------------------
+# Priority 1: Measured-Velocity Stopping Envelope Kinematics
+# ----------------------------------------------------------------------------
+class TestMeasuredVelocityStoppingEnvelope(unittest.TestCase):
+    """
+    Verifies that the dynamic stopping envelope d_stop_mm is driven by the maximum of
+    commanded and physical forward translational velocity (preventing envelope collapse).
+    """
+
+    def setUp(self):
+        # 100 mm wheel radius, a_design = 500 mm/s^2, margin = 300 mm, t_react = 0 us
+        self.params = make_params(wheel_radius_mm=100, t_react_us=0)
+
+    def test_measured_velocity_expands_stopping_distance_during_coasting(self):
+        """
+        When commanded velocity is 0 mm/s, but measured wheels report 2.0 rad/s (200 mm/s),
+        d_stop_mm must expand to 340 mm (40 mm braking + 300 mm margin), NOT 300 mm.
+        """
+        now = 100_000
+        # Command is strictly (0, 0)
+        prop = Proposal(seq=1, sim_stamp_us=now, left_urad_s=0, right_urad_s=0)
+        inp = GateInputs(
+            sim_time_us=now,
+            proposal=prop,
+            ranges_m=FAR,
+            lidar_stamp_us=now,
+            meas_left_urad_s=2_000_000,
+            meas_right_urad_s=2_000_000,
+        )
+        res = step(initial_state(), self.params, inp)
+        # Expected: v_meas = (2.0 + 2.0)/2 * 100mm = 200 mm/s -> d_stop = 340 mm
+        self.assertEqual(
+            res.record["d_stop_mm"],
+            340,
+            f"Stopping envelope collapsed: got {res.record['d_stop_mm']} mm, expected 340 mm",
+        )
+
+    def test_turning_in_place_does_not_falsely_expand_forward_stopping_distance(self):
+        """
+        Pure yaw spin (-2 rad/s left, +2 rad/s right) produces 0 forward translation.
+        Forward d_stop_mm must remain at the static margin (300 mm).
+        """
+        now = 100_000
+        prop = Proposal(seq=1, sim_stamp_us=now, left_urad_s=0, right_urad_s=0)
+        inp = GateInputs(
+            sim_time_us=now,
+            proposal=prop,
+            ranges_m=FAR,
+            lidar_stamp_us=now,
+            meas_left_urad_s=-2_000_000,
+            meas_right_urad_s=2_000_000,
+        )
+        res = step(initial_state(), self.params, inp)
+        self.assertEqual(res.record["d_stop_mm"], 300)
+
+    def test_coasting_trips_obstacle_when_command_is_zero(self):
+        """
+        If commanded velocity is 0, but the robot is physically coasting at 200 mm/s,
+        an obstacle at 320 mm must trigger TRIP_OBSTACLE (320 mm <= 340 mm envelope).
+        """
+        now = 100_000
+        prop = Proposal(seq=1, sim_stamp_us=now, left_urad_s=0, right_urad_s=0)
+        # Obstacle at 0.320 m (320 mm)
+        inp = GateInputs(
+            sim_time_us=now,
+            proposal=prop,
+            ranges_m=[0.320] * N,
+            lidar_stamp_us=now,
+            meas_left_urad_s=2_000_000,
+            meas_right_urad_s=2_000_000,
+        )
+        res = step(initial_state(), self.params, inp)
+        self.assertEqual(res.reason, Reason.TRIP_OBSTACLE)
+        self.assertTrue(res.record["obstacle_breach"])
+
+
 if __name__ == "__main__":
     unittest.main()
