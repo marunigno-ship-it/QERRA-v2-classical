@@ -271,8 +271,10 @@ class TestOdomIngestionAndWatchdog(unittest.TestCase):
                 self.assertIsInstance(gi.meas_right_urad_s, int)
 
     def test_freshness_boundary(self) -> None:
-        """Age <= 100 ms is fresh; age > 100 ms fails closed to None."""
+        """Age in [0, 100_000] us is fresh; age < 0 or > 100_000 us fails closed to None."""
         cases = [
+            (-50_000, False),   # backward clock jump / future-dated: fails closed
+            (-1, False),        # 1 us before stamp: fails closed
             (0, True),
             (32_000, True),
             (100_000, True),    # exactly at the ceiling: still fresh (strict >)
@@ -348,6 +350,48 @@ class TestOdomIngestionAndWatchdog(unittest.TestCase):
         gi_final = self._tick_at(node, 1_296_000)
         self.assertEqual(gi_final.meas_left_urad_s, 2_040_816)
         self.assertEqual(gi_final.meas_right_urad_s, 2_040_816)
+
+    def test_backward_clock_jump_fails_closed(self) -> None:
+        """Backward time jump (odom_age_us < 0) immediately resets measured speeds to None."""
+        node = self._make_node()
+
+        # 1. Establish valid odometry received at t = 1_000_000 us
+        self._send_odom_at(node, 1_000_000, 0.20, 0.0)
+
+        # 2. Clock is evaluated backwards at t = 950_000 us (age = -50_000 us)
+        gi_backward = self._tick_at(node, 950_000)
+        self.assertIsNone(
+            gi_backward.meas_left_urad_s,
+            "Backward clock jump must fail closed to None on left wheel",
+        )
+        self.assertIsNone(
+            gi_backward.meas_right_urad_s,
+            "Backward clock jump must fail closed to None on right wheel",
+        )
+
+        # 3. Clock catches up to t = 1_020_000 us (age = +20_000 us, valid and fresh)
+        gi_recovered = self._tick_at(node, 1_020_000)
+        self.assertEqual(
+            gi_recovered.meas_left_urad_s,
+            2_040_816,
+            "Valid time progression must restore measured wheel speeds",
+        )
+        self.assertEqual(
+            gi_recovered.meas_right_urad_s,
+            2_040_816,
+            "Valid time progression must restore measured wheel speeds",
+        )
+
+        # 4. Another backward jump: clock steps back before stamp to t = 999_999 us (age = -1 us)
+        gi_relapse = self._tick_at(node, 999_999)
+        self.assertIsNone(
+            gi_relapse.meas_left_urad_s,
+            "Relapsing to negative age must immediately drop measured speeds",
+        )
+        self.assertIsNone(
+            gi_relapse.meas_right_urad_s,
+            "Relapsing to negative age must immediately drop measured speeds",
+        )
 
 
 if __name__ == "__main__":
