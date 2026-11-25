@@ -278,6 +278,8 @@ def process_laser_scan(
     pipeline: LidarPipeline,
     *,
     stalled: bool = False,
+    range_min: Optional[float] = None,
+    range_max: Optional[float] = None,
 ) -> Tuple[Optional[List[float]], Optional[int], int]:
     """Translates raw LaserScan ranges and ROS sec/nanosec timestamps into corridor returns."""
     if stamp_sec < 0 or stamp_nanosec < 0:
@@ -286,7 +288,13 @@ def process_laser_scan(
         raise TypeError("pipeline must be an instance of LidarPipeline")
 
     stamp_us = int(stamp_sec * 1_000_000 + stamp_nanosec // 1_000)
-    return pipeline.process(ranges, stamp_us, stalled=stalled)
+    return pipeline.process(
+        ranges,
+        stamp_us,
+        stalled=stalled,
+        range_min=range_min,
+        range_max=range_max,
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -691,6 +699,8 @@ if ROS2_AVAILABLE:
                     stamp_sec=msg.header.stamp.sec,
                     stamp_nanosec=msg.header.stamp.nanosec,
                     pipeline=self._lidar_pipeline,
+                    range_min=float(msg.range_min),
+                    range_max=float(msg.range_max),
                 )
                 self._latest_ranges = filtered
                 self._lidar_stamp_us = stamp_us
