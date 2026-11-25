@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
-"""Phase 3A: unit and callback-level tests for LaserScan metadata validation.
+"""Phase 3A & 3B: unit and callback-level tests for LaserScan metadata & REP-117 bounds.
 
 Pure stdlib unittest. LaserScan messages are duck-typed with SimpleNamespace, and
 QerraGateNode is loaded under a private name with stub ROS 2 modules (mirroring
@@ -394,7 +394,7 @@ NODE_UNDER_TEST = _load_node_module()
 class TestScanCallbackMetadataEnforcement(unittest.TestCase):
     """
     Executes the real QerraGateNode._scan_callback() and _tick_callback()
-    to verify metadata rejection forces fail-closed TRIP_SENSOR_INVALID.
+    to verify metadata rejection and REP-117 bounds force fail-closed TRIP_SENSOR_INVALID.
     """
 
     def setUp(self) -> None:
@@ -479,7 +479,6 @@ class TestScanCallbackMetadataEnforcement(unittest.TestCase):
                 node = self._make_node()
                 t_us = self._drive_to_cruise(node)
 
-                # Advance one tick and inject scan with corrupted metadata
                 t_us += 32_000
                 node._fake_clock.ns = t_us * 1_000
                 self._send_twist(node)
@@ -492,16 +491,13 @@ class TestScanCallbackMetadataEnforcement(unittest.TestCase):
                 bad_scan = make_scan(**scan_overrides)
                 node._scan_callback(bad_scan)
 
-                # Must immediately wipe cached lidar data fail-closed
                 self.assertIsNone(node._latest_ranges)
                 self.assertIsNone(node._lidar_stamp_us)
                 self.assertIsNone(node._raw_valid_points)
 
-                # Logger must record the exact failure token
                 warn_logs = [m for lvl, m in node._fake_logger.messages if lvl == "warn"]
                 self.assertTrue(any(expected_token in m for m in warn_logs), f"Missing {expected_token} in {warn_logs}")
 
-                # Next tick must trip TRIP_SENSOR_INVALID and publish 0.0 m/s
                 node._tick_callback()
                 res = self.results[-1]
                 self.assertEqual(res.state.mode, NODE_UNDER_TEST.Mode.TRIPPED)
@@ -519,7 +515,6 @@ class TestScanCallbackMetadataEnforcement(unittest.TestCase):
         node = self._make_node()
         t_us = self._drive_to_cruise(node)
 
-        # Bad scan trips sensor invalid
         t_us += 32_000
         node._fake_clock.ns = t_us * 1_000
         self._send_twist(node)
@@ -527,7 +522,6 @@ class TestScanCallbackMetadataEnforcement(unittest.TestCase):
         node._tick_callback()
         self.assertEqual(self.results[-1].reason, NODE_UNDER_TEST.Reason.TRIP_SENSOR_INVALID)
 
-        # Valid scan arrives -> sensor validity restores and dwell starts
         t_us += 32_000
         node._fake_clock.ns = t_us * 1_000
         self._send_twist(node)
@@ -538,6 +532,63 @@ class TestScanCallbackMetadataEnforcement(unittest.TestCase):
 
         self.assertTrue(self.results[-1].record["lidar_valid"])
         self.assertEqual(self.results[-1].reason, NODE_UNDER_TEST.Reason.LATCHED_DWELL)
+
+    def test_forward_below_range_min_triggers_sensor_invalid_in_callback(self) -> None:
+        """REP-117: Forward-corridor reading < range_min trips TRIP_SENSOR_INVALID."""
+        node = self._make_node()
+        t_us = self._drive_to_cruise(node)
+
+        t_us += 32_000
+        node._fake_clock.ns = t_us * 1_000
+        self._send_twist(node)
+        sec = t_us // 1_000_000
+        nanosec = (t_us % 1_000_000) * 1_000
+
+        ranges = [3.0] * EXPECTED_N
+        ranges[EXPECTED_N // 2] = 0.01  # Below range_min=0.05 in forward corridor
+        scan = make_scan(
+            range_min=0.05,
+            range_max=5.6,
+            ranges=ranges,
+            header=make_header(sec=sec, nanosec=nanosec),
+        )
+        node._scan_callback(scan)
+        node._tick_callback()
+
+        res = self.results[-1]
+        self.assertEqual(res.state.mode, NODE_UNDER_TEST.Mode.TRIPPED)
+        self.assertEqual(res.reason, NODE_UNDER_TEST.Reason.TRIP_SENSOR_INVALID)
+        pub_twist = node._pub_cmd_safe.published[-1]
+        self.assertEqual(pub_twist.linear.x, 0.0)
+        self.assertEqual(pub_twist.angular.z, 0.0)
+
+    def test_above_range_max_garbage_scan_triggers_sensor_invalid_in_callback(self) -> None:
+        """REP-117: Scan flooded with > range_max readings drops liveness to 0 -> TRIP_SENSOR_INVALID."""
+        node = self._make_node()
+        t_us = self._drive_to_cruise(node)
+
+        t_us += 32_000
+        node._fake_clock.ns = t_us * 1_000
+        self._send_twist(node)
+        sec = t_us // 1_000_000
+        nanosec = (t_us % 1_000_000) * 1_000
+
+        scan = make_scan(
+            range_min=0.05,
+            range_max=5.6,
+            ranges=[999.0] * EXPECTED_N,  # All beams strictly > range_max
+            header=make_header(sec=sec, nanosec=nanosec),
+        )
+        node._scan_callback(scan)
+        self.assertEqual(node._raw_valid_points, 0)
+        node._tick_callback()
+
+        res = self.results[-1]
+        self.assertEqual(res.state.mode, NODE_UNDER_TEST.Mode.TRIPPED)
+        self.assertEqual(res.reason, NODE_UNDER_TEST.Reason.TRIP_SENSOR_INVALID)
+        pub_twist = node._pub_cmd_safe.published[-1]
+        self.assertEqual(pub_twist.linear.x, 0.0)
+        self.assertEqual(pub_twist.angular.z, 0.0)
 
 
 if __name__ == "__main__":
