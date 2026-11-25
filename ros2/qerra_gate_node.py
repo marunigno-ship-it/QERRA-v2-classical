@@ -33,7 +33,7 @@ from gate.gate_link import DEFAULT_STATE_PORT, create_state_sender, send_state
 from gate.gate_log import GateLogger, capture_harness_manifest
 from ros2.hsr_receiver import HsrReceiver
 
-NODE_VERSION = "0.3.1"
+NODE_VERSION = "0.3.2"
 
 # PAL Robotics TIAGo base physical dimensions & kinematics
 DEFAULT_WHEEL_RADIUS_M: float = 0.098       # 98 mm radius
@@ -55,6 +55,9 @@ DEFAULT_LIDAR_STALE_MS: float = 96.0
 
 # Odometry freshness watchdog ceiling (100 ms)
 DEFAULT_ODOM_STALE_US: int = 100_000
+
+# Default topic for ROS-native Layer 1B reflex telemetry JSON strings
+DEFAULT_HSR_TOPIC: str = "/hsr/telemetry"
 
 try:
     import rclpy
@@ -359,6 +362,7 @@ if ROS2_AVAILABLE:
             self.declare_parameter("lidar_stale_ms", DEFAULT_LIDAR_STALE_MS)
             self.declare_parameter("flight_log_path", "")
             self.declare_parameter("hsr_source", "udp")
+            self.declare_parameter("hsr_topic", DEFAULT_HSR_TOPIC)
             self.declare_parameter("hsr_port", DEFAULT_HSR_PORT)
             self.declare_parameter("hsr_required", True)
             self.declare_parameter("standstill_required", False)
@@ -379,6 +383,7 @@ if ROS2_AVAILABLE:
             self._lidar_stale_ms = float(self.get_parameter("lidar_stale_ms").value)
             self._flight_log_path = str(self.get_parameter("flight_log_path").value).strip()
             self._hsr_source = str(self.get_parameter("hsr_source").value).strip().lower()
+            self._hsr_topic = str(self.get_parameter("hsr_topic").value).strip()
             self._hsr_port = int(self.get_parameter("hsr_port").value)
             self._hsr_required = bool(self.get_parameter("hsr_required").value)
             self._standstill_required = bool(self.get_parameter("standstill_required").value)
@@ -408,6 +413,12 @@ if ROS2_AVAILABLE:
                 raise ValueError(
                     f"Invalid configuration: lidar_stale_ms ({self._lidar_stale_ms} ms) must be >= "
                     f"2 * lidar_period_ms + dt ({min_stale_ms:.1f} ms) to satisfy core safety invariants."
+                )
+
+            # Allowed HSR sources: topic (ROS 2 native), udp (Webots/legacy), none (obstacle-only)
+            if self._hsr_source not in ("topic", "udp", "none"):
+                raise ValueError(
+                    f"Invalid configuration: hsr_source must be 'topic', 'udp', or 'none', got {self._hsr_source!r}"
                 )
 
             # Configuration guard: cannot require HSR if no source is active
@@ -452,9 +463,11 @@ if ROS2_AVAILABLE:
                 )
 
             # Asynchronous HSR reflex telemetry receiver with stream monitor
+            # In 'topic' mode, use_socket=False completely suppresses UDP socket instantiation.
             self._hsr_receiver = HsrReceiver(
                 port=self._hsr_port,
-                enabled=(self._hsr_source == "udp"),
+                enabled=(self._hsr_source in ("udp", "topic")),
+                use_socket=(self._hsr_source == "udp"),
             )
 
             # UDP simulation clock sender to drive synthetic producers
@@ -491,6 +504,13 @@ if ROS2_AVAILABLE:
                 Odometry, "/odom", self._odom_callback, 10
             )
 
+            # ROS-native HSR reflex telemetry topic subscription
+            self._sub_hsr = None
+            if self._hsr_source == "topic":
+                self._sub_hsr = self.create_subscription(
+                    String, self._hsr_topic, self._hsr_topic_callback, 10
+                )
+
             # Publishers
             self._pub_cmd_safe = self.create_publisher(Twist, "/cmd_vel_safe", 10)
             self._pub_state = self.create_publisher(String, "/gate/state", 10)
@@ -504,7 +524,10 @@ if ROS2_AVAILABLE:
                 f"Lidar: {self._lidar_n_expected} beams, T={self._lidar_period_ms:.1f} ms, Stale={self._lidar_stale_ms:.1f} ms | "
                 f"t_react: {self._t_react_ms:.1f} ms ({self._t_react_us} us) | "
                 f"Standstill required: {self._standstill_required} | "
-                f"HSR: source={self._hsr_source}, port={self._hsr_port}, required={self._hsr_required} | "
+                f"HSR: source={self._hsr_source}, "
+                f"topic={self._hsr_topic if self._hsr_source == 'topic' else 'N/A'}, "
+                f"port={self._hsr_port if self._hsr_source == 'udp' else 'N/A'}, "
+                f"required={self._hsr_required} | "
                 f"Flight log: {self._flight_log_path if self._flight_logger else 'disabled'}"
             )
 
@@ -586,6 +609,11 @@ if ROS2_AVAILABLE:
             """Accepts operator reset trigger."""
             if msg.data.strip().lower() == RESET_SOURCE_OPERATOR:
                 self._reset_requested = True
+
+        def _hsr_topic_callback(self, msg: String) -> None:
+            """Receives ROS-native Layer 1B reflex telemetry JSON strings."""
+            if hasattr(self, "_hsr_receiver") and self._hsr_receiver is not None:
+                self._hsr_receiver.push(msg.data)
 
         def _publish_fault_state(self) -> None:
             """Publishes /gate/state telemetry indicating persistent latched fault."""
