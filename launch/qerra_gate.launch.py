@@ -33,6 +33,11 @@ def generate_launch_description() -> LaunchDescription:
         default_value="/odom",
         description="Input Odometry topic for measured chassis velocity standstill verification",
     )
+    hsr_topic_arg = DeclareLaunchArgument(
+        "hsr_topic",
+        default_value="/hsr/telemetry",
+        description="Input topic for Layer 1B reflex telemetry JSON strings (used when hsr_source='topic')",
+    )
     reset_topic_arg = DeclareLaunchArgument(
         "reset_topic",
         default_value="/gate/reset",
@@ -95,12 +100,12 @@ def generate_launch_description() -> LaunchDescription:
     hsr_source_arg = DeclareLaunchArgument(
         "hsr_source",
         default_value="udp",
-        description="Layer 1B reflex telemetry source: 'udp' or 'none' (obstacle-only mode)",
+        description="Layer 1B reflex telemetry source: 'topic', 'udp', or 'none' (obstacle-only mode)",
     )
     hsr_port_arg = DeclareLaunchArgument(
         "hsr_port",
         default_value="5008",
-        description="Localhost UDP port for Layer 1B reflex telemetry datagrams",
+        description="Localhost UDP port for Layer 1B reflex telemetry datagrams (used when hsr_source='udp')",
     )
     hsr_required_arg = DeclareLaunchArgument(
         "hsr_required",
@@ -144,6 +149,7 @@ def generate_launch_description() -> LaunchDescription:
                 "lidar_period_ms": ParameterValue(LaunchConfiguration("lidar_period_ms"), value_type=float),
                 "lidar_stale_ms": ParameterValue(LaunchConfiguration("lidar_stale_ms"), value_type=float),
                 "hsr_source": ParameterValue(LaunchConfiguration("hsr_source"), value_type=str),
+                "hsr_topic": ParameterValue(LaunchConfiguration("hsr_topic"), value_type=str),
                 "hsr_port": ParameterValue(LaunchConfiguration("hsr_port"), value_type=int),
                 "hsr_required": ParameterValue(LaunchConfiguration("hsr_required"), value_type=bool),
                 "standstill_required": ParameterValue(LaunchConfiguration("standstill_required"), value_type=bool),
@@ -156,6 +162,7 @@ def generate_launch_description() -> LaunchDescription:
             ("/cmd_vel_safe", LaunchConfiguration("cmd_vel_out")),
             ("/scan", LaunchConfiguration("scan_topic")),
             ("/odom", LaunchConfiguration("odom_topic")),
+            ("/hsr/telemetry", LaunchConfiguration("hsr_topic")),
             ("/gate/reset", LaunchConfiguration("reset_topic")),
             ("/gate/state", LaunchConfiguration("state_topic")),
         ],
@@ -167,6 +174,7 @@ def generate_launch_description() -> LaunchDescription:
             cmd_vel_out_arg,
             scan_topic_arg,
             odom_topic_arg,
+            hsr_topic_arg,
             reset_topic_arg,
             state_topic_arg,
             rate_hz_arg,
