@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Marussa Metocharaki
 """
 Tests for gate/gate_lidar.py (corridor filter & pipeline), including its interaction with gate_core.
@@ -184,12 +184,8 @@ class TestLidarPipelineFreshness(unittest.TestCase):
     """F2 defect reproduction: sensor pipeline must track freshness and trip when scan stalls."""
 
     def test_pipeline_frozen_sensor_goes_stale_and_trips(self):
-        # Must fail on current code because LidarPipeline does not yet exist
         LidarPipeline = getattr(gate_lidar_mod, "LidarPipeline", None)
-        self.assertIsNotNone(
-            LidarPipeline,
-            "F2 defect: gate_lidar lacks LidarPipeline; shell currently stamps lidar_stamp_us = sim_time_us every tick"
-        )
+        self.assertIsNotNone(LidarPipeline)
 
         pipeline = LidarPipeline(corridor=CorridorFilter(N, FOV, HALF_WIDTH))
         params = GateParams(
@@ -199,7 +195,6 @@ class TestLidarPipelineFreshness(unittest.TestCase):
         state, now, seq = initial_state(), 0, 0
         raw_scan = [5.0] * N
 
-        # Advance past dwell and reset into RUN mode
         for _ in range(35):
             now += 32_000
             filtered, stamp_us, valid_pts = pipeline.process(raw_scan, now)
@@ -220,8 +215,6 @@ class TestLidarPipelineFreshness(unittest.TestCase):
         state = res.state
         self.assertEqual(state.mode, Mode.RUN)
 
-        # Now simulate a sensor stall/freeze: hardware stops producing updates (stalled=True)
-        # The pipeline must retain the last real acquisition time, allowing age > t_stale to trigger.
         stalled_reasons = []
         for _ in range(5):
             now += 32_000
@@ -234,9 +227,90 @@ class TestLidarPipelineFreshness(unittest.TestCase):
             state = res.state
             stalled_reasons.append(res.reason)
 
-        # After 4 ticks (128 ms > 96 ms t_stale), the gate must trip with TRIP_SENSOR_INVALID
         self.assertIn(Reason.TRIP_SENSOR_INVALID, stalled_reasons)
         self.assertEqual(state.mode, Mode.TRIPPED)
+
+
+class TestLidarRangeBoundsREP117(unittest.TestCase):
+    """Phase 3B (RED): Tests REP-117 range_min blind-zone and range_max validity enforcement."""
+
+    def test_forward_corridor_below_range_min_trips_sensor_invalid(self):
+        """A forward-corridor beam reading 0 < r < range_min must fail closed as NaN -> TRIP_SENSOR_INVALID."""
+        corridor = CorridorFilter(N, FOV, HALF_WIDTH)
+        pipeline = gate_lidar_mod.LidarPipeline(corridor=corridor)
+        params = GateParams(
+            lidar_n_expected=N, dt_us=32_000, t_watch_us=100_000, proposer_period_us=33_000,
+            lidar_period_us=32_000, t_stale_us=96_000, wheel_radius_mm=98, a_design_mmps2=500, margin_mm=300
+        )
+
+        # Center beam reads 0.02 m, below range_min=0.05 m
+        raw_scan = [3.0] * N
+        raw_scan[N // 2] = 0.02
+
+        filtered, stamp_us, valid_pts = pipeline.process(
+            raw_scan, 100_000, range_min=0.05, range_max=5.6
+        )
+        self.assertTrue(math.isnan(filtered[N // 2]), "Forward below-min return must convert to NaN")
+        self.assertEqual(valid_pts, N - 1, "Below-min beam must not count toward raw_valid_points")
+
+        res = step(initial_state(), params, GateInputs(
+            sim_time_us=100_000, proposal=Proposal(1, 100_000, 2_000_000, 2_000_000),
+            ranges_m=filtered, lidar_stamp_us=stamp_us, raw_valid_points=valid_pts
+        ))
+        self.assertEqual(res.reason, Reason.TRIP_SENSOR_INVALID)
+
+    def test_lateral_below_range_min_outside_corridor_does_not_nuisance_trip(self):
+        """A lateral reading below range_min outside the swept corridor is masked to +inf (no trip)."""
+        corridor = CorridorFilter(N, FOV, HALF_WIDTH)
+        pipeline = gate_lidar_mod.LidarPipeline(corridor=corridor)
+
+        # Index 0 is at -120 deg (rear-lateral, outside forward corridor)
+        raw_scan = [3.0] * N
+        raw_scan[0] = 0.02
+
+        filtered, _, valid_pts = pipeline.process(
+            raw_scan, 100_000, range_min=0.05, range_max=5.6
+        )
+        self.assertTrue(math.isinf(filtered[0]), "Rear-lateral < range_min must mask to +inf without NaN")
+        self.assertEqual(valid_pts, N - 1)
+
+    def test_above_range_max_excluded_from_liveness_and_masked_inf(self):
+        """Readings strictly > range_max are treated as +inf and excluded from raw_valid_points."""
+        corridor = CorridorFilter(N, FOV, HALF_WIDTH)
+        pipeline = gate_lidar_mod.LidarPipeline(corridor=corridor)
+        params = GateParams(
+            lidar_n_expected=N, dt_us=32_000, t_watch_us=100_000, proposer_period_us=33_000,
+            lidar_period_us=32_000, t_stale_us=96_000, wheel_radius_mm=98, a_design_mmps2=500, margin_mm=300,
+            min_raw_lidar_returns=5
+        )
+
+        # Broken driver sends 999.0 across all beams when range_max is 5.6
+        raw_scan = [999.0] * N
+        filtered, stamp_us, valid_pts = pipeline.process(
+            raw_scan, 100_000, range_min=0.05, range_max=5.6
+        )
+        self.assertEqual(valid_pts, 0, "Above-range_max values must not count as valid sensor returns")
+        self.assertTrue(all(math.isinf(r) for r in filtered))
+
+        res = step(initial_state(), params, GateInputs(
+            sim_time_us=100_000, proposal=Proposal(1, 100_000, 2_000_000, 2_000_000),
+            ranges_m=filtered, lidar_stamp_us=stamp_us, raw_valid_points=valid_pts
+        ))
+        self.assertEqual(res.reason, Reason.TRIP_SENSOR_INVALID)
+
+    def test_boundary_values_equal_to_range_min_and_range_max_accepted(self):
+        """Readings equal to range_min or range_max are strictly inside [range_min, range_max]."""
+        corridor = CorridorFilter(N, FOV, HALF_WIDTH)
+        pipeline = gate_lidar_mod.LidarPipeline(corridor=corridor)
+
+        raw_scan = [5.6] * N
+        raw_scan[N // 2] = 0.05
+
+        filtered, _, valid_pts = pipeline.process(
+            raw_scan, 100_000, range_min=0.05, range_max=5.6
+        )
+        self.assertEqual(filtered[N // 2], 0.05)
+        self.assertEqual(valid_pts, N)
 
 
 if __name__ == "__main__":
