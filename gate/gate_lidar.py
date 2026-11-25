@@ -16,6 +16,9 @@ What it does
   so gate_core still validates the whole scan.
   Invalid values (NaN, <= 0, -inf, non-numbers, bool) are passed through UNCHANGED so that
   gate_core trips on them. This filter must never turn bad data into a clear reading.
+  When REP-117 bounds (range_min, range_max) are supplied, forward-corridor readings
+  below range_min fail closed as NaN (TRIP_SENSOR_INVALID), while readings above range_max
+  are treated as +inf and excluded from raw liveness counts.
 
 Geometry assumption: samples are evenly spread over the field of view, symmetric about the
 sensor axis. Because lateral offset uses |sin(angle)|, the scan direction (left-to-right or
@@ -46,8 +49,23 @@ class CorridorFilter:
             self._abs_sin.append(abs(math.sin(theta)))
             self._ahead.append(math.cos(theta) > 1e-9)
 
-    def apply(self, ranges: Optional[Sequence[float]]) -> Optional[List[float]]:
+    def apply(
+        self,
+        ranges: Optional[Sequence[float]],
+        *,
+        range_min: Optional[float] = None,
+        range_max: Optional[float] = None,
+    ) -> Optional[List[float]]:
         """Return the filtered scan, or None if the input is missing or has the wrong length."""
+        if range_min is not None:
+            if isinstance(range_min, bool) or not isinstance(range_min, (int, float)) or not math.isfinite(range_min) or range_min < 0.0:
+                raise ValueError("range_min must be finite and >= 0")
+        if range_max is not None:
+            if isinstance(range_max, bool) or not isinstance(range_max, (int, float)) or not math.isfinite(range_max) or range_max <= 0.0:
+                raise ValueError("range_max must be finite and > 0")
+        if range_min is not None and range_max is not None and range_min >= range_max:
+            raise ValueError("range_min must be < range_max")
+
         if ranges is None:
             return None
         try:
@@ -55,28 +73,34 @@ class CorridorFilter:
                 return None
         except TypeError:
             return None
+
         out: List[float] = []
         hw = self.half_width
         for i, r in enumerate(ranges):
             if isinstance(r, bool) or not isinstance(r, (int, float)) or math.isnan(r) or r <= 0.0:
                 out.append(r)                      # invalid: leave it for gate_core to reject
             elif math.isinf(r):
-                out.append(r)                      # no return
+                out.append(r)                      # no return (+inf)
+            elif range_max is not None and r > range_max:
+                out.append(math.inf)               # REP-117: above range_max is no return
             elif self._ahead[i] and r * self._abs_sin[i] <= hw:
-                out.append(r)                      # inside the swept corridor
+                if range_min is not None and r < range_min:
+                    out.append(math.nan)           # forward-corridor blind-zone violation -> TRIP_SENSOR_INVALID
+                else:
+                    out.append(r)                  # inside the swept corridor
             else:
-                out.append(math.inf)               # valid but outside the corridor
+                out.append(math.inf)               # valid (or lateral < range_min) outside corridor
         return out
 
 
 class LidarPipeline:
     """
     Manages raw lidar scan ingestion, validity checks, corridor filtering,
-    and acquisition timestamp tracking (F1, F2).
+    and acquisition timestamp tracking (F1, F2, REP-117 bounds).
 
     Rules:
-      - Validates and counts raw finite returns across the entire field of view (F1).
-      - Applies CorridorFilter to mask non-corridor returns as +inf.
+      - Validates and counts raw finite returns within calibrated [range_min, range_max] (F1).
+      - Applies CorridorFilter to mask non-corridor returns as +inf and forward < range_min as NaN.
       - Maintains the timestamp of the last actual hardware acquisition.
       - If sensor acquisition stalls (stalled=True) or fails, the timestamp does NOT advance,
         allowing the gate core's t_stale watchdog to detect frozen hardware (F2).
@@ -93,6 +117,9 @@ class LidarPipeline:
         raw_ranges: Optional[Sequence[float]],
         sim_time_us: int,
         stalled: bool = False,
+        *,
+        range_min: Optional[float] = None,
+        range_max: Optional[float] = None,
     ) -> Tuple[Optional[List[float]], Optional[int], int]:
         """
         Processes a raw scan reading at current simulation time sim_time_us.
@@ -103,16 +130,19 @@ class LidarPipeline:
         if raw_ranges is None:
             return None, self.last_stamp_us, 0
 
-        # Count finite, positive returns across the raw 240-degree field of view (F1)
+        filtered = self.corridor.apply(raw_ranges, range_min=range_min, range_max=range_max)
+
+        # Count finite, positive returns within calibrated [range_min, range_max] (F1 + REP-117)
         raw_valid_points = sum(
             1 for r in raw_ranges
             if isinstance(r, (int, float)) and not isinstance(r, bool)
             and math.isfinite(r) and r > 0.0
+            and (range_min is None or r >= range_min)
+            and (range_max is None or r <= range_max)
         )
 
         # Update last acquisition stamp unless acquisition is stalled (F2)
         if not stalled:
             self.last_stamp_us = sim_time_us
 
-        filtered = self.corridor.apply(raw_ranges)
         return filtered, self.last_stamp_us, raw_valid_points
