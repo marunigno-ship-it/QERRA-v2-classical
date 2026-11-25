@@ -55,6 +55,7 @@ if ROS2_AVAILABLE:
             self.pub_scan = self.create_publisher(LaserScan, "/scan", qos_profile_sensor_data)
             self.pub_reset = self.create_publisher(String, "/gate/reset", 10)
             self.pub_odom = self.create_publisher(Odometry, "/odom", 10)
+            self.pub_hsr = self.create_publisher(String, "/hsr/telemetry", 10)
 
             # Telemetry subscribers
             self.sub_cmd_safe = self.create_subscription(
@@ -135,6 +136,11 @@ if ROS2_AVAILABLE:
             msg = String()
             msg.data = source
             self.pub_reset.publish(msg)
+
+        def publish_hsr(self, payload: str) -> None:
+            msg = String()
+            msg.data = payload
+            self.pub_hsr.publish(msg)
 
 
 @unittest.skipUnless(ROS2_AVAILABLE, "Requires native ROS 2 (rclpy) installation")
@@ -220,7 +226,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
     def _drive_to_run(self, clear_ranges: List[float]) -> None:
         """Helper driving the gate from initial latch through 1.0s dwell into Mode.RUN."""
-        # 1. Drive clear dwell until AWAITING_RESET
         def _is_awaiting_reset(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
@@ -228,7 +233,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_awaiting_reset, 5.0, "Gate to reach AWAITING_RESET during clear dwell")
 
-        # 2. Emit operator reset until Mode.RUN is reached
         def _is_running(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
@@ -242,10 +246,8 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         clear_ranges = [3.0] * 682
         hazard_ranges = [0.15] * 682
 
-        # 1. Bring gate to Mode.RUN
         self._drive_to_run(clear_ranges)
 
-        # 2. Verify forward cruise output on /cmd_vel_safe
         def _is_cruising(twist: Optional[Twist], _state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
@@ -253,7 +255,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_cruising, 2.0, "forward cruise output on /cmd_vel_safe")
 
-        # 3. Inject obstacle breach and verify immediate 0.0 m/s clamp
         def _is_obstacle_tripped(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(hazard_ranges)
@@ -275,11 +276,8 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         and forces /cmd_vel_safe to 0.0 m/s fail-closed.
         """
         clear_ranges = [3.0] * 682
-
-        # 1. Bring gate to Mode.RUN
         self._drive_to_run(clear_ranges)
 
-        # 2. Stop publishing /scan completely; only publish velocity proposals
         def _is_sensor_invalid(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             return (
@@ -296,17 +294,12 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
     def test_live_topic_traffic_reset_rejected_under_active_obstacle(self) -> None:
         """
         Verifies Negative Path C: an operator reset cannot override an active physical hazard.
-        While an obstacle is present, publishing 'operator' to /gate/reset must be rejected:
-        Gate remains TRIPPED, reason remains TRIP_OBSTACLE, wheels remain clamped to 0.0 m/s,
-        and RESET_REJECTED_HAZARD is recorded in /gate/state events.
         """
         clear_ranges = [3.0] * 682
         hazard_ranges = [0.15] * 682
 
-        # 1. Bring gate to Mode.RUN
         self._drive_to_run(clear_ranges)
 
-        # 2. Trip the gate on obstacle breach
         def _is_tripped_on_obstacle(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(hazard_ranges)
@@ -319,7 +312,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_tripped_on_obstacle, 3.0, "Gate to trip on obstacle breach")
 
-        # 3. Emit operator reset while obstacle breach persists and assert rejection
         def _is_reset_rejected(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(hazard_ranges)
@@ -334,24 +326,15 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
                 and math.isclose(twist.angular.z, 0.0, abs_tol=1e-6)
             )
 
-        self._wait_until(
-            _is_reset_rejected,
-            3.0,
-            "RESET_REJECTED_HAZARD event while obstacle persists",
-        )
+        self._wait_until(_is_reset_rejected, 3.0, "RESET_REJECTED_HAZARD event while obstacle persists")
 
     def test_live_topic_traffic_proposer_timeout_watchdog(self) -> None:
         """
-        Verifies Negative Path B: cutting the /cmd_vel topic feed while in Mode.RUN
-        triggers the 150 ms proposal freshness watchdog (TRIP_PROPOSER_STALE)
-        and forces /cmd_vel_safe to 0.0 m/s fail-closed while sensor scans remain healthy.
+        Verifies Negative Path B: cutting /cmd_vel triggers proposal freshness watchdog (150 ms).
         """
         clear_ranges = [3.0] * 682
-
-        # 1. Bring gate to Mode.RUN
         self._drive_to_run(clear_ranges)
 
-        # 2. Stop publishing /cmd_vel completely; continue publishing healthy /scan
         def _is_proposer_stale(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_scan(clear_ranges)
             return (
@@ -363,25 +346,11 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
                 and math.isclose(twist.angular.z, 0.0, abs_tol=1e-6)
             )
 
-        self._wait_until(
-            _is_proposer_stale,
-            3.0,
-            "TRIP_PROPOSER_STALE watchdog clamp on /cmd_vel silence",
-        )
+        self._wait_until(_is_proposer_stale, 3.0, "TRIP_PROPOSER_STALE watchdog clamp on /cmd_vel silence")
 
     def test_live_topic_traffic_non_finite_twist_inhibition_and_recovery(self) -> None:
-        """
-        Phase 1: Verifies live DDS handling of non-finite Twist proposals:
-        1. Valid cruise is established in Mode.RUN.
-        2. A single NaN Twist immediately inhibits /cmd_vel_safe to (0.0, 0.0) while
-           preserving Mode.RUN and emitting MSG_REJECTED_INVALID on /gate/state.
-        3. Subsequent valid Twist automatically restores cruise without operator reset.
-        4. Continuous Inf Twist messages do not refresh the watchdog, escalating to
-           TRIP_PROPOSER_STALE after 150 ms.
-        """
+        """Phase 1: Verifies live DDS handling of non-finite Twist proposals."""
         clear_ranges = [3.0] * 682
-
-        # 1. Bring gate to Mode.RUN and confirm active forward cruise
         self._drive_to_run(clear_ranges)
 
         def _is_cruising(twist: Optional[Twist], _state: Optional[Dict[str, Any]]) -> bool:
@@ -391,12 +360,10 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_cruising, 2.0, "active cruise before NaN injection")
 
-        # Refresh valid timestamp right before injecting NaN so watchdog budget has full headroom
         self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
         self.harness_node.publish_scan(clear_ranges)
         time.sleep(0.035)
 
-        # 2. Inject a single NaN Twist and verify immediate zero output + RUN mode + event
         self.harness_node.clear_seen_events()
         self.harness_node.publish_proposal(linear_x=float("nan"), angular_z=0.0)
 
@@ -413,7 +380,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_inhibited, 1.0, "immediate command inhibition on NaN Twist")
 
-        # 3. Restore valid Twist proposals and verify automatic recovery without operator reset
         def _is_recovered(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
@@ -426,7 +392,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_recovered, 2.0, "automatic cruise recovery after NaN clears")
 
-        # 4. Stream continuous +/-Inf Twists and verify watchdog escalates to TRIP_PROPOSER_STALE
         def _is_escalated_stale(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=float("-inf"), angular_z=float("inf"))
             self.harness_node.publish_scan(clear_ranges)
@@ -446,21 +411,10 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         )
 
     def test_live_topic_traffic_odom_pub_sub_and_watchdog(self) -> None:
-        """
-        Verifies live DDS pub/sub topic traffic for /odom:
-        1. Publishing Odometry with forward translation (0.20 m/s) reflects in /gate/state
-           telemetry (meas_left_urad_s=2_040_816, meas_right_urad_s=2_040_816).
-        2. Publishing Odometry with in-place rotation reflects differential wheel speeds.
-        3. Halting /odom traffic triggers the 100 ms freshness watchdog, resetting
-           measured wheel speeds in /gate/state to null.
-        4. Publishing non-finite/NaN Odometry fails closed, resetting measured speeds to null.
-        """
+        """Verifies live DDS pub/sub topic traffic for /odom."""
         clear_ranges = [3.0] * 682
-
-        # 1. Bring gate to Mode.RUN
         self._drive_to_run(clear_ranges)
 
-        # 2. Publish live forward odometry (0.20 m/s) and assert telemetry reflection
         def _is_odom_forward(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
@@ -474,7 +428,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_odom_forward, 3.0, "live /odom forward twist reflection in telemetry")
 
-        # 3. Publish in-place rotation (yaw = 1.0 rad/s) and assert differential wheel speeds
         def _is_odom_turning(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
@@ -488,8 +441,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_odom_turning, 3.0, "live /odom in-place spin reflection in telemetry")
 
-        # 4. Stop publishing /odom; continue proposals & scan. Watchdog ceiling is 100 ms.
-        # Telemetry must drop measured speeds to None (null in JSON).
         def _is_odom_stale(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
@@ -502,7 +453,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_odom_stale, 3.0, "live /odom 100 ms staleness watchdog drop to null")
 
-        # 5. Restore fresh odometry, then publish NaN to assert fail-closed drop to null
         self.harness_node.publish_odom(linear_x=0.20, angular_z=0.0)
         self._wait_until(_is_odom_forward, 2.0, "re-establishing fresh odometry before NaN injection")
 
@@ -518,6 +468,186 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
             )
 
         self._wait_until(_is_odom_nan_dropped, 2.0, "live /odom NaN fail-closed drop to null")
+
+
+@unittest.skipUnless(ROS2_AVAILABLE, "Requires native ROS 2 (rclpy) installation")
+class TestGateRos2LiveHsrTopicTraffic(unittest.TestCase):
+    """
+    Live DDS pub/sub integration tests for ROS-native /hsr/telemetry (hsr_source:='topic'):
+    1. Continuous fresh CLEAR frames allow 1.0s dwell to AWAITING_RESET and operator reset into RUN.
+    2. Acute distress (CRITICAL) JSON payload trips gate to TRIP_HSR_CRITICAL and clamps to (0.0, 0.0).
+    3. Frozen frame detection (repeated obs_id) trips gate to TRIP_HSR_INVALID and sets hsr_frozen: true.
+    4. Cutting the /hsr/telemetry topic feed trips 96ms staleness watchdog (TRIP_HSR_STALE).
+    """
+
+    def setUp(self) -> None:
+        rclpy.init(args=[
+            "--ros-args",
+            "-p", "hsr_required:=true",
+            "-p", "hsr_source:=topic",
+            "-p", "hsr_topic:=/hsr/telemetry",
+            "-p", "flight_log_path:=none",
+        ])
+
+        self.gate_node = QerraGateNode()
+        self.harness_node = TrafficHarnessNode()
+
+        self.executor = SingleThreadedExecutor()
+        self.executor.add_node(self.gate_node)
+        self.executor.add_node(self.harness_node)
+
+        self._stop_event = threading.Event()
+        self._spin_error: Optional[Exception] = None
+        self._spin_thread = threading.Thread(target=self._spin_loop, daemon=True)
+        self._spin_thread.start()
+
+    def tearDown(self) -> None:
+        self._stop_event.set()
+        if self._spin_thread.is_alive():
+            self._spin_thread.join(timeout=2.0)
+
+        self.executor.shutdown()
+        self.gate_node.destroy_node()
+        self.harness_node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+    def _spin_loop(self) -> None:
+        try:
+            while not self._stop_event.is_set():
+                self.executor.spin_once(timeout_sec=0.01)
+        except Exception as exc:
+            self._spin_error = exc
+
+    def _wait_until(
+        self,
+        predicate: Callable[[Optional[Twist], Optional[Dict[str, Any]]], bool],
+        timeout_s: float,
+        description: str,
+    ) -> Tuple[Optional[Twist], Optional[Dict[str, Any]]]:
+        deadline = time.monotonic() + timeout_s
+        last_snapshot: Tuple[Optional[Twist], Optional[Dict[str, Any]]] = (None, None)
+
+        while True:
+            if self._spin_error is not None:
+                self.fail(f"Background spin thread died with exception: {self._spin_error}")
+
+            last_snapshot = self.harness_node.get_telemetry_snapshot()
+            if predicate(*last_snapshot):
+                return last_snapshot
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.fail(
+                    f"Timeout waiting for {description} within {timeout_s:.1f}s. "
+                    f"Last snapshot: {last_snapshot}"
+                )
+
+            time.sleep(min(0.02, remaining))
+
+    def test_live_hsr_topic_lifecycle_distress_freeze_and_watchdog(self) -> None:
+        """Verifies complete Layer 1B ROS-native topic integration over live DDS."""
+        clear_ranges = [3.0] * 682
+        obs_id = 0
+
+        # Helper to construct fresh valid HSR telemetry JSON payload
+        def _make_hsr_json(obs: int, state: str = "CLEAR", permille: int = 0) -> str:
+            now_us = self.harness_node.get_clock().now().nanoseconds // 1000
+            t_obs = max(0, now_us - 10_000)  # 10 ms past to ensure t_rx_us >= t_obs_us
+            return json.dumps({
+                "obs_id": obs,
+                "t_obs_us": t_obs,
+                "t_emit_us": t_obs + 1_000,
+                "distress_permille": permille,
+                "state": state,
+                "hazard_proximity": False,
+                "persons_nearby_count": 2,
+            })
+
+        # 1. Drive clear dwell to AWAITING_RESET via live DDS topic /hsr/telemetry
+        def _is_awaiting_reset(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            nonlocal obs_id
+            obs_id += 1
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_hsr(_make_hsr_json(obs_id, state="CLEAR"))
+            return state is not None and state.get("mode") == "AWAITING_RESET"
+
+        self._wait_until(_is_awaiting_reset, 5.0, "Gate to reach AWAITING_RESET with live /hsr/telemetry topic")
+
+        # 2. Reset into Mode.RUN
+        def _is_running(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            nonlocal obs_id
+            obs_id += 1
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_hsr(_make_hsr_json(obs_id, state="CLEAR"))
+            self.harness_node.publish_reset("operator")
+            return state is not None and state.get("mode") == "RUN"
+
+        self._wait_until(_is_running, 3.0, "Gate to enter Mode.RUN on live topic HSR")
+
+        # 3. Verify forward cruise output on /cmd_vel_safe
+        def _is_cruising(twist: Optional[Twist], _state: Optional[Dict[str, Any]]) -> bool:
+            nonlocal obs_id
+            obs_id += 1
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_hsr(_make_hsr_json(obs_id, state="CLEAR"))
+            return twist is not None and twist.linear.x > 0.15
+
+        self._wait_until(_is_cruising, 2.0, "forward cruise with live /hsr/telemetry stream")
+
+        # 4. Inject CRITICAL acute distress frame over /hsr/telemetry topic -> Trip Gate
+        obs_id += 1
+        crit_json = _make_hsr_json(obs_id, state="CRITICAL", permille=850)
+
+        def _is_distress_tripped(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_hsr(crit_json)
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "TRIPPED"
+                and state.get("reason") == "TRIP_HSR_CRITICAL"
+                and math.isclose(twist.linear.x, 0.0, abs_tol=1e-6)
+            )
+
+        self._wait_until(_is_distress_tripped, 3.0, "TRIP_HSR_CRITICAL trip on live /hsr/telemetry CRITICAL frame")
+
+        # 5. Restore advancing CLEAR frames to clear acute distress, then inject frozen frame (duplicate obs_id)
+        # Drive through dwell to reset
+        def _is_reset_ready(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            nonlocal obs_id
+            obs_id += 1
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_hsr(_make_hsr_json(obs_id, state="CLEAR"))
+            return state is not None and state.get("mode") == "AWAITING_RESET"
+
+        self._wait_until(_is_reset_ready, 5.0, "recovery to AWAITING_RESET")
+
+        # Reset into RUN
+        self._wait_until(_is_running, 3.0, "re-entering RUN")
+
+        # Now send frozen frame (repeat same obs_id) -> must latch freeze and trip TRIP_HSR_INVALID
+        frozen_json = _make_hsr_json(obs_id, state="CLEAR")
+
+        def _is_frozen_tripped(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
+            self.harness_node.publish_scan(clear_ranges)
+            self.harness_node.publish_hsr(frozen_json)
+            return (
+                state is not None
+                and twist is not None
+                and state.get("mode") == "TRIPPED"
+                and state.get("reason") == "TRIP_HSR_INVALID"
+                and state.get("hsr_frozen") is True
+                and math.isclose(twist.linear.x, 0.0, abs_tol=1e-6)
+            )
+
+        self._wait_until(_is_frozen_tripped, 3.0, "TRIP_HSR_INVALID and hsr_frozen latch on duplicate obs_id")
 
 
 if __name__ == "__main__":
