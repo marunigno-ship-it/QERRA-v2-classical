@@ -165,8 +165,101 @@ def twist_to_proposal(
 
 
 # ----------------------------------------------------------------------------
-# Pure Lidar Translators (Zero ROS 2 Dependencies)
+# Pure Lidar Translators & Metadata Validation (Zero ROS 2 Dependencies)
 # ----------------------------------------------------------------------------
+def _is_real_number(x: Any) -> bool:
+    """Predicate: true for finite int/float, strictly rejecting bool."""
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def validate_laserscan_metadata(
+    msg: Any,
+    expected_n: int,
+    expected_fov_rad: float,
+    *,
+    fov_tolerance_rad: float = 0.087,
+    center_tolerance_rad: float = 0.087,
+) -> Tuple[bool, Optional[str]]:
+    """
+    Pure validation of sensor_msgs/LaserScan metadata against physical invariants.
+    Never raises. Returns (is_valid, failure_reason_token).
+    """
+    try:
+        # 1. metadata_missing
+        if msg is None:
+            return False, "metadata_missing"
+        required_attrs = (
+            "angle_min", "angle_max", "angle_increment",
+            "range_min", "range_max", "ranges", "header",
+        )
+        for attr in required_attrs:
+            if not hasattr(msg, attr):
+                return False, "metadata_missing"
+        header = getattr(msg, "header", None)
+        if header is None or not hasattr(header, "frame_id") or not hasattr(header, "stamp"):
+            return False, "metadata_missing"
+        stamp = getattr(header, "stamp", None)
+        if stamp is None or not hasattr(stamp, "sec") or not hasattr(stamp, "nanosec"):
+            return False, "metadata_missing"
+
+        # 2. beam_count_mismatch
+        ranges = msg.ranges
+        if ranges is None:
+            return False, "beam_count_mismatch"
+        try:
+            if len(ranges) != expected_n:
+                return False, "beam_count_mismatch"
+        except (TypeError, AttributeError):
+            return False, "beam_count_mismatch"
+
+        # 3. stamp_invalid
+        sec = stamp.sec
+        nanosec = stamp.nanosec
+        if isinstance(sec, bool) or not isinstance(sec, int) or sec < 0:
+            return False, "stamp_invalid"
+        if isinstance(nanosec, bool) or not isinstance(nanosec, int) or nanosec < 0 or nanosec >= 1_000_000_000:
+            return False, "stamp_invalid"
+
+        # 4. frame_id_invalid
+        frame_id = header.frame_id
+        if not isinstance(frame_id, str) or not frame_id.strip():
+            return False, "frame_id_invalid"
+
+        # 5. angle_increment_invalid
+        inc = msg.angle_increment
+        if not _is_real_number(inc) or inc <= 0.0:
+            return False, "angle_increment_invalid"
+
+        # 6. angle_bounds_invalid
+        a_min = msg.angle_min
+        a_max = msg.angle_max
+        if not _is_real_number(a_min) or not _is_real_number(a_max) or a_min >= a_max:
+            return False, "angle_bounds_invalid"
+
+        # 7. fov_mismatch
+        span = a_max - a_min
+        if abs(span - expected_fov_rad) > fov_tolerance_rad:
+            return False, "fov_mismatch"
+
+        # 8. angle_increment_inconsistent
+        if abs(span - inc * (expected_n - 1)) > 1.5 * inc:
+            return False, "angle_increment_inconsistent"
+
+        # 9. scan_not_centered
+        if abs(a_min + a_max) > center_tolerance_rad:
+            return False, "scan_not_centered"
+
+        # 10. range_limits_invalid
+        r_min = msg.range_min
+        r_max = msg.range_max
+        if not _is_real_number(r_min) or not _is_real_number(r_max) or r_min < 0.0 or r_min >= r_max:
+            return False, "range_limits_invalid"
+
+        return True, None
+    except Exception:
+        return False, "metadata_missing"
+
+
 def create_lidar_pipeline(
     n_samples: int,
     fov_rad: float,
@@ -463,7 +556,6 @@ if ROS2_AVAILABLE:
                 )
 
             # Asynchronous HSR reflex telemetry receiver with stream monitor
-            # In 'topic' mode, use_socket=False completely suppresses UDP socket instantiation.
             self._hsr_receiver = HsrReceiver(
                 port=self._hsr_port,
                 enabled=(self._hsr_source in ("udp", "topic")),
@@ -578,11 +670,15 @@ if ROS2_AVAILABLE:
                 self._meas_right_urad_s = None
 
         def _scan_callback(self, msg: LaserScan) -> None:
-            """Ingests laser scan using fixed parameter geometry (Fail-Closed on Mismatch)."""
-            if len(msg.ranges) != self._lidar_n_expected:
+            """Ingests laser scan using fixed parameter geometry (Fail-Closed on Metadata/Geometry Mismatch)."""
+            valid_metadata, failure_token = validate_laserscan_metadata(
+                msg,
+                expected_n=self._lidar_n_expected,
+                expected_fov_rad=self._lidar_fov_rad,
+            )
+            if not valid_metadata:
                 self.get_logger().warn(
-                    f"Scan beam mismatch: expected {self._lidar_n_expected}, "
-                    f"got {len(msg.ranges)}. Discarding scan to fail closed."
+                    f"Scan metadata invalid ({failure_token}). Discarding scan to fail closed."
                 )
                 self._latest_ranges = None
                 self._lidar_stamp_us = None
