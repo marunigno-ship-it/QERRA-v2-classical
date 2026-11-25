@@ -156,7 +156,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        # Initialize rclpy with explicit Layer 1A configuration (HSR disabled for pure topic tests)
         rclpy.init(args=[
             "--ros-args",
             "-p", "hsr_required:=false",
@@ -200,10 +199,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         timeout_s: float,
         description: str,
     ) -> Tuple[Optional[Twist], Optional[Dict[str, Any]]]:
-        """
-        Bounded polling helper with explicit monotonic deadline and exception propagation.
-        Guarantees deterministic failure reporting without silent hangs.
-        """
         deadline = time.monotonic() + timeout_s
         last_snapshot: Tuple[Optional[Twist], Optional[Dict[str, Any]]] = (None, None)
 
@@ -225,7 +220,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
             time.sleep(min(0.02, remaining))
 
     def _drive_to_run(self, clear_ranges: List[float]) -> None:
-        """Helper driving the gate from initial latch through 1.0s dwell into Mode.RUN."""
         def _is_awaiting_reset(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
@@ -242,7 +236,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         self._wait_until(_is_running, 3.0, "Gate to enter Mode.RUN after operator reset")
 
     def test_live_topic_traffic_lifecycle_and_obstacle_trip(self) -> None:
-        """Verifies clear-corridor cruise followed by immediate fail-closed obstacle stop."""
         clear_ranges = [3.0] * 682
         hazard_ranges = [0.15] * 682
 
@@ -270,11 +263,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         self._wait_until(_is_obstacle_tripped, 3.0, "TRIP_OBSTACLE fail-closed clamp on obstacle breach")
 
     def test_live_topic_traffic_sensor_loss_watchdog(self) -> None:
-        """
-        Verifies Negative Path A: cutting the /scan topic feed while in Mode.RUN
-        triggers the 96 ms sensor staleness watchdog (TRIP_SENSOR_INVALID)
-        and forces /cmd_vel_safe to 0.0 m/s fail-closed.
-        """
         clear_ranges = [3.0] * 682
         self._drive_to_run(clear_ranges)
 
@@ -292,9 +280,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         self._wait_until(_is_sensor_invalid, 3.0, "TRIP_SENSOR_INVALID watchdog clamp on scan loss")
 
     def test_live_topic_traffic_reset_rejected_under_active_obstacle(self) -> None:
-        """
-        Verifies Negative Path C: an operator reset cannot override an active physical hazard.
-        """
         clear_ranges = [3.0] * 682
         hazard_ranges = [0.15] * 682
 
@@ -329,9 +314,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         self._wait_until(_is_reset_rejected, 3.0, "RESET_REJECTED_HAZARD event while obstacle persists")
 
     def test_live_topic_traffic_proposer_timeout_watchdog(self) -> None:
-        """
-        Verifies Negative Path B: cutting /cmd_vel triggers proposal freshness watchdog (150 ms).
-        """
         clear_ranges = [3.0] * 682
         self._drive_to_run(clear_ranges)
 
@@ -349,7 +331,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         self._wait_until(_is_proposer_stale, 3.0, "TRIP_PROPOSER_STALE watchdog clamp on /cmd_vel silence")
 
     def test_live_topic_traffic_non_finite_twist_inhibition_and_recovery(self) -> None:
-        """Phase 1: Verifies live DDS handling of non-finite Twist proposals."""
         clear_ranges = [3.0] * 682
         self._drive_to_run(clear_ranges)
 
@@ -411,7 +392,6 @@ class TestGateRos2LiveTopicTraffic(unittest.TestCase):
         )
 
     def test_live_topic_traffic_odom_pub_sub_and_watchdog(self) -> None:
-        """Verifies live DDS pub/sub topic traffic for /odom."""
         clear_ranges = [3.0] * 682
         self._drive_to_run(clear_ranges)
 
@@ -550,10 +530,10 @@ class TestGateRos2LiveHsrTopicTraffic(unittest.TestCase):
         clear_ranges = [3.0] * 682
         obs_id = 0
 
-        # Helper to construct fresh valid HSR telemetry JSON payload
+        # Helper to construct fresh valid HSR telemetry JSON payload with advancing timestamp
         def _make_hsr_json(obs: int, state: str = "CLEAR", permille: int = 0) -> str:
             now_us = self.harness_node.get_clock().now().nanoseconds // 1000
-            t_obs = max(0, now_us - 10_000)  # 10 ms past to ensure t_rx_us >= t_obs_us
+            t_obs = max(0, now_us - 10_000)  # 10 ms in past to avoid future clock inversion
             return json.dumps({
                 "obs_id": obs,
                 "t_obs_us": t_obs,
@@ -598,14 +578,13 @@ class TestGateRos2LiveHsrTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_cruising, 2.0, "forward cruise with live /hsr/telemetry stream")
 
-        # 4. Inject CRITICAL acute distress frame over /hsr/telemetry topic -> Trip Gate
-        obs_id += 1
-        crit_json = _make_hsr_json(obs_id, state="CRITICAL", permille=850)
-
+        # 4. Inject CRITICAL acute distress frames with strictly advancing obs_id -> Trip Gate
         def _is_distress_tripped(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
+            nonlocal obs_id
+            obs_id += 1
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
-            self.harness_node.publish_hsr(crit_json)
+            self.harness_node.publish_hsr(_make_hsr_json(obs_id, state="CRITICAL", permille=850))
             return (
                 state is not None
                 and twist is not None
@@ -616,8 +595,7 @@ class TestGateRos2LiveHsrTopicTraffic(unittest.TestCase):
 
         self._wait_until(_is_distress_tripped, 3.0, "TRIP_HSR_CRITICAL trip on live /hsr/telemetry CRITICAL frame")
 
-        # 5. Restore advancing CLEAR frames to clear acute distress, then inject frozen frame (duplicate obs_id)
-        # Drive through dwell to reset
+        # 5. Restore advancing CLEAR frames to clear acute distress, drive through dwell to reset
         def _is_reset_ready(_twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             nonlocal obs_id
             obs_id += 1
@@ -631,13 +609,12 @@ class TestGateRos2LiveHsrTopicTraffic(unittest.TestCase):
         # Reset into RUN
         self._wait_until(_is_running, 3.0, "re-entering RUN")
 
-        # Now send frozen frame (repeat same obs_id) -> must latch freeze and trip TRIP_HSR_INVALID
-        frozen_json = _make_hsr_json(obs_id, state="CLEAR")
-
+        # 6. Now test freeze detection: send repeated obs_id without advancing -> must latch freeze and trip TRIP_HSR_INVALID
+        frozen_id = obs_id
         def _is_frozen_tripped(twist: Optional[Twist], state: Optional[Dict[str, Any]]) -> bool:
             self.harness_node.publish_proposal(linear_x=0.20, angular_z=0.0)
             self.harness_node.publish_scan(clear_ranges)
-            self.harness_node.publish_hsr(frozen_json)
+            self.harness_node.publish_hsr(_make_hsr_json(frozen_id, state="CLEAR"))
             return (
                 state is not None
                 and twist is not None
