@@ -37,6 +37,7 @@ from ros2.qerra_gate_node import (
     DEFAULT_T_REACT_MS,
     DEFAULT_LIDAR_PERIOD_MS,
     DEFAULT_LIDAR_STALE_MS,
+    DEFAULT_HSR_TOPIC,
     NODE_VERSION,
     ROS2_AVAILABLE,
     create_lidar_pipeline,
@@ -55,7 +56,8 @@ class TestGateRos2Translators(unittest.TestCase):
 
     def test_version_and_import_guard(self) -> None:
         """Confirms node metadata and that require_ros2 fails loudly on Windows."""
-        self.assertEqual(NODE_VERSION, "0.3.1")
+        self.assertEqual(NODE_VERSION, "0.3.2")
+        self.assertEqual(DEFAULT_HSR_TOPIC, "/hsr/telemetry")
         if not ROS2_AVAILABLE:
             with self.assertRaises(RuntimeError):
                 require_ros2()
@@ -112,10 +114,8 @@ class TestGateRos2Translators(unittest.TestCase):
         translates to (0.0, 0.0) Twist, and emits Event.MSG_REJECTED_INVALID in /gate/state JSON.
         """
         params = get_live_gate_params(lidar_n_expected=5, hsr_required=False)
-        # Initialize in RUN mode with last tick at 68 ms
         state = GateState(mode=Mode.RUN, last_tick_us=100_000 - 32_000)
 
-        # Step 1: establish cruise
         prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
         res_cruise = step(state, params, GateInputs(
             sim_time_us=100_000,
@@ -125,7 +125,6 @@ class TestGateRos2Translators(unittest.TestCase):
         ))
         self.assertEqual(res_cruise.state.mode, Mode.RUN)
 
-        # Step 2: next tick receives proposal_invalid=True (e.g. from rejected NaN Twist)
         res_inhibited = step(res_cruise.state, params, GateInputs(
             sim_time_us=132_000,
             proposal=None,
@@ -137,14 +136,12 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(res_inhibited.cmd_right_urad_s, 0)
         self.assertEqual(res_inhibited.state.mode, Mode.RUN)
 
-        # Output translation back to ROS Twist must be exactly 0.0
         lin_x, ang_z = wheel_speeds_to_twist(
             res_inhibited.cmd_left_urad_s, res_inhibited.cmd_right_urad_s
         )
         self.assertEqual(lin_x, 0.0)
         self.assertEqual(ang_z, 0.0)
 
-        # Telemetry JSON must reflect MSG_REJECTED_INVALID and zero commands
         telemetry = json.loads(format_gate_state_json(res_inhibited.state, res_inhibited.record))
         self.assertEqual(telemetry["mode"], "RUN")
         self.assertIn("MSG_REJECTED_INVALID", telemetry["events"])
@@ -159,7 +156,6 @@ class TestGateRos2Translators(unittest.TestCase):
         params_std = get_live_gate_params(lidar_n_expected=5, hsr_required=False, standstill_required=True)
         state = initial_state()
 
-        # 1. Moving chassis: speeds exceed 50_000 urad/s tolerance -> standstill_ok is False
         inp_moving = GateInputs(
             sim_time_us=100_000,
             proposal=twist_to_proposal(1, 100_000, 0.20, 0.0),
@@ -180,7 +176,6 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertTrue(json_moving["standstill_required"])
         self.assertFalse(json_moving["standstill_ok"])
 
-        # 2. Standstill chassis: speeds within 50_000 urad/s tolerance -> standstill_ok is True
         inp_still = GateInputs(
             sim_time_us=132_000,
             proposal=twist_to_proposal(2, 132_000, 0.0, 0.0),
@@ -200,7 +195,6 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(json_still["meas_right_urad_s"], 0)
         self.assertTrue(json_still["standstill_ok"])
 
-        # 3. Missing/stale odometry: explicit null in JSON; standstill_ok is False when required
         inp_stale = GateInputs(
             sim_time_us=164_000,
             proposal=twist_to_proposal(3, 164_000, 0.20, 0.0),
@@ -220,7 +214,6 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertIsNone(json_stale["meas_right_urad_s"])
         self.assertFalse(json_stale["standstill_ok"])
 
-        # 4. Open-loop mode (standstill_required=False): standstill_ok defaults True even if measurements missing
         json_openloop = json.loads(format_gate_state_json(
             res_stale.state,
             res_stale.record,
@@ -288,8 +281,6 @@ class TestGateRos2Translators(unittest.TestCase):
 
     def test_hardware_profile_timing_parameters_and_invariant_guard(self) -> None:
         """Verifies separation of 10 Hz hardware vs 32 ms simulation timing profiles."""
-        # 1. 10 Hz Physical Hardware Profile (Hokuyo URG-04LX)
-        # Period = 100 ms (100,000 us), Stale = 300 ms (300,000 us), t_react = 160 ms (160,000 us)
         hw_params = get_live_gate_params(
             lidar_n_expected=682,
             dt_us=32_000,
@@ -302,16 +293,14 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(hw_params.t_react_us, 160_000)
         self.assertGreaterEqual(hw_params.t_stale_us, 2 * hw_params.lidar_period_us + hw_params.dt_us)
 
-        # 2. Invariant guard: t_stale_us < 2 * lidar_period_us + dt_us must fail closed
         with self.assertRaises(ValueError):
             get_live_gate_params(
                 lidar_n_expected=682,
                 dt_us=32_000,
                 lidar_period_us=100_000,
-                t_stale_us=96_000,  # Invalid: 96,000 < 2 * 100,000 + 32,000 = 232,000
+                t_stale_us=96_000,
             )
 
-        # 3. Telemetry serialization verifies inclusion of Lidar timing metrics
         res = step(initial_state(), hw_params, GateInputs(sim_time_us=100_000))
         json_str = format_gate_state_json(
             res.state,
@@ -328,10 +317,7 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(DEFAULT_LIDAR_STALE_MS, 96.0)
 
     def test_10hz_dt_us_scales_max_tick_gap_and_allows_dwell_recovery(self) -> None:
-        """
-        Regression test: passing dt_us=100_000 (10 Hz) scales max_tick_gap_us to
-        200_000 so 1.0 s clear dwell completes across 100 ms ticks instead of locking.
-        """
+        """Regression test for 10 Hz dwell scaling."""
         dt_10hz = 100_000
         params = get_live_gate_params(
             lidar_n_expected=5,
@@ -348,8 +334,6 @@ class TestGateRos2Translators(unittest.TestCase):
         ranges = [2.0] * 5
         sim_t = 100_000
 
-        # 11 ticks at 100 ms spacing: tick 0 sets clear_since=100_000;
-        # tick 10 reaches 1_100_000 (elapsed 1_000_000 us == t_dwell_us).
         for seq in range(1, 12):
             prop = twist_to_proposal(seq, sim_t, 0.20, 0.0)
             res = step(state, params, GateInputs(
@@ -363,7 +347,6 @@ class TestGateRos2Translators(unittest.TestCase):
 
         self.assertEqual(state.mode, Mode.AWAITING_RESET)
 
-        # Operator reset at next 100 ms tick transitions to RUN
         res_reset = step(state, params, GateInputs(
             sim_time_us=sim_t,
             proposal=twist_to_proposal(12, sim_t, 0.20, 0.0),
@@ -374,7 +357,6 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertEqual(res_reset.reason, Reason.RESET_ACCEPTED)
         self.assertEqual(res_reset.state.mode, Mode.RUN)
 
-        # Next 100 ms tick passes motion normally
         sim_t += dt_10hz
         res_run = step(res_reset.state, params, GateInputs(
             sim_time_us=sim_t,
@@ -387,7 +369,7 @@ class TestGateRos2Translators(unittest.TestCase):
         self.assertGreater(res_run.cmd_left_urad_s, 0)
 
     def test_flight_logger_cryptographic_verification_and_replay(self) -> None:
-        """Verifies that GateLogger produces a valid SHA-256 hash chain that passes verify_log and bit-for-bit replay."""
+        """Verifies that GateLogger produces a valid SHA-256 hash chain."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = os.path.join(tmpdir, "flight_test.jsonl")
             params = get_live_gate_params(lidar_n_expected=5, hsr_required=False)
@@ -420,7 +402,6 @@ class TestGateRos2Translators(unittest.TestCase):
 
             logger.close()
 
-            # 1. Cryptographic SHA-256 chain audit
             audit_res = verify_log_file(log_path)
             self.assertTrue(audit_res.is_valid, f"Audit failed: {audit_res.error_message}")
             self.assertEqual(audit_res.total_records, 5)
@@ -428,7 +409,6 @@ class TestGateRos2Translators(unittest.TestCase):
             self.assertEqual(audit_res.last_seq, 4)
             self.assertIsNotNone(audit_res.head_hash)
 
-            # 2. Bit-for-bit offline deterministic replay
             replay_ok, count, err = replay_log_file(log_path, params)
             self.assertTrue(replay_ok, f"Replay failed: {err}")
             self.assertEqual(count, 5)
@@ -452,7 +432,7 @@ class TestGateRos2Translators(unittest.TestCase):
 
 
 class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
-    """Verifies HSR UDP reflex receiver and Layer 1B trip enforcement in gate core."""
+    """Verifies HSR UDP reflex receiver, topic-push pathway, and Layer 1B trip enforcement."""
 
     def test_hsr_receiver_disabled_returns_none(self) -> None:
         """When HSR source is disabled, poll always returns (None, None)."""
@@ -462,15 +442,121 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertIsNone(status)
         self.assertIsNone(stamp)
 
-    def test_hsr_receiver_udp_distress_trips_gate_core(self) -> None:
+    def test_hsr_receiver_topic_push_pathway_drives_gate_core(self) -> None:
         """
-        Recovery from a latched trip, then acute distress (CRITICAL) via UDP trips the gate.
+        Verifies that HsrReceiver with use_socket=False consumes in-memory pushed JSON
+        payloads (the ROS 2 native /hsr/telemetry topic pathway), instantiates zero sockets,
+        enforces dwell recovery, and trips Gate Core on acute distress.
+        """
+        rx = HsrReceiver(enabled=True, use_socket=False)
+        self.addCleanup(rx.close)
 
-        Gate Core v0.4 behaviour under test: on the exact tick where the operator reset is
-        accepted (Reason.RESET_ACCEPTED) the mode becomes RUN but the wheels stay at zero
-        (quiescent re-arm tick, no lurch on the reset command). Motion resumes on the next
-        RUN tick (Reason.PASS).
-        """
+        self.assertFalse(rx.use_socket)
+        self.assertIsNone(rx._sock, "Topic-push receiver must never instantiate a UDP socket")
+
+        params = get_live_gate_params(lidar_n_expected=5, hsr_required=True)
+        ranges = [2.0] * 5
+        dt_us = 32_000
+        sim_t = 100_000
+
+        # Push initial valid CLEAR payload conforming to v0.4.0 3-vector contract
+        payload_clear = json.dumps({
+            "obs_id": 1,
+            "t_obs_us": sim_t,
+            "t_emit_us": sim_t + 1_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
+        })
+        rx.push(payload_clear)
+
+        status, stamp = rx.poll(now_us=sim_t + 2_000)
+        self.assertEqual(status, "CLEAR")
+        self.assertEqual(stamp, sim_t)
+        self.assertEqual(rx.packets_drained_total, 1)
+
+        # 1. Drive gate core through dwell
+        state = initial_state()
+        for seq in range(1, 36):
+            sim_t += dt_us
+            pkt = json.dumps({
+                "obs_id": 1 + seq,
+                "t_obs_us": sim_t,
+                "t_emit_us": sim_t + 1_000,
+                "distress_permille": 0,
+                "state": "CLEAR",
+                "hazard_proximity": False,
+                "persons_nearby_count": 2,
+            })
+            rx.push(pkt)
+            st, t_st = rx.poll(now_us=sim_t + 2_000)
+            res = step(state, params, GateInputs(
+                sim_time_us=sim_t,
+                proposal=twist_to_proposal(seq, sim_t, 0.20, 0.0),
+                ranges_m=ranges,
+                lidar_stamp_us=sim_t,
+                hsr_status=st,
+                hsr_stamp_us=t_st,
+            ))
+            state = res.state
+
+        self.assertEqual(state.mode, Mode.AWAITING_RESET)
+
+        # 2. Operator reset accepted -> RUN
+        sim_t += dt_us
+        rx.push(json.dumps({
+            "obs_id": 38,
+            "t_obs_us": sim_t,
+            "t_emit_us": sim_t + 1_000,
+            "distress_permille": 0,
+            "state": "CLEAR",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
+        }))
+        st, t_st = rx.poll(now_us=sim_t + 2_000)
+        res_reset = step(state, params, GateInputs(
+            sim_time_us=sim_t,
+            proposal=twist_to_proposal(38, sim_t, 0.20, 0.0),
+            ranges_m=ranges,
+            lidar_stamp_us=sim_t,
+            reset_source=RESET_SOURCE_OPERATOR,
+            hsr_status=st,
+            hsr_stamp_us=t_st,
+        ))
+        state = res_reset.state
+        self.assertEqual(state.mode, Mode.RUN)
+
+        # 3. Push acute distress payload -> Gate trips TRIP_HSR_CRITICAL
+        sim_t += dt_us
+        payload_distress = json.dumps({
+            "obs_id": 39,
+            "t_obs_us": sim_t,
+            "t_emit_us": sim_t + 1_000,
+            "distress_permille": 850,
+            "state": "CRITICAL",
+            "hazard_proximity": False,
+            "persons_nearby_count": 2,
+        })
+        rx.push(payload_distress)
+        crit_st, crit_t_st = rx.poll(now_us=sim_t + 2_000)
+        self.assertEqual(crit_st, "CRITICAL")
+
+        res_crit = step(state, params, GateInputs(
+            sim_time_us=sim_t,
+            proposal=twist_to_proposal(39, sim_t, 0.20, 0.0),
+            ranges_m=ranges,
+            lidar_stamp_us=sim_t,
+            hsr_status=crit_st,
+            hsr_stamp_us=crit_t_st,
+        ))
+        self.assertEqual(res_crit.state.mode, Mode.TRIPPED)
+        self.assertEqual(res_crit.reason, Reason.TRIP_HSR_CRITICAL)
+        self.assertEqual(res_crit.cmd_left_urad_s, 0)
+        self.assertEqual(res_crit.cmd_right_urad_s, 0)
+
+    def test_hsr_receiver_udp_distress_trips_gate_core(self) -> None:
+        """Recovery from a latched trip, then acute distress (CRITICAL) via UDP trips the gate."""
         test_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.addCleanup(test_sock.close)
         test_sock.setblocking(False)
@@ -486,7 +572,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         ranges = [2.0, 2.0, 2.0, 2.0, 2.0]
         dt_us = 32_000
 
-        # Send initial CLEAR datagram conforming to v0.4.0 mandatory fields
         clear_payload = json.dumps({
             "obs_id": 1,
             "t_obs_us": 100_000,
@@ -503,7 +588,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertEqual(status, "CLEAR")
         self.assertEqual(stamp, 100_000)
 
-        # 1. Step gate across unbroken 32ms control ticks to satisfy t_dwell_us (1.0 s)
         state = initial_state()
         for seq in range(1, 36):
             sim_t += dt_us
@@ -518,10 +602,8 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
             ))
             state = res.state
 
-        # Unbroken dwell satisfied (35 ticks * 32ms = 1.12s > 1.0s dwell)
         self.assertEqual(state.mode, Mode.AWAITING_RESET)
 
-        # 2. Operator reset accepted -> enters RUN, wheels held at zero on this tick
         sim_t += dt_us
         prop_reset = twist_to_proposal(36, sim_t, 0.20, 0.0)
         res = step(state, params, GateInputs(
@@ -539,7 +621,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertEqual(res.cmd_left_urad_s, 0)
         self.assertEqual(res.cmd_right_urad_s, 0)
 
-        # 3. Next tick in RUN with fresh inputs -> motion resumes (Reason.PASS)
         sim_t += dt_us
         prop_run = twist_to_proposal(37, sim_t, 0.20, 0.0)
         res_run = step(state, params, GateInputs(
@@ -556,7 +637,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertGreater(res_run.cmd_left_urad_s, 0)
         self.assertGreater(res_run.cmd_right_urad_s, 0)
 
-        # 4. Transmit CRITICAL distress datagram via UDP conforming to v0.4.0 mandatory fields
         distress_payload = json.dumps({
             "obs_id": 2,
             "t_obs_us": sim_t + dt_us,
@@ -583,18 +663,13 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
             hsr_stamp_us=crit_stamp,
         ))
 
-        # Gate must immediately trip to 0 urad/s on acute distress
         self.assertEqual(crit_res.state.mode, Mode.TRIPPED)
         self.assertEqual(crit_res.reason, Reason.TRIP_HSR_CRITICAL)
         self.assertEqual(crit_res.cmd_left_urad_s, 0)
         self.assertEqual(crit_res.cmd_right_urad_s, 0)
 
     def test_hsr_receiver_post_reset_continuity_across_40ms_and_50ms_phases(self) -> None:
-        """
-        Regression test: without wiping HsrReceiver on RESET_ACCEPTED, 25 Hz (40 ms) and
-        20 Hz (50 ms) UDP streams preserve CLEAR continuity across all 1 ms phase offsets
-        relative to the 32 ms gate tick without causing TRIP_HSR_INVALID after reset.
-        """
+        """Regression test for 25 Hz and 20 Hz timing phase continuity."""
         dt_us = 32_000
         ranges = [2.0] * 5
         params = get_live_gate_params(lidar_n_expected=5, hsr_required=True)
@@ -650,7 +725,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
                         sim_t += dt_us
                         return res
 
-                    # 1. Drive through 1.0 s dwell to AWAITING_RESET
                     for _ in range(50):
                         _step_tick()
                         if state.mode == Mode.AWAITING_RESET:
@@ -661,12 +735,10 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
                         f"Failed to reach AWAITING_RESET at period={period_ms}ms phase={phase_ms}ms",
                     )
 
-                    # 2. Trigger operator reset; do NOT call rx.reset()
                     res_reset = _step_tick(reset_src=RESET_SOURCE_OPERATOR)
                     self.assertEqual(res_reset.reason, Reason.RESET_ACCEPTED)
                     self.assertEqual(res_reset.state.mode, Mode.RUN)
 
-                    # 3. Verify 20 post-reset ticks remain in RUN without TRIP_HSR_INVALID
                     for post_tick in range(20):
                         res_post = _step_tick()
                         self.assertEqual(
@@ -689,7 +761,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         ranges = [2.0, 2.0, 2.0, 2.0, 2.0]
         prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
 
-        # 1. Missing telemetry -> TRIP_HSR_INVALID
         res_missing = step(initial_state(), params_req, GateInputs(
             sim_time_us=100_000,
             proposal=prop,
@@ -701,7 +772,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertEqual(res_missing.state.mode, Mode.TRIPPED)
         self.assertEqual(res_missing.reason, Reason.TRIP_HSR_INVALID)
 
-        # 2. Stale heartbeat (age = 200 ms > 96 ms t_hsr_stale_us) -> TRIP_HSR_STALE
         res_stale = step(initial_state(), params_req, GateInputs(
             sim_time_us=300_000,
             proposal=prop,
@@ -729,7 +799,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         params = get_live_gate_params(lidar_n_expected=5, hsr_required=True)
         prop = twist_to_proposal(1, 100_000, 0.20, 0.0)
 
-        # 1. Initial valid CLEAR packet (obs_id=10) conforming to v0.4.0 mandatory fields
         p_init = json.dumps({
             "obs_id": 10,
             "t_obs_us": 100_000,
@@ -745,7 +814,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertEqual(status, "CLEAR")
         self.assertEqual(stamp, 100_000)
 
-        # 2. Frozen packet: repeated obs_id=10 at fresh timestamp conforming to v0.4.0 mandatory fields
         p_frozen = json.dumps({
             "obs_id": 10,
             "t_obs_us": 132_000,
@@ -762,7 +830,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertIsNone(stamp)
         self.assertTrue(rx.frozen_latched)
 
-        # 3. GateInputs fed with None -> Gate trips TRIP_HSR_INVALID
         res = step(initial_state(), params, GateInputs(
             sim_time_us=134_000,
             proposal=prop,
@@ -789,7 +856,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.addCleanup(sender.close)
 
-        # 1. Establish initial high counter conforming to v0.4.0 mandatory fields
         p_init = json.dumps({
             "obs_id": 100,
             "t_obs_us": 100_000,
@@ -803,7 +869,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         status, _ = rx.poll(now_us=102_000)
         self.assertEqual(status, "CLEAR")
 
-        # 2. Producer restart: obs_id drops to 0 conforming to v0.4.0 mandatory fields
         p_rst = json.dumps({
             "obs_id": 0,
             "t_obs_us": 132_000,
@@ -818,7 +883,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertIsNone(status)
         self.assertTrue(rx.rebase_in_progress)
 
-        # 3. Burst of 3 packets in 1 tick only credits 1 streak
         for i in (1, 2, 3):
             p = json.dumps({
                 "obs_id": i,
@@ -834,7 +898,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
         self.assertEqual(rx.rebase_streak, 1)
         self.assertIsNone(status)
 
-        # 4. Advance through ticks 2, 3, 4
         for i in range(2, 5):
             t_sim = 164_000 + i * 32_000
             p = json.dumps({
@@ -851,7 +914,6 @@ class TestHsrReceiverAndReflexIntegration(unittest.TestCase):
             self.assertEqual(rx.rebase_streak, i)
             self.assertIsNone(status)
 
-        # 5. 5th tick completes dwell and restores CLEAR
         t_fin = 164_000 + 5 * 32_000
         p_fin = json.dumps({
             "obs_id": 8,
