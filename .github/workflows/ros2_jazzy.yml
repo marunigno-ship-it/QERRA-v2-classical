@@ -279,6 +279,7 @@ jobs:
           python3 -m unittest -v tests/test_gate_ros2_node.py
           python3 -m unittest -v tests/test_gate_ros2_node_wiring.py
           python3 -m unittest -v tests/test_gate_ros2_odom.py
+          python3 -m unittest -v tests/test_gate_ros2_laserscan_metadata.py
 
       - name: Run live ROS 2 topic traffic integration tests in Jazzy (Priority P9)
         shell: bash
