@@ -1,7 +1,7 @@
 # LIMITATIONS of QERRA-v2 Classical
 
 **Last updated:** 27 November 2026  
-**Engine version:** Gate Core v0.5 + QERRA-HSR v0.1 + HSR Telemetry Contract v0.4.0 + ROS 2 Node v0.3.2 (Package metadata v2.4.2)
+**Engine version:** Gate Core v0.5 + QERRA-HSR v0.1 + HSR Telemetry Contract v0.4.0 + ROS 2 Node v0.3.2 (Package metadata v2.5.0)
 
 This document is maintained with full transparency as part of QERRA's
 commitment to explainability. The same honesty that applies to the system's
