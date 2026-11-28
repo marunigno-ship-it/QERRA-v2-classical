@@ -3,10 +3,36 @@
 SEMEV-12 vectors are maintained as a stable core across versions. This log
 records additions, changes, fixes and retired integration paths.
 
+## [2.5.0] - 2026-11-28 — Measured-Velocity Stopping Envelope, Sensor Integrity & Empirical ROS 2 Timing Baseline
+
+### Added
+- **Measured-Velocity Stopping Envelope (`gate/gate_core.py`):** Hardened dynamic stopping envelope calculation to $d_{\text{stop}}(v) = \lceil v_{\text{ref}}^2 / (2 \cdot a_{\text{design}}) \rceil + \lceil v_{\text{ref}} \cdot t_{\text{react}} / 10^6 \rceil + margin$ with $v_{\text{ref}} = \max(v_{\text{cmd}}, v_{\text{meas}})$. Forward chassis translational speed ($v_{\text{meas}}$) is derived from measured wheel feedback via `chassis_forward_mmps()`, preventing stopping envelope collapse during uncommanded chassis coasting. Covered by `TestMeasuredVelocityStoppingEnvelope` in `tests/test_gate_core.py`.
+- **Mathematical Invariant Verification (`tests/test_gate_invariants.py`):** Implemented pure Python standard-library property-based invariant test suite executing >117,000 state transitions across Layer 1A and Layer 1B state machines with zero invariant violations.
+- **ROS-Native Topic Telemetry & Pattern B Launch (`ros2/`, `launch/`):** Added ROS-native topic subscription (`/hsr/telemetry`) to `gate/hsr_receiver.py` (operating with zero open UDP sockets in topic mode). Added 21-parameter launch file `launch/qerra_gate.launch.py` supporting Pattern B exterior command interceptor remapping (`cmd_vel_in`, `cmd_vel_out`, `odom_topic`, `scan_topic`, `reset_topic`, `state_topic`).
+- **10-Point LaserScan Metadata Validation (`ros2/qerra_gate_node.py`):** Added `validate_laserscan_metadata()` pure-Python physical invariant checklist verifying headers, beam counts, ordered angle bounds, field-of-view tolerances, center alignment, and non-negative range limits. Discards invalid scans to fail closed (`TRIP_SENSOR_INVALID`).
+- **REP-117 Physical Range Bounds (`gate/gate_lidar.py`):** Implemented strict `range_min` and `range_max` bounds enforcement. Forward corridor returns $< \text{range\_min}$ convert to NaN (tripping `TRIP_SENSOR_INVALID`); lateral returns $< \text{range\_min}$ mask to $+inf$; returns $> \text{range\_max}$ are excluded from raw valid points and masked to $+inf$. Verified by 27 unit & callback tests in `tests/test_gate_ros2_laserscan_metadata.py`.
+- **Empirical Timing Baseline & Contention Benchmarks (`tools/`):** Added `tools/bench_gate_core.py` (100k CPU microbenchmark) and `tools/bench_ros2_executor.py` (6-scenario SingleThreadedExecutor benchmark measuring platform noise floor, gate compute jitter, active traffic contention, synchronous SHA-256 flight log `os.fsync()` overhead, synthetic head-of-line blocking, and separate-process hazard trip software response over 100 seeded randomized trials). Added manual CI workflow `.github/workflows/timing.yml`.
+- **Nav2 Coexistence Architecture:** Formulated and documented the Simplex-inspired layered command topology (`Nav2 Controller -> Nav2 Collision Monitor -> QERRA Gate -> Base Controller`).
+
+### Changed
+- **Version Metadata Bumps:** Bumped package version to `2.5.0` in `package.xml` and `setup.py`. Bumped ROS 2 gate node version to `0.3.2` in `ros2/qerra_gate_node.py`.
+- **Documentation Alignment:** Synchronized `LIMITATIONS.md` with Phase 4 empirical timing metrics and updated LaserScan metadata validation status. Synchronized `README.md` test counts (319 host / 80 container tests across 8 modules) and release metadata.
+
+### Testing & Validation
+- **Host Test Suite (Windows 11):** 319 tests passed, 16 cleanly skipped on hosts lacking `rclpy` (0 failures).
+- **ROS 2 Jazzy Container Suite (`ros:jazzy`):** 80 tests passing across 8 modules in GitHub Actions CI.
+- **Empirical Timing Benchmark Run (Azure VM Ubuntu 24.04, `rmw_fastrtps_cpp`, Python 3.12.3):**
+  * Nominal compute p99 $\le 1.051\text{ ms}$ under active 682-beam traffic and synchronous SHA-256 flight logging; 0 missed deadlines (>35 ms).
+  * Monotonic expected-release lateness ($t_0 + k \times 32\text{ ms}$) max $< 0.89\text{ ms}$.
+  * Head-of-line blocking demonstration (40 ms injected scan pause): 99/99 missed deadlines, 903.199 ms cumulative schedule slip.
+  * Scenario 6 separate-process obstacle trip latency over 100 seeded trials: $\text{p50} = 16.227\text{ ms}$, $\text{p95} = 31.705\text{ ms}$, $\text{max} = 32.348\text{ ms}$ (software response only; 100/100 verified exact zero Twist and correlated `TRIP_OBSTACLE`).
+
+---
+
 ## [2.4.2] - 2026-11-22 — Verified Standstill Qualification, Odometry Ingestion & Gate Hardening (Gate Core v0.5)
 
 ### Added
-- **Verified Standstill Qualification (`gate/gate_core.py`):** Hardened the Supervisory Gate recovery lifecycle to resolve the "Standstill Dwell Trap." Added immutable `standstill_required: bool = False` (default for backward compatibility) and `w_standstill_tol_urad_s: int = 50_000` (tolerance $\le 0.05\text{ rad/s} \approx 4.9\text{ mm/s}$ on 98 mm wheels) to `GateParams`. Added `meas_left_urad_s: Optional[int]` and `meas_right_urad_s: Optional[int]` to `GateInputs`. In `Mode.TRIPPED`, the 1.0 s calm dwell timer strictly requires confirmed physical standstill before arming.
+- **Verified Standstill Qualification (`gate/gate_core.py`):** Hardened the Supervisory Gate recovery lifecycle to resolve the "Standstill Dwell Trap." Added immutable `standstill_required: bool = False` (default for backward compatibility) and `w_standstill_tol_urad_s: int = 50_000` (tolerance $\le 0.05\text{ rad/s} \approx 4.9\text{ mm/s} on 98 mm wheels) to `GateParams`. Added `meas_left_urad_s: Optional[int]` and `meas_right_urad_s: Optional[int]` to `GateInputs`. In `Mode.TRIPPED`, the 1.0 s calm dwell timer strictly requires confirmed physical standstill before arming.
 - **Mid-Dwell Motion Reset Guard (`gate/gate_core.py`):** Implemented fail-closed dwell resetting. If physical chassis motion exceeding tolerance is detected while dwelling in `Mode.TRIPPED` (e.g. external collision, rolling on slopes, or caster sliding), `clear_since_us` resets to `None` immediately, enforcing continuous standstill before transition to `AWAITING_RESET`.
 - **Standstill Core Unit Test Suite (`tests/test_gate_core.py`):** Added `TestStandstillDwellQualification` (4 tests) covering dwell inhibition during physical coasting, dwell activation upon standstill, mid-dwell motion reset, and missing feedback fail-closed handling. All 65 core unit tests pass green.
 - **ROS 2 Odometry Integration (`ros2/qerra_gate_node.py`):** Subscribed to `/odom` (`nav_msgs/msg/Odometry`), translating body linear/angular twist to integer wheel speeds via `twist_to_wheel_speeds()`. Added `DEFAULT_ODOM_STALE_US` (100 ms) staleness watchdog and clock-regression protection (`odom_age_us < 0 or odom_age_us > DEFAULT_ODOM_STALE_US` fails closed to `None`). Exposed `standstill_required` parameter and updated `/gate/state` diagnostic JSON.
