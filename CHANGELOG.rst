@@ -2,6 +2,16 @@
 Changelog for package qerra_core
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+2.5.0 (2026-11-28)
+------------------
+* Measured-velocity dynamic stopping envelope: hardened calculation to d_stop = ceil(v_ref^2 / (2 * a)) + ceil(v_ref * t_react / 1e6) + margin with v_ref = max(v_cmd, v_meas) via chassis_forward_mmps(), preventing envelope collapse during uncommanded coasting.
+* Mathematical invariant verification: added pure-Python property-based test suite (tests/test_gate_invariants.py) executing >117,000 state transitions across Layer 1A and Layer 1B without invariant violations.
+* ROS-native topic telemetry & launch architecture: added /hsr/telemetry topic ingestion to gate/hsr_receiver.py (zero open UDP sockets in topic mode) and added 21-parameter launch file launch/qerra_gate.launch.py supporting Pattern B exterior command interceptor remapping.
+* Sensor integrity & REP-117 bounds: implemented 10-point validate_laserscan_metadata() pure-Python physical invariant checklist and REP-117 range_min/range_max bounds handling in gate/gate_lidar.py, verified by 27 unit and callback tests in tests/test_gate_ros2_laserscan_metadata.py.
+* Empirical SingleThreadedExecutor timing benchmark: added tools/bench_gate_core.py and tools/bench_ros2_executor.py measuring scheduling jitter, active traffic contention, synchronous SHA-256 flight log os.fsync() overhead, synthetic head-of-line blocking, and separate-process hazard trip latency (Scenario 6, 100 seeded trials: p50 16.227 ms, max 32.348 ms) on ros:jazzy container CI.
+* Nav2 coexistence architecture: formulated and documented Simplex-inspired layered topology (Nav2 Controller -> Nav2 Collision Monitor -> QERRA Gate -> Base Controller).
+* Contributors: Marussa Metocharaki
+
 2.4.2 (2026-11-22)
 ------------------
 * Gate Core v0.5 standstill-qualification contract: added immutable standstill_required (default False) and w_standstill_tol_urad_s (default 50,000 urad/s) parameters to GateParams, plus meas_left_urad_s and meas_right_urad_s fields to GateInputs.
